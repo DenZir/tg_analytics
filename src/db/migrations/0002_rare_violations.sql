@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `linked_project_id` integer;

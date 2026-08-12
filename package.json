@@ -1,0 +1,36 @@
+{
+  "name": "tg-analytics",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx watch src/index.ts",
+    "cli": "tsx src/cli/newCampaign.ts",
+    "seed": "tsx src/cli/seedProject.ts",
+    "reset": "tsx src/cli/resetData.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "type": "module",
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "express": "^5.2.1",
+    "node-cron": "^4.6.0",
+    "pm2": "^7.0.3",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.2",
+    "@types/node-cron": "^3.0.11",
+    "drizzle-kit": "^0.31.10",
+    "playwright": "^1.62.1",
+    "tsx": "^4.23.8",
+    "typescript": "^7.0.2"
+  }
+}

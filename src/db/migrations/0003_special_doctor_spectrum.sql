@@ -1,0 +1,1 @@
+CREATE INDEX `events_user_ts_idx` ON `events` (`tg_user_id`,`ts`);
