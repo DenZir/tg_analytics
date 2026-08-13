@@ -211,7 +211,10 @@ export async function getPrivatkaStats() {
     const uniquePurchasers = new Set(paymentEvents.map((e) => e.tgUserId));
     const purchasedCount = uniquePurchasers.size;
 
-    const totalRevenueForLink = paymentEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const revenueEvents = linkEvents.filter(
+      (e) => e.eventType === EVENT_TYPES.PAYMENT || e.eventType === EVENT_TYPES.RENEWAL
+    );
+    const totalRevenueForLink = revenueEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
 
     const conversionPct = leadsCount > 0
       ? Number(((purchasedCount / leadsCount) * 100).toFixed(2))

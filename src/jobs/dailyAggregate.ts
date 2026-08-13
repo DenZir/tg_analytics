@@ -17,7 +17,7 @@ export async function aggregate() {
         campaignId: links.campaignId,
         date: sql<string>`strftime('%Y-%m-%d', ${events.ts}, 'unixepoch')`,
         subs: sql<number>`count(distinct case when ${events.eventType} in (${funnelTypesSql}) then ${events.tgUserId} end)`,
-        revenue: sql<number>`coalesce(sum(case when ${events.eventType} = ${EVENT_TYPES.PAYMENT} then ${events.amount} else 0 end), 0)`,
+        revenue: sql<number>`coalesce(sum(case when ${events.eventType} in (${EVENT_TYPES.PAYMENT}, ${EVENT_TYPES.RENEWAL}) then ${events.amount} else 0 end), 0)`,
         price: campaigns.price,
       })
       .from(events)
