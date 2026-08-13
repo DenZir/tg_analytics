@@ -311,6 +311,45 @@ export async function getCampaignById(id: number) {
   };
 }
 
+export async function getAttributionForUser(tgUserId: string) {
+  const lastTouch = await db
+    .select({ linkId: events.linkId })
+    .from(events)
+    .where(eq(events.tgUserId, tgUserId))
+    .orderBy(desc(events.ts), desc(events.id))
+    .limit(1);
+
+  if (lastTouch.length === 0 || !lastTouch[0].linkId) {
+    return null;
+  }
+
+  const link = await db.query.links.findFirst({
+    where: eq(links.id, lastTouch[0].linkId),
+  });
+
+  if (!link) {
+    return null;
+  }
+
+  const campaign = await getCampaignById(link.campaignId);
+  if (!campaign) {
+    return null;
+  }
+
+  const tags: Record<string, string> = {};
+  for (const t of campaign.tags) {
+    tags[t.tagKey] = t.tagValue;
+  }
+
+  return {
+    linkId: link.id,
+    campaignId: campaign.id,
+    advertiser: campaign.advertiser,
+    telegramRef: link.telegramRef,
+    tags,
+  };
+}
+
 export async function getCampaignTags(campaignId: number) {
   return await db
     .select()

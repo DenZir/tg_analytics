@@ -13,8 +13,7 @@ import {
   upsertCampaignTag,
   deleteCampaignTag,
   getCampaignFullHistory,
-  getLinkByRef,
-  getCampaignById,
+  getAttributionForUser,
 } from "./services/campaigns.js";
 import { logEvent } from "./services/events.js";
 import {
@@ -192,33 +191,20 @@ app.get("/api/campaigns/:id/history", async (req, res) => {
   }
 });
 
-// GET /api/links/resolve?ref=<payload>
-app.get("/api/links/resolve", async (req, res) => {
+// GET /api/attribution?tgUserId=<id>
+app.get("/api/attribution", async (req, res) => {
   try {
-    const { ref } = req.query;
-    if (!ref) {
-      return res.status(400).json({ error: "Missing ref query parameter" });
+    const { tgUserId } = req.query;
+    if (!tgUserId) {
+      return res.status(400).json({ error: "Missing tgUserId query parameter" });
     }
 
-    const link = await getLinkByRef(String(ref));
-    if (!link) {
-      return res.status(404).json({ error: "Link not found" });
+    const result = await getAttributionForUser(String(tgUserId));
+    if (!result) {
+      return res.status(404).json({ error: "No attribution found for this tgUserId" });
     }
 
-    const campaign = await getCampaignById(link.campaignId);
-    if (!campaign) {
-      return res.status(404).json({ error: "Campaign not found" });
-    }
-
-    const tags = Object.fromEntries(campaign.tags.map((t) => [t.tagKey, t.tagValue]));
-
-    res.json({
-      linkId: link.id,
-      campaignId: campaign.id,
-      advertiser: campaign.advertiser,
-      telegramRef: link.telegramRef,
-      tags,
-    });
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
