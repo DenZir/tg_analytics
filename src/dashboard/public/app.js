@@ -469,7 +469,7 @@ async function loadCampaignHistory(campaignId) {
     if (!res.ok) return;
 
     const data = await res.json();
-    renderCampaignLinks(campaignId, data.links || []);
+    renderCampaignLinks(campaignId, data.campaign?.projectId, data.links || []);
 
     const events = data.events || [];
     tbody.innerHTML = "";
@@ -500,7 +500,7 @@ async function loadCampaignHistory(campaignId) {
   }
 }
 
-function renderCampaignLinks(campaignId, linksList) {
+function renderCampaignLinks(campaignId, projectId, linksList) {
   const container = document.getElementById("modal-links-list");
   container.innerHTML = "";
 
@@ -534,6 +534,7 @@ function renderCampaignLinks(campaignId, linksList) {
       </span>
       <select class="move-link-select" style="max-width: 220px; flex-shrink: 0;">
         <option value="">Move to campaign…</option>
+        <option value="__new__">➕ Создать новую кампанию…</option>
         ${optionsHtml}
       </select>
       <button class="btn-sm btn-move">Move</button>
@@ -541,6 +542,11 @@ function renderCampaignLinks(campaignId, linksList) {
 
     const select = row.querySelector(".move-link-select");
     row.querySelector(".btn-move").addEventListener("click", async () => {
+      if (select.value === "__new__") {
+        await createCampaignAndMoveLink(l.id, projectId, campaignId);
+        return;
+      }
+
       const targetCampaignId = Number(select.value);
       if (!targetCampaignId) return;
       await moveLink(l.id, targetCampaignId, campaignId);
@@ -548,6 +554,43 @@ function renderCampaignLinks(campaignId, linksList) {
 
     container.appendChild(row);
   });
+}
+
+async function createCampaignAndMoveLink(linkId, projectId, currentCampaignId) {
+  if (!projectId) {
+    alert("Не удалось определить проект для новой кампании.");
+    return;
+  }
+
+  const advertiser = prompt("Название рекламодателя для новой кампании:");
+  if (!advertiser || !advertiser.trim()) return;
+
+  const priceStr = prompt("Цена закупки (число, например 500):", "0");
+  if (priceStr === null) return;
+  const price = Number(priceStr);
+  if (isNaN(price)) {
+    alert("Цена должна быть числом.");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/campaigns", {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ projectId, advertiser: advertiser.trim(), price }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(`Failed to create campaign: ${body.error || res.statusText}`);
+      return;
+    }
+
+    const newCampaign = await res.json();
+    await moveLink(linkId, newCampaign.id, currentCampaignId);
+  } catch (err) {
+    console.error("Failed to create campaign:", err);
+  }
 }
 
 async function moveLink(linkId, targetCampaignId, currentCampaignId) {
