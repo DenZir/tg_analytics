@@ -251,7 +251,12 @@ export async function createCampaignWithLinks(
 
   // 1. Channel invite link
   if (project?.type === "channel" && project.telegramChatId && createInviteFn) {
-    channelLink = await createInviteFn(project.telegramChatId, campaign.id, advertiser, isClosedLink);
+    const creativeValue = Array.isArray(tags)
+      ? tags.find((t) => t.tagKey === "creative")?.tagValue
+      : tags?.creative;
+    const inviteLinkName = creativeValue ? `${advertiser} — ${creativeValue}` : advertiser;
+
+    channelLink = await createInviteFn(project.telegramChatId, campaign.id, inviteLinkName, isClosedLink);
   }
 
   // 2. Privatka deep-link (if includePrivatka is true)
