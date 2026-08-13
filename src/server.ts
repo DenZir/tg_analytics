@@ -16,7 +16,7 @@ import {
   getAttributionForUser,
   reassignLinkCampaign,
 } from "./services/campaigns.js";
-import { logEvent } from "./services/events.js";
+import { logEvent, getRecentEvents } from "./services/events.js";
 import {
   getMetrics,
   getRetentionStats,
@@ -249,6 +249,20 @@ app.post("/api/events", async (req, res) => {
     if (error.message && error.message.includes("Cannot attribute event")) {
       return res.status(422).json({ error: error.message });
     }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/events/recent?limit=<n>
+app.get("/api/events/recent", async (req, res) => {
+  try {
+    const { limit } = req.query;
+    const parsedLimit = limit !== undefined ? Number(limit) : undefined;
+    const recentEvents = await getRecentEvents(
+      parsedLimit !== undefined && !Number.isNaN(parsedLimit) ? parsedLimit : undefined
+    );
+    res.json(recentEvents);
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
