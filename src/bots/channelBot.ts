@@ -943,24 +943,37 @@ if (channelBot) {
   // Listener for channel member join/leave events
   channelBot.on("chat_member", async (ctx: any) => {
     try {
-      const inviteUrl = ctx.chatMember?.invite_link?.invite_link;
-      if (!inviteUrl) return;
+      const update = ctx.chatMember;
+      const tgUserId = String(update.new_chat_member.user.id);
+      const oldStatus = update.old_chat_member.status;
+      const newStatus = update.new_chat_member.status;
 
-      const link = await getLinkByRef(inviteUrl);
-      if (!link) return;
+      const wasIn = ["member", "administrator", "creator", "restricted"].includes(oldStatus);
+      const isIn = ["member", "administrator", "creator", "restricted"].includes(newStatus);
 
-      const status = ctx.chatMember.new_chat_member.status;
-      let eventType: string = EVENT_TYPES.LEAVE;
-      if (status === "member" || status === "administrator" || status === "creator") {
-        eventType = EVENT_TYPES.JOIN;
+      if (!wasIn && isIn) {
+        // Fresh join — only attributable (and worth logging) if it came through a tracked invite link.
+        // Telegram only populates invite_link for joins, never for leaves.
+        const inviteUrl = update.invite_link?.invite_link;
+        if (!inviteUrl) return;
+
+        const link = await getLinkByRef(inviteUrl);
+        if (!link) return;
+
+        await logEvent({
+          linkId: link.id,
+          tgUserId,
+          eventType: EVENT_TYPES.JOIN,
+        });
+        console.log(`[channelBot] Logged join event for user ${tgUserId}`);
+      } else if (wasIn && !isIn) {
+        // Leave/kick — no invite_link is ever present here, so attribute via last-touch instead.
+        await logEvent({
+          tgUserId,
+          eventType: EVENT_TYPES.LEAVE,
+        });
+        console.log(`[channelBot] Logged leave event for user ${tgUserId}`);
       }
-
-      await logEvent({
-        linkId: link.id,
-        tgUserId: String(ctx.chatMember.new_chat_member.user.id),
-        eventType,
-      });
-      console.log(`[channelBot] Logged ${eventType} event for user ${ctx.chatMember.new_chat_member.user.id}`);
     } catch (error) {
       console.error("[channelBot] Error processing chat_member update:", error);
     }
