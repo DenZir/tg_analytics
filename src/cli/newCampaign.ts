@@ -88,9 +88,8 @@ async function main() {
 
   if (channelId) {
     console.log(`\nGenerating Telegram invite link for channel ${channelId}...`);
-    const inviteLinkName = tags.creative ? `${advertiser} — ${tags.creative}` : advertiser;
     try {
-      const inviteResult = await createInviteForCampaign(channelId, campaign.id, inviteLinkName);
+      const inviteResult = await createInviteForCampaign(channelId, campaign.id, advertiser);
       console.log("Generated Invite Link:", inviteResult.inviteLink);
     } catch (err: any) {
       console.error("Failed to create Telegram invite link:", err.message);
