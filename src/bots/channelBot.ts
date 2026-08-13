@@ -31,7 +31,8 @@ export async function createInviteForCampaign(
   channelId: string | number,
   campaignId: number,
   name?: string,
-  isClosed: boolean = false
+  isClosed: boolean = false,
+  label?: string
 ) {
   if (!channelBot) {
     throw new Error("CHANNEL_BOT_TOKEN is not configured in .env");
@@ -47,7 +48,8 @@ export async function createInviteForCampaign(
   const savedLink = await createLinkForCampaign(
     campaignId,
     invite.invite_link,
-    linkType
+    linkType,
+    label
   );
 
   return { inviteLink: invite.invite_link, savedLink };
@@ -55,13 +57,14 @@ export async function createInviteForCampaign(
 
 // --- User Interactive State for Form Card & Privatka Creation ---
 interface UserState {
-  awaitingField?: "advertiser" | "price" | "tags" | "creative" | "privatka_username" | "privatka_name";
+  awaitingField?: "advertiser" | "price" | "tags" | "creative" | "linkName" | "privatka_username" | "privatka_name";
   tempPrivatkaUsername?: string;
   tempCreativesList?: string[];
   // Draft Card State
   projectId?: number;
   advertiser?: string;
   price?: number;
+  linkName?: string;
   includePrivatka?: boolean;
   isClosedLink?: boolean;
   tags?: Record<string, string>;
@@ -117,6 +120,7 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
 
   const channelName = selectedProject ? escapeHtml(selectedProject.name) : "не выбран";
   const advertiserText = state.advertiser ? escapeHtml(state.advertiser) : "не указан";
+  const linkNameText = state.linkName ? escapeHtml(state.linkName) : "не указано";
   const priceText = state.price !== undefined ? `${state.price} ₽` : "не указана";
   const privatkaStatus = state.includePrivatka ? "Включена 🟢" : "Выключена 🔴";
   const closedStatus = state.isClosedLink ? "Закрытая (заявка) 🔒" : "Прямая 🔓";
@@ -136,12 +140,15 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
     noticeText = "\n\n💬 <i>Отправьте теги в формате key=value,key2=value2...</i>";
   } else if (state.awaitingField === "creative") {
     noticeText = "\n\n💬 <i>Отправьте название поста/креатива ответным текстом...</i>";
+  } else if (state.awaitingField === "linkName") {
+    noticeText = "\n\n💬 <i>Отправьте короткое название ссылки для быстрого распознавания (например: \"ВК-паблик Х, пост от 12.08\")...</i>";
   }
 
   const cardText =
     `📝 <b>Карточка создания рекламной ссылки</b>\n\n` +
     `📢 <b>Канал</b>: ${channelName}\n` +
     `👤 <b>Продавец</b>: ${advertiserText}\n` +
+    `🔤 <b>Название ссылки</b>: ${linkNameText}\n` +
     `💰 <b>Цена</b>: ${priceText}\n` +
     `🔒 <b>Приватка</b>: ${privatkaStatus}\n` +
     `🚪 <b>Ссылка</b>: ${closedStatus}\n` +
@@ -152,6 +159,9 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
     [
       Markup.button.callback("📢 Канал", "card_select_channel"),
       Markup.button.callback("👤 Продавец", "card_input_adv"),
+    ],
+    [
+      Markup.button.callback("🔤 Название ссылки", "card_input_linkname"),
     ],
     [
       Markup.button.callback("💰 Цена", "card_input_price"),
@@ -391,6 +401,12 @@ if (channelBot) {
       } else if (state.awaitingField === "creative") {
         if (!state.tags) state.tags = {};
         state.tags.creative = text;
+        delete state.awaitingField;
+        try { await ctx.deleteMessage(); } catch (_) {}
+        await renderDraftCard(ctx, userId, false);
+        return;
+      } else if (state.awaitingField === "linkName") {
+        state.linkName = text;
         delete state.awaitingField;
         try { await ctx.deleteMessage(); } catch (_) {}
         await renderDraftCard(ctx, userId, false);
@@ -721,6 +737,14 @@ if (channelBot) {
         return renderDraftCard(ctx, userId);
       }
 
+      if (data === "card_input_linkname") {
+        await ctx.answerCbQuery();
+        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+        state.awaitingField = "linkName";
+        userStates.set(userId, state);
+        return renderDraftCard(ctx, userId);
+      }
+
       if (data === "card_input_price") {
         await ctx.answerCbQuery();
         const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
@@ -835,6 +859,9 @@ if (channelBot) {
         if (!state.advertiser) {
           return ctx.answerCbQuery("⚠️ Укажите имя продавца / рекламодателя!");
         }
+        if (!state.linkName) {
+          return ctx.answerCbQuery("⚠️ Укажите название ссылки для распознавания!");
+        }
         if (state.price === undefined) {
           return ctx.answerCbQuery("⚠️ Укажите цену закупки!");
         }
@@ -846,6 +873,7 @@ if (channelBot) {
             state.projectId,
             state.advertiser,
             state.price,
+            state.linkName,
             state.tags || {},
             state.includePrivatka || false,
             state.isClosedLink || false,

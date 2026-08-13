@@ -38,6 +38,7 @@ export const links = sqliteTable("links", {
     .references(() => campaigns.id),
   telegramRef: text("telegram_ref").notNull().unique(),
   linkType: text("link_type").notNull(),
+  label: text("label"),
 });
 
 export const events = sqliteTable(

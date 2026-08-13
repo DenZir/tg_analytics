@@ -13,6 +13,7 @@ async function main() {
   let channelId: string | undefined = undefined;
   let privBot: string | undefined = undefined;
   let payload: string | undefined = undefined;
+  let linkName: string | undefined = undefined;
   const tags: Record<string, string> = {};
 
   for (let i = 0; i < rawArgs.length; i++) {
@@ -30,6 +31,8 @@ async function main() {
       privBot = rawArgs[++i];
     } else if (arg === "--payload" && i + 1 < rawArgs.length) {
       payload = rawArgs[++i];
+    } else if ((arg === "--link-name" || arg === "-l") && i + 1 < rawArgs.length) {
+      linkName = rawArgs[++i];
     } else if (arg === "--tag" && i + 1 < rawArgs.length) {
       const tagVal = rawArgs[++i];
       const [k, ...v] = tagVal.split("=");
@@ -89,7 +92,7 @@ async function main() {
   if (channelId) {
     console.log(`\nGenerating Telegram invite link for channel ${channelId}...`);
     try {
-      const inviteResult = await createInviteForCampaign(channelId, campaign.id, advertiser);
+      const inviteResult = await createInviteForCampaign(channelId, campaign.id, linkName ? `${advertiser} — ${linkName}` : advertiser, false, linkName);
       console.log("Generated Invite Link:", inviteResult.inviteLink);
     } catch (err: any) {
       console.error("Failed to create Telegram invite link:", err.message);
@@ -99,7 +102,7 @@ async function main() {
   if (privBot) {
     console.log(`\nGenerating Deep-Link for private bot ${privBot}...`);
     try {
-      const deepLinkResult = await createDeepLinkForCampaign(campaign.id, privBot, payload);
+      const deepLinkResult = await createDeepLinkForCampaign(campaign.id, privBot, payload, linkName);
       console.log("Generated Deep-Link:", deepLinkResult.deepLink);
     } catch (err: any) {
       console.error("Failed to create Deep-Link:", err.message);

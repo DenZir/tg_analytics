@@ -189,7 +189,8 @@ export async function createCampaign(input: CreateCampaignInput) {
 export async function createLinkForCampaign(
   campaignId: number,
   telegramRef: string,
-  linkType: string
+  linkType: string,
+  label?: string
 ) {
   const [insertedLink] = await db
     .insert(links)
@@ -197,6 +198,7 @@ export async function createLinkForCampaign(
       campaignId,
       telegramRef,
       linkType,
+      label: label ?? null,
     })
     .returning();
 
@@ -206,7 +208,8 @@ export async function createLinkForCampaign(
 export async function createDeepLinkForCampaign(
   campaignId: number,
   botUsername: string,
-  payload?: string
+  payload?: string,
+  label?: string
 ) {
   const cleanUsername = botUsername.startsWith("@")
     ? botUsername.slice(1)
@@ -218,7 +221,8 @@ export async function createDeepLinkForCampaign(
   const savedLink = await createLinkForCampaign(
     campaignId,
     finalPayload,
-    "deeplink"
+    "deeplink",
+    label
   );
 
   const deepLink = `https://t.me/${cleanUsername}?start=${finalPayload}`;
@@ -230,10 +234,11 @@ export async function createCampaignWithLinks(
   projectId: number,
   advertiser: string,
   price: number,
+  linkName: string,
   tags?: Array<{ tagKey: string; tagValue: string }> | Record<string, string>,
   includePrivatka: boolean = false,
   isClosedLink: boolean = false,
-  createInviteFn?: (channelId: string | number, campaignId: number, name?: string, isClosed?: boolean) => Promise<{ inviteLink: string; savedLink: any }>
+  createInviteFn?: (channelId: string | number, campaignId: number, name?: string, isClosed?: boolean, label?: string) => Promise<{ inviteLink: string; savedLink: any }>
 ) {
   const campaign = await createCampaign({
     projectId,
@@ -251,7 +256,8 @@ export async function createCampaignWithLinks(
 
   // 1. Channel invite link
   if (project?.type === "channel" && project.telegramChatId && createInviteFn) {
-    channelLink = await createInviteFn(project.telegramChatId, campaign.id, advertiser, isClosedLink);
+    const inviteName = `${advertiser} — ${linkName}`;
+    channelLink = await createInviteFn(project.telegramChatId, campaign.id, inviteName, isClosedLink, linkName);
   }
 
   // 2. Privatka deep-link (if includePrivatka is true)
@@ -270,7 +276,7 @@ export async function createCampaignWithLinks(
     }
 
     if (targetBotUsername) {
-      privatkaLink = await createDeepLinkForCampaign(campaign.id, targetBotUsername);
+      privatkaLink = await createDeepLinkForCampaign(campaign.id, targetBotUsername, undefined, linkName);
     }
   }
 
@@ -346,6 +352,7 @@ export async function getAttributionForUser(tgUserId: string) {
     campaignId: campaign.id,
     advertiser: campaign.advertiser,
     telegramRef: link.telegramRef,
+    label: link.label,
     tags,
   };
 }
