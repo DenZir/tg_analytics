@@ -1,6 +1,7 @@
 import { db } from "../db/index.js";
 import { campaigns, campaignTags, links, projects, events, dailyStats } from "../db/schema.js";
 import { eq, and, inArray, desc } from "drizzle-orm";
+import { aggregate } from "../jobs/dailyAggregate.js";
 
 export interface CreateCampaignInput {
   projectId: number;
@@ -327,6 +328,11 @@ export async function reassignLinkCampaign(linkId: number, campaignId: number) {
   if (!updated) {
     throw new Error(`Link ${linkId} not found`);
   }
+
+  // dailyStats is a pre-aggregated cache keyed by campaignId — moving a link's
+  // historical events to a new campaign needs an explicit recompute, since
+  // aggregate() otherwise only runs when a brand new event is logged.
+  await aggregate();
 
   return updated;
 }
