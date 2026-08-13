@@ -1,576 +1,537 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TG Analytics Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-  <style>
-    :root {
-      --bg-dark: #0f172a;
-      --card-bg: rgba(30, 41, 59, 0.7);
-      --card-border: rgba(255, 255, 255, 0.1);
-      --accent-blue: #38bdf8;
-      --accent-purple: #a855f7;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --success: #34d399;
-      --danger: #f87171;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TG Analytics — операционная консоль</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230E141D'/%3E%3Cpath d='M6 16.5L26 8l-6.5 17-3.8-7.2L6 16.5z' fill='%2357B6FF'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+/* ============ ТОКЕНЫ ============ */
+:root{
+  --bg:#090C11; --bg2:#0C1017;
+  --panel:rgba(255,255,255,.028); --panel2:rgba(255,255,255,.055);
+  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.13);
+  --text:#E8EDF4; --muted:#8A94A6; --dim:#5A6478;
+  --accent:#57B6FF; --accent-d:#2F8FE0;
+  --green:#3DDC97; --amber:#FFB454; --red:#FF6B7A; --violet:#9B8CFF;
+  --r:14px;
+  --body:'Golos Text',system-ui,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --disp:'Unbounded',var(--body);
+  --ease:cubic-bezier(.22,.75,.25,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{color-scheme:dark;scroll-behavior:smooth}
+body{font-family:var(--body);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;font-size:14px}
+::selection{background:rgba(87,182,255,.28)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.09);border-radius:8px;border:3px solid var(--bg)}
+button{font-family:inherit;cursor:pointer}
+[hidden]{display:none!important}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', sans-serif;
-    }
+/* ============ ФОН: СЛОИ ============ */
+.bg-glow{position:fixed;inset:0;pointer-events:none;z-index:0}
+.bg-glow::before,.bg-glow::after{content:'';position:absolute;border-radius:50%;filter:blur(90px);opacity:.16}
+.bg-glow::before{width:640px;height:480px;left:-160px;top:-140px;background:radial-gradient(closest-side,#2E77C9,transparent 70%);animation:drift 26s ease-in-out infinite alternate}
+.bg-glow::after{width:720px;height:560px;right:-220px;bottom:-200px;background:radial-gradient(closest-side,#5B4BC4,transparent 70%);opacity:.12;animation:drift 32s ease-in-out infinite alternate-reverse}
+@keyframes drift{to{transform:translate(60px,40px)}}
+.bg-grid{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px);
+  background-size:44px 44px;
+  -webkit-mask-image:radial-gradient(ellipse 95% 62% at 50% 0%,#000 25%,transparent 78%);
+  mask-image:radial-gradient(ellipse 95% 62% at 50% 0%,#000 25%,transparent 78%)}
+.bg-noise{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .03 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E")}
 
-    body {
-      background: radial-gradient(circle at top right, #1e1b4b, var(--bg-dark));
-      color: var(--text-main);
-      min-height: 100vh;
-      padding: 2rem;
-    }
+/* ============ КАРКАС ============ */
+.app{display:grid;grid-template-columns:238px minmax(0,1fr);min-height:100vh;position:relative;z-index:1}
 
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
+/* ---- Сайдбар ---- */
+.sidebar{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:20px 14px 16px;border-right:1px solid var(--line);background:rgba(9,12,17,.72);backdrop-filter:blur(14px)}
+.brand{display:flex;gap:11px;align-items:center;padding:4px 8px 18px}
+.logo{width:40px;height:40px;flex:none;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#12202F,#0C1520);border:1px solid rgba(87,182,255,.35);
+  box-shadow:0 0 0 1px rgba(87,182,255,.08),0 6px 18px rgba(46,143,224,.22),inset 0 1px 0 rgba(255,255,255,.09)}
+.logo svg{width:20px;height:20px}
+.brand-t{font-family:var(--disp);font-weight:700;font-size:13.5px;letter-spacing:.02em;line-height:1.15}
+.brand-sub{display:block;font-family:var(--mono);font-weight:400;font-size:9.5px;color:var(--dim);letter-spacing:.1em;margin-top:3px;text-transform:uppercase}
+.nav-cap{font:600 9.5px var(--mono);letter-spacing:.22em;color:var(--dim);text-transform:uppercase;padding:14px 12px 8px}
+.nav-it{display:flex;align-items:center;gap:11px;width:100%;padding:9.5px 12px;border:0;border-radius:10px;background:none;color:var(--muted);font:500 13.5px var(--body);text-align:left;position:relative;transition:background .18s,color .18s;margin-bottom:2px}
+.nav-it svg{width:17px;height:17px;flex:none;opacity:.85}
+.nav-it:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.nav-it.on{color:var(--text);background:linear-gradient(90deg,rgba(87,182,255,.14),rgba(87,182,255,.04))}
+.nav-it.on::before{content:'';position:absolute;left:0;top:9px;bottom:9px;width:2.5px;border-radius:2px;background:var(--accent);box-shadow:0 0 8px rgba(87,182,255,.7)}
+.nav-it.on svg{color:var(--accent)}
+.nbadge{margin-left:auto;font:600 10.5px var(--mono);color:var(--muted);background:rgba(255,255,255,.06);border:1px solid var(--line);padding:2px 7px;border-radius:20px}
+.nav-it.on .nbadge{color:var(--accent);border-color:rgba(87,182,255,.35);background:rgba(87,182,255,.1)}
+.side-spacer{flex:1}
+.syscard{border:1px solid var(--line);border-radius:11px;background:var(--panel);padding:11px 12px;margin:0 2px}
+.sysrow{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);padding:2.5px 0}
+.sysrow.dim{color:var(--dim);font-family:var(--mono);font-size:10px}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(61,220,151,.5);animation:pulse 2.2s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 7px rgba(61,220,151,0)}100%{box-shadow:0 0 0 0 rgba(61,220,151,0)}}
+.admin-chip{display:flex;align-items:center;gap:9px;margin:12px 2px 0;padding:9px 11px;border:1px solid var(--line);border-radius:11px;background:var(--panel);font-size:12px;font-weight:600}
+.admin-chip .ava{width:26px;height:26px;flex:none;border-radius:8px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(155,140,255,.3),rgba(87,182,255,.2));font:700 11px var(--mono);color:#CBBFFF}
+.admin-chip span{display:block;font:400 9px var(--mono);color:var(--dim);letter-spacing:.08em;margin-top:2px}
 
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 2rem;
-      padding-bottom: 1rem;
-      border-bottom: 1px solid var(--card-border);
-    }
+/* ---- Топбар ---- */
+main{min-width:0;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:16px;padding:14px 28px;border-bottom:1px solid var(--line);background:rgba(9,12,17,.7);backdrop-filter:blur(16px)}
+.tb-title{min-width:0;margin-right:auto}
+.eyebrow{font:600 9.5px var(--mono);letter-spacing:.24em;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
+.tb-title h1{font:700 19px/1.1 var(--body);letter-spacing:-.01em}
+.tb-sub{font-size:12px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-actions{display:flex;align-items:center;gap:10px;flex:none}
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
+/* Сегменты */
+.seg{position:relative;display:inline-flex;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg .thumb{position:absolute;top:3px;bottom:3px;border-radius:8px;background:rgba(255,255,255,.09);border:1px solid var(--line2);box-shadow:0 2px 8px rgba(0,0,0,.3);transition:left .28s var(--ease),width .28s var(--ease)}
+.seg button{position:relative;z-index:1;border:0;background:none;color:var(--muted);font:600 12px var(--body);padding:6px 13px;border-radius:8px;transition:color .2s;white-space:nowrap}
+.seg button:hover{color:var(--text)}
+.seg button.on{color:var(--text)}
 
-    .brand-icon {
-      width: 40px;
-      height: 40px;
-      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      font-size: 1.2rem;
-      box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
-    }
+/* Поиск */
+.search{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:10px;padding:0 11px;height:36px;width:270px;transition:border-color .2s,box-shadow .2s}
+.search:focus-within{border-color:rgba(87,182,255,.6);box-shadow:0 0 0 3px rgba(87,182,255,.13)}
+.search svg{width:15px;height:15px;color:var(--dim);flex:none}
+.search input{flex:1;min-width:0;background:none;border:0;outline:none;color:var(--text);font:500 12.5px var(--body)}
+.search input::placeholder{color:var(--dim)}
+.search kbd{font:600 10px var(--mono);color:var(--dim);border:1px solid var(--line2);border-radius:5px;padding:1px 6px;background:rgba(255,255,255,.04)}
 
-    h1 {
-      font-size: 1.75rem;
-      font-weight: 700;
-      background: linear-gradient(to right, #f8fafc, #94a3b8);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
+/* Кнопки */
+.btn{display:inline-flex;align-items:center;gap:7px;border-radius:10px;border:1px solid var(--line2);background:rgba(255,255,255,.045);color:var(--text);font:600 12.5px var(--body);padding:8.5px 14px;transition:all .18s;white-space:nowrap}
+.btn svg{width:14px;height:14px}
+.btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn-primary{background:linear-gradient(180deg,#5FB9FF,#3795E6);border-color:rgba(120,195,255,.5);color:#04141F;box-shadow:0 4px 16px rgba(63,155,233,.3),inset 0 1px 0 rgba(255,255,255,.35)}
+.btn-primary:hover{background:linear-gradient(180deg,#74C4FF,#48A2EF);box-shadow:0 6px 20px rgba(63,155,233,.42)}
+.btn.tiny{padding:5.5px 10px;font-size:11.5px;border-radius:8px}
+.btn.ic{padding:8.5px;width:36px;justify-content:center}
+.btn.spin svg{animation:rot .7s var(--ease)}
+@keyframes rot{to{transform:rotate(360deg)}}
 
-    .status-badge {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: rgba(52, 211, 153, 0.1);
-      color: var(--success);
-      padding: 0.4rem 0.8rem;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      border: 1px solid rgba(52, 211, 153, 0.2);
-    }
+/* ============ КОНТЕНТ / ЭКРАНЫ ============ */
+.content{padding:22px 28px 48px;max-width:1480px;width:100%;margin:0 auto}
+.screen{display:none}
+.screen.active{display:block}
+.rv{opacity:0;transform:translateY(14px)}
+.screen.active .rv{animation:rise .6s var(--ease) forwards;animation-delay:calc(var(--i,0)*70ms)}
+@keyframes rise{to{opacity:1;transform:none}}
 
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      background: var(--success);
-      border-radius: 50%;
-      box-shadow: 0 0 8px var(--success);
-    }
+/* Карточки */
+.card{position:relative;background:linear-gradient(180deg,rgba(255,255,255,.042),rgba(255,255,255,.018));border:1px solid var(--line);border-radius:var(--r);backdrop-filter:blur(10px);box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 10px 30px rgba(0,0,0,.28)}
+.card.hero::after{content:'';position:absolute;top:-1px;left:14%;right:14%;height:1px;background:linear-gradient(90deg,transparent,rgba(87,182,255,.55),rgba(155,140,255,.4),transparent)}
+.card-h{display:flex;align-items:flex-start;gap:14px;padding:16px 18px 0}
+.card-idx{font:600 9.5px var(--mono);letter-spacing:.18em;color:var(--dim);text-transform:uppercase;padding-top:3px;flex:none}
+.card-t{font:700 14.5px var(--body);letter-spacing:-.01em}
+.card-s{font-size:11.5px;color:var(--muted);margin-top:2px}
+.card-h .right{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
 
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1.5rem;
-      margin-bottom: 2rem;
-    }
+/* ============ KPI ============ */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
+.kpi{padding:15px 16px 13px;overflow:hidden;transition:transform .25s var(--ease),border-color .25s}
+.kpi:hover{transform:translateY(-2px);border-color:var(--line2)}
+.kpi-top{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.kpi-ic{width:28px;height:28px;flex:none;border-radius:8px;display:grid;place-items:center}
+.kpi-ic svg{width:15px;height:15px}
+.kpi-lbl{font:600 11px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.delta{margin-left:auto;font:600 10.5px var(--mono);padding:3px 7px;border-radius:6px;white-space:nowrap}
+.delta.up{color:var(--green);background:rgba(61,220,151,.1)}
+.delta.dn{color:var(--red);background:rgba(255,107,122,.1)}
+.delta.flat{color:var(--muted);background:rgba(255,255,255,.05)}
+.kpi-val{font:600 25px/1.1 var(--mono);letter-spacing:-.02em}
+.kpi-sub{font-size:11px;color:var(--dim);margin-top:5px}
+.kpi-spark{margin-top:10px;height:30px}
+.kpi-spark svg{width:100%;height:30px;display:block}
+.spark-l{stroke-dasharray:1;stroke-dashoffset:1;animation:draw 1.3s .25s var(--ease) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
 
-    .metric-card {
-      background: var(--card-bg);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--card-border);
-      border-radius: 16px;
-      padding: 1.5rem;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    }
+/* ============ ОБЗОР ============ */
+.ov-grid{display:grid;grid-template-columns:minmax(0,1.85fr) minmax(0,1fr);gap:14px;align-items:stretch}
+.chart-card{display:flex;flex-direction:column}
+.chart-wrap{flex:1;min-height:308px;padding:10px 14px 12px;position:relative}
+.chart-fallback{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim);font-size:12px}
+.ds-chips{display:flex;gap:6px}
+.ds-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted);font:600 11px var(--body);padding:5px 10px;border-radius:8px;transition:all .18s}
+.ds-chip i{width:7px;height:7px;border-radius:2px;background:var(--c);opacity:.35;transition:opacity .18s}
+.ds-chip.on{color:var(--text);border-color:var(--line2);background:rgba(255,255,255,.06)}
+.ds-chip.on i{opacity:1;box-shadow:0 0 6px var(--c)}
+.ov-side{display:flex;flex-direction:column;gap:14px}
+.t5-row{display:grid;grid-template-columns:20px 1fr auto;gap:10px;align-items:center;padding:8px 18px;transition:background .15s}
+.t5-row:hover{background:rgba(255,255,255,.03)}
+.t5-rank{font:600 11px var(--mono);color:var(--dim)}
+.t5-name{font:600 12.5px var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t5-adv{font-size:10.5px;color:var(--dim)}
+.t5-bar{grid-column:2;height:3px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden;margin-top:-3px}
+.t5-bar i{display:block;height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--violet));width:0;transition:width 1s var(--ease)}
+.in .t5-bar i{width:var(--w)}
+.t5-val{font:600 12px var(--mono);color:var(--green)}
+.t5-list{padding:6px 0 12px}
+/* удержание + конверсия */
+.rr-body{padding:14px 18px 16px;display:flex;gap:18px;align-items:center}
+.ring{position:relative;width:92px;height:92px;flex:none}
+.ring svg{transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:7;stroke-linecap:round}
+.ring .bg{stroke:rgba(255,255,255,.07)}
+.ring .fg{stroke:var(--green);stroke-dasharray:238;stroke-dashoffset:238;transition:stroke-dashoffset 1.2s var(--ease);filter:drop-shadow(0 0 5px rgba(61,220,151,.4))}
+.ring-val{position:absolute;inset:0;display:grid;place-items:center;font:600 16px var(--mono)}
+.ring-cap{font-size:10px;color:var(--dim);text-align:center;margin-top:6px}
+.ret-col{flex:1;min-width:0}
+.ret-row{margin-bottom:12px}
+.ret-lbl{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
+.ret-lbl b{font:600 11.5px var(--mono);color:var(--text)}
+.ret-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}
+.ret-bar i{display:block;height:100%;border-radius:4px;width:0;transition:width 1s var(--ease)}
+.in .ret-bar i{width:var(--w)}
+/* лента событий */
+.feed{padding:6px 0 10px}
+.feed-it{display:flex;gap:11px;padding:7.5px 18px;align-items:flex-start;transition:background .15s}
+.feed-it:hover{background:rgba(255,255,255,.03)}
+.f-ic{width:26px;height:26px;flex:none;border-radius:8px;display:grid;place-items:center;margin-top:1px}
+.f-ic svg{width:13px;height:13px}
+.f-tx{font-size:12px;line-height:1.35;min-width:0}
+.f-tx b{font-weight:600}
+.f-tx span{display:block;color:var(--dim);font-size:10.5px;font-family:var(--mono);margin-top:1px}
+.f-time{margin-left:auto;font:500 10px var(--mono);color:var(--dim);flex:none;padding-top:3px}
 
-    .metric-label {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-bottom: 0.5rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
+/* ============ ИНСТРУМЕНТЫ / ТАБЛИЦЫ ============ */
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.toolbar .sp{flex:1}
+.table-card{overflow:hidden}
+.tbl-wrap{overflow-x:auto;padding:4px 6px 6px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{font:600 10px var(--body);letter-spacing:.09em;text-transform:uppercase;color:var(--dim);text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:10.5px 12px;border-bottom:1px solid rgba(255,255,255,.045);vertical-align:middle}
+.tbl tbody tr{cursor:pointer;transition:background .16s}
+.tbl tbody tr:hover{background:rgba(87,182,255,.055);box-shadow:inset 2.5px 0 0 var(--accent)}
+.tbl tbody tr:last-child td{border-bottom:0}
+.screen.active .tbl tbody tr{animation:rise .45s var(--ease) both;animation-delay:calc(min(var(--i,0),12)*38ms)}
+.tbl .num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;font-size:12.5px;white-space:nowrap}
+th.num{text-align:right}
+.cell-main{font-weight:600;font-size:13px}
+.cell-sub{font:400 10.5px var(--mono);color:var(--dim);margin-top:2px}
+.trend svg{width:92px;height:26px;display:block}
+.hint-row{padding:10px 18px;font-size:11px;color:var(--dim);border-top:1px solid rgba(255,255,255,.04)}
 
-    .metric-value {
-      font-size: 1.8rem;
-      font-weight: 700;
-      color: var(--text-main);
-    }
+/* Чипы */
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:6px;letter-spacing:.02em;white-space:nowrap}
+.t-invite{color:#7CC6FF;background:rgba(87,182,255,.12)}
+.t-closed{color:#B7A9FF;background:rgba(155,140,255,.13)}
+.t-deep{color:#FFC97E;background:rgba(255,180,84,.12)}
+.t-proj{color:#8CE8C3;background:rgba(61,220,151,.1)}
+.t-bot{color:#FFA3C0;background:rgba(255,107,150,.1)}
+.chip.neutral{color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--line)}
+.r-good{color:var(--green)}.r-mid{color:var(--amber)}.r-bad{color:var(--red)}
 
-    .section-card {
-      background: var(--card-bg);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--card-border);
-      border-radius: 16px;
-      padding: 1.75rem;
-      margin-bottom: 2rem;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    }
+/* Конв-бар инлайн */
+.convcell{display:flex;align-items:center;gap:8px;min-width:110px}
+.convcell .bar{flex:1;height:4px;border-radius:3px;background:rgba(255,255,255,.07);overflow:hidden}
+.convcell .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--amber),var(--green));border-radius:3px}
 
-    .section-header-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1.25rem;
-      flex-wrap: wrap;
-      gap: 1rem;
-    }
+/* Пустое состояние */
+.empty{display:none;flex-direction:column;align-items:center;gap:12px;padding:56px 20px;text-align:center}
+.empty.show{display:flex}
+.empty .e-ic{width:56px;height:56px;border-radius:16px;border:1px dashed var(--line2);display:grid;place-items:center;color:var(--dim);animation:bob 3s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-5px)}}
+.empty .e-ic svg{width:24px;height:24px}
+.empty h4{font:700 15px var(--body)}
+.empty p{font-size:12.5px;color:var(--muted);max-width:340px}
+.empty p b{color:var(--text)}
 
-    .section-title {
-      font-size: 1.2rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
+/* ============ ПРИВАТКИ ============ */
+.pv-grid{display:grid;gap:14px}
+#pvKpis{grid-template-columns:repeat(3,1fr)}
+.funnel{padding:20px 20px 24px;display:flex;flex-direction:column;gap:4px}
+.f-stage{display:grid;grid-template-columns:110px 1fr 130px;gap:14px;align-items:center}
+.f-lbl{font:600 12px var(--body);color:var(--muted);text-align:right}
+.f-bar{height:44px;border-radius:9px;background:rgba(255,255,255,.035);border:1px solid var(--line);overflow:hidden;position:relative}
+.f-bar i{display:block;height:100%;width:0;border-radius:8px 0 0 8px;transition:width 1.1s var(--ease);position:relative}
+.f-bar i::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(-55deg,transparent 0 10px,rgba(255,255,255,.05) 10px 11px)}
+.in .f-bar i{width:var(--w)}
+.f-val{text-align:right}
+.f-val b{font:600 15px var(--mono)}
+.f-val span{display:block;font-size:10px;color:var(--dim);margin-top:2px}
+.f-conv{display:flex;align-items:center;gap:10px;margin:2px 0 2px 124px;color:var(--dim);font:500 10.5px var(--mono)}
+.f-conv::before{content:'';width:14px;border-top:1px dashed var(--line2)}
+.f-conv b{color:var(--amber)}
 
-    .toggle-group {
-      display: flex;
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      padding: 4px;
-      gap: 4px;
-    }
+/* ============ ПРОЕКТЫ ============ */
+.pr-grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;align-items:start}
+.form-card{position:sticky;top:84px}
+.form-body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:12px}
+.fld label{display:block;font:600 10.5px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.inp{width:100%;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:9px;color:var(--text);padding:9px 12px;font:500 13px var(--body);transition:border-color .2s,box-shadow .2s;outline:none}
+.inp:focus{border-color:rgba(87,182,255,.6);box-shadow:0 0 0 3px rgba(87,182,255,.13)}
+select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A94A6' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;padding-right:32px}
+.form-note{font-size:11px;color:var(--dim);line-height:1.5;border-top:1px dashed var(--line);padding-top:11px}
+tr.flash td{animation:flash 1.6s ease}
+@keyframes flash{0%,60%{background:rgba(87,182,255,.12)}}
 
-    .toggle-btn {
-      background: transparent;
-      color: var(--text-muted);
-      border: none;
-      border-radius: 6px;
-      padding: 0.4rem 0.9rem;
-      font-size: 0.82rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
+/* ============ МОДАЛКА ============ */
+.m-ov{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px;background:rgba(5,8,13,.62);backdrop-filter:blur(7px);opacity:0;transition:opacity .25s}
+.m-ov.show{opacity:1}
+.modal{width:min(780px,100%);max-height:88vh;display:flex;flex-direction:column;background:linear-gradient(180deg,#121824,#0D1219);border:1px solid var(--line2);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);transform:translateY(16px) scale(.985);transition:transform .3s var(--ease)}
+.m-ov.show .modal{transform:none}
+.m-head{display:flex;gap:14px;padding:20px 22px 16px;border-bottom:1px solid var(--line)}
+.m-eyebrow{font:600 9.5px var(--mono);letter-spacing:.2em;color:var(--accent);text-transform:uppercase;margin-bottom:6px}
+.m-head h2{font:700 20px var(--body);letter-spacing:-.01em}
+.m-chips{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}
+.x-btn{margin-left:auto;flex:none;width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--muted);display:grid;place-items:center;transition:all .18s}
+.x-btn:hover{color:var(--text);border-color:var(--line2);transform:rotate(90deg)}
+.x-btn svg{width:14px;height:14px}
+.m-stats{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+.m-stat{padding:13px 22px;border-right:1px solid var(--line)}
+.m-stat:last-child{border-right:0}
+.m-stat b{display:block;font:600 17px var(--mono)}
+.m-stat span{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em}
+.m-body{overflow-y:auto;padding:6px 22px 22px}
+.m-sec{margin-top:18px}
+.m-sec-h{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.m-sec-h .card-idx{padding:0}
+.m-sec-h h3{font:700 13.5px var(--body)}
+.tag-wrap{display:flex;flex-wrap:wrap;gap:7px}
+.tag{display:inline-flex;align-items:center;gap:7px;background:rgba(87,182,255,.09);border:1px solid rgba(87,182,255,.22);color:#A8D4FF;font:500 12px var(--body);padding:5px 7px 5px 11px;border-radius:8px}
+.tag b{font-weight:600;color:#D5EAFF}
+.tag button{border:0;background:rgba(255,255,255,.08);color:var(--muted);width:17px;height:17px;border-radius:5px;display:grid;place-items:center;transition:all .15s}
+.tag button:hover{background:rgba(255,107,122,.25);color:var(--red)}
+.tag button svg{width:9px;height:9px}
+.tag-add{display:flex;gap:8px;margin-top:11px}
+.tag-add .inp{width:150px;padding:7px 11px;font-size:12.5px}
+.lk-row{border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:10px;background:rgba(255,255,255,.02);transition:border-color .2s}
+.lk-row:hover{border-color:var(--line2)}
+.lk-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lk-txt b{font-size:13px}
+.lk-url{font:400 11px var(--mono);color:var(--dim);margin-left:2px}
+.lk-top .btn{margin-left:auto}
+.lk-move{display:flex;align-items:center;gap:9px;margin-top:11px;padding-top:11px;border-top:1px dashed var(--line);flex-wrap:wrap}
+.lk-move label{font-size:11px;color:var(--muted);flex:none}
+.lk-move select{width:250px;padding:7px 30px 7px 10px;font-size:12px}
+.newcamp{display:flex;gap:8px;margin-top:10px;width:100%;flex-wrap:wrap}
+.newcamp .inp{width:180px;padding:7px 11px;font-size:12.5px}
+.newcamp .inp.price{width:110px}
+/* таймлайн */
+.tl{position:relative;padding-left:4px}
+.tl::before{content:'';position:absolute;left:16px;top:8px;bottom:8px;width:1px;background:linear-gradient(rgba(255,255,255,.14),rgba(255,255,255,.03))}
+.tl-it{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:7px 0;position:relative}
+.tl-ic{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;margin-left:4px;background:#0D1219;border:1px solid var(--line2);z-index:1}
+.tl-ic svg{width:11.5px;height:11.5px;color:var(--c)}
+.tl-tx{font-size:12.5px;min-width:0}
+.tl-tx b{font-weight:600}
+.tl-tx span{color:var(--dim);font-size:11px;font-family:var(--mono);margin-left:8px}
+.tl-meta{text-align:right;font:500 10.5px var(--mono);color:var(--dim);white-space:nowrap}
+.tl-meta .amt{color:var(--green);display:block;font-size:11.5px}
 
-    .toggle-btn.active {
-      background: var(--accent-blue);
-      color: #0f172a;
-      box-shadow: 0 2px 8px rgba(56, 189, 248, 0.3);
-    }
+/* ============ ТОСТЫ ============ */
+.toast-root{position:fixed;right:22px;bottom:22px;z-index:200;display:flex;flex-direction:column;gap:9px}
+.toast{display:flex;align-items:center;gap:10px;background:#111823;border:1px solid var(--line2);border-radius:12px;padding:11px 15px;font-size:12.5px;font-weight:500;box-shadow:0 14px 40px rgba(0,0,0,.5);transform:translateX(24px);opacity:0;transition:all .35s var(--ease);max-width:360px}
+.toast.in{transform:none;opacity:1}
+.toast.out{transform:translateX(24px);opacity:0}
+.toast .t-ic{width:24px;height:24px;flex:none;border-radius:7px;display:grid;place-items:center}
+.toast .t-ic svg{width:12px;height:12px}
+.t-ok .t-ic{background:rgba(61,220,151,.14);color:var(--green)}
+.t-warn .t-ic{background:rgba(255,180,84,.14);color:var(--amber)}
+.t-info .t-ic{background:rgba(87,182,255,.14);color:var(--accent)}
 
-    .chart-container {
-      position: relative;
-      height: 320px;
-      width: 100%;
-    }
+/* ============ АДАПТИВ ============ */
+@media (max-width:1360px){.content{padding:18px 20px 40px}.topbar{padding:12px 20px}.search{width:210px}}
+@media (max-width:1200px){
+  .app{grid-template-columns:66px 1fr}
+  .brand-t,.nav-cap,.nav-it .lbl,.nbadge,.syscard,.admin-chip div{display:none}
+  .sidebar{padding:16px 11px;align-items:stretch}
+  .brand{justify-content:center;padding-bottom:12px}
+  .nav-it{justify-content:center;padding:11px}
+  .admin-chip{justify-content:center;padding:8px}
+  .ov-grid,.pr-grid{grid-template-columns:1fr}
+  .form-card{position:static}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  #pvKpis{grid-template-columns:repeat(2,1fr)}
+}
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
-    }
-
-    th {
-      padding: 1rem;
-      font-size: 0.85rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-      border-bottom: 1px solid var(--card-border);
-    }
-
-    td {
-      padding: 1rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      font-size: 0.95rem;
-    }
-
-    tr.clickable-row {
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    tr.clickable-row:hover td {
-      background: rgba(56, 189, 248, 0.08);
-    }
-
-    .tag-badge {
-      display: inline-block;
-      background: rgba(168, 85, 247, 0.15);
-      color: #c084fc;
-      border: 1px solid rgba(168, 85, 247, 0.3);
-      padding: 0.2rem 0.6rem;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      font-weight: 500;
-    }
-
-    /* Form & Input Controls */
-    .form-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1rem;
-      margin-top: 1.5rem;
-      align-items: flex-end;
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
-    }
-
-    .form-group label {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    input, select {
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 0.6rem 0.8rem;
-      color: var(--text-main);
-      font-size: 0.9rem;
-      outline: none;
-      transition: border 0.2s;
-    }
-
-    input:focus, select:focus {
-      border-color: var(--accent-blue);
-    }
-
-    button, .btn {
-      background: linear-gradient(135deg, var(--accent-blue), #0284c7);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 0.6rem 1.2rem;
-      font-weight: 600;
-      font-size: 0.85rem;
-      cursor: pointer;
-      transition: opacity 0.2s, transform 0.1s;
-    }
-
-    button:hover {
-      opacity: 0.9;
-    }
-
-    button:active {
-      transform: scale(0.98);
-    }
-
-    .btn-danger {
-      background: rgba(248, 113, 113, 0.2);
-      color: var(--danger);
-      border: 1px solid rgba(248, 113, 113, 0.4);
-    }
-
-    .btn-danger:hover {
-      background: rgba(248, 113, 113, 0.3);
-    }
-
-    .btn-sm {
-      padding: 0.35rem 0.75rem;
-      font-size: 0.78rem;
-    }
-
-    /* Modal Overlay & Box */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(15, 23, 42, 0.8);
-      backdrop-filter: blur(10px);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease;
-    }
-
-    .modal-overlay.active {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .modal-box {
-      background: #1e293b;
-      border: 1px solid var(--card-border);
-      border-radius: 20px;
-      width: 90%;
-      max-width: 850px;
-      max-height: 85vh;
-      overflow-y: auto;
-      padding: 2rem;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-      position: relative;
-    }
-
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1.5rem;
-      padding-bottom: 1rem;
-      border-bottom: 1px solid var(--card-border);
-    }
-
-    .modal-close {
-      background: transparent;
-      border: none;
-      font-size: 1.4rem;
-      color: var(--text-muted);
-      cursor: pointer;
-    }
-
-    .modal-close:hover {
-      color: var(--text-main);
-    }
-
-    .tags-list-container {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .tag-row {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      background: rgba(15, 23, 42, 0.4);
-      padding: 0.5rem 0.8rem;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    .tag-key-label {
-      font-weight: 600;
-      min-width: 120px;
-      color: var(--accent-blue);
-      font-size: 0.85rem;
-    }
-  </style>
+/* ============ REDUCED MOTION ============ */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-delay:0ms!important;transition-duration:.001ms!important}
+  .rv,.screen.active .tbl tbody tr{opacity:1;transform:none}
+  .spark-l{stroke-dashoffset:0}
+  .in .t5-bar i,.in .ret-bar i,.in .f-bar i{width:var(--w)}
+  html{scroll-behavior:auto}
+}
+</style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div class="brand">
-        <div class="brand-icon">TG</div>
-        <h1>TG Analytics Dashboard</h1>
-      </div>
-      <div class="status-badge">
-        <div class="status-dot"></div>
-        Live System
-      </div>
-    </header>
 
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="metric-label">Total Campaigns</div>
-        <div class="metric-value" id="kpi-campaigns">0</div>
+<div class="bg-glow"></div><div class="bg-grid"></div><div class="bg-noise"></div>
+
+<div class="app">
+<!-- ================= САЙДБАР ================= -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none"><path d="M3.5 12.2 21 4.8l-5.7 14.9-3.3-6.3-8.5-1.2z" fill="url(#lg)"/><path d="m12 13.4 1.9 3.6" stroke="#0C1520" stroke-width="1.2"/><defs><linearGradient id="lg" x1="3" y1="5" x2="20" y2="19"><stop stop-color="#7CC6FF"/><stop offset="1" stop-color="#3D9BE9"/></linearGradient></defs></svg></div>
+    <div class="brand-t">TG Analytics<span class="brand-sub">ops-консоль · v2.0</span></div>
+  </div>
+  <div class="nav-cap">Разделы</div>
+  <nav id="nav">
+    <button class="nav-it on" data-scr="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="lbl">Обзор</span></button>
+    <button class="nav-it" data-scr="campaigns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 17 5v13L3 12.5v-2z"/><path d="M7 13.5V18a2 2 0 0 0 4 0v-3"/><path d="M17 8.5c1.7.6 2.5 1.7 2.5 3s-.8 2.4-2.5 3"/></svg><span class="lbl">Кампании</span><span class="nbadge" id="nb-camp">—</span></button>
+    <button class="nav-it" data-scr="privatka"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16l-6 7v4.5l-4 2.5v-7L4 5z"/></svg><span class="lbl">Приватки</span></button>
+    <button class="nav-it" data-scr="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3.5 13 8.5 4.7L20.5 13"/><path d="m3.5 17 8.5 4.7L20.5 17" opacity=".45"/></svg><span class="lbl">Проекты</span><span class="nbadge" id="nb-proj">—</span></button>
+  </nav>
+  <div class="side-spacer"></div>
+  <div class="syscard">
+    <div class="sysrow"><span class="pulse"></span> Live · сбор событий</div>
+    <div class="sysrow dim">синхронизация: <span id="liveTime">—</span></div>
+    <div class="sysrow dim">валюта: USD · язык: RU</div>
+  </div>
+  <div class="admin-chip">
+    <span class="ava">A</span>
+    <div>Администратор<span>ADMIN_CHAT_ID · единственный</span></div>
+  </div>
+</aside>
+
+<!-- ================= MAIN ================= -->
+<main>
+<header class="topbar">
+  <div class="tb-title">
+    <div class="eyebrow" id="tb-eyebrow"></div>
+    <h1 id="tb-title">Обзор</h1>
+    <div class="tb-sub" id="tb-sub"></div>
+  </div>
+  <div class="tb-actions">
+    <div class="seg" id="periodSeg"><span class="thumb"></span>
+      <button data-p="7">7д</button><button data-p="14">14д</button><button data-p="30" class="on">30д</button><button data-p="all">Все</button>
+    </div>
+    <label class="search" id="searchWrap" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <input id="campSearch" type="text" placeholder="Поиск по рекламодателю…" autocomplete="off"><kbd>/</kbd>
+    </label>
+    <button class="btn" id="exportBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Экспорт CSV</button>
+    <button class="btn ic" id="refreshBtn" title="Синхронизировать данные"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3M4 13a8 8 0 0 0 14.9 3"/><path d="M20 4v4h-4M4 20v-4h4"/></svg></button>
+  </div>
+</header>
+
+<div class="content">
+
+<!-- ========== ЭКРАН: ОБЗОР ========== -->
+<section class="screen active" id="scr-overview">
+  <div class="kpis" id="kpis"></div>
+  <div class="ov-grid">
+    <article class="card hero chart-card rv" style="--i:4">
+      <div class="card-h">
+        <span class="card-idx">01 / динамика</span>
+        <div><div class="card-t">Динамика по дням</div><div class="card-s">Выручка, подписки и CPS по всем кампаниям</div></div>
+        <div class="right ds-chips">
+          <button class="ds-chip on" data-i="0" style="--c:#57B6FF"><i></i>Подписки</button>
+          <button class="ds-chip on" data-i="1" style="--c:#3DDC97"><i></i>Выручка</button>
+          <button class="ds-chip" data-i="2" style="--c:#9B8CFF"><i></i>CPS</button>
+        </div>
       </div>
-      <div class="metric-card">
-        <div class="metric-label">Total Subscribers</div>
-        <div class="metric-value" id="kpi-subs">0</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Total Revenue</div>
-        <div class="metric-value" id="kpi-revenue">0 ₽</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Avg CPS</div>
-        <div class="metric-value" id="kpi-cps">0.00 ₽</div>
+      <div class="chart-wrap"><canvas id="mainChart"></canvas><div class="chart-fallback" id="chartFallback" hidden>График недоступен: не загрузился Chart.js (CDN)</div></div>
+    </article>
+    <div class="ov-side">
+      <article class="card rv" style="--i:5">
+        <div class="card-h"><span class="card-idx">02 / лидеры</span><div><div class="card-t">Топ-5 кампаний</div><div class="card-s">по выручке за всё время</div></div></div>
+        <div class="t5-list" id="top5"></div>
+      </article>
+      <article class="card rv" style="--i:6">
+        <div class="card-h"><span class="card-idx">03 / качество</span><div><div class="card-t">Удержание и конверсия</div></div></div>
+        <div class="rr-body">
+          <div>
+            <div class="ring"><svg width="92" height="92" viewBox="0 0 92 92"><circle class="bg" cx="46" cy="46" r="38"/><circle class="fg" id="convFg" cx="46" cy="46" r="38"/></svg><div class="ring-val" id="convVal">—</div></div>
+            <div class="ring-cap">конверсия<br>в покупку</div>
+          </div>
+          <div class="ret-col" id="retCol"></div>
+        </div>
+      </article>
+      <article class="card rv" style="--i:7">
+        <div class="card-h"><span class="card-idx">04 / поток</span><div><div class="card-t">Последние события</div></div></div>
+        <div class="feed" id="feed"></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ЭКРАН: КАМПАНИИ ========== -->
+<section class="screen" id="scr-campaigns">
+  <div class="toolbar rv" style="--i:0">
+    <div class="seg" id="modeSeg"><span class="thumb"></span>
+      <button data-m="links" class="on">По ссылкам</button>
+      <button data-m="adv">По рекламодателям</button>
+    </div>
+    <span class="sp"></span>
+    <span class="chip neutral mono" id="campCount"></span>
+  </div>
+  <article class="card table-card rv" style="--i:1">
+    <div class="card-h">
+      <span class="card-idx">01 / performance</span>
+      <div><div class="card-t">Эффективность кампаний</div><div class="card-s" id="campCardSub"></div></div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl"><thead id="campHead"></thead><tbody id="campBody"></tbody></table>
+      <div class="empty" id="campEmpty">
+        <div class="e-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2M8.5 11h5"/></svg></div>
+        <h4>Ничего не найдено</h4>
+        <p>По запросу <b id="campEmptyQ"></b> совпадений нет. Попробуйте изменить строку поиска.</p>
+        <button class="btn tiny" id="resetSearch">Сбросить поиск</button>
       </div>
     </div>
+    <div class="hint-row">Клик по строке — карточка кампании: теги, ссылки с перевесом, история событий</div>
+  </article>
+</section>
 
-    <div class="section-card">
-      <div class="section-title">📈 Revenue & Growth Dynamics</div>
-      <div class="chart-container">
-        <canvas id="revenueChart"></canvas>
-      </div>
-    </div>
+<!-- ========== ЭКРАН: ПРИВАТКИ ========== -->
+<section class="screen" id="scr-privatka">
+  <div class="kpis" id="pvKpis"></div>
+  <div class="pv-grid">
+    <article class="card hero rv" style="--i:4">
+      <div class="card-h"><span class="card-idx">01 / воронка</span><div><div class="card-t">Воронка приваток: лид → покупка</div><div class="card-s">Агрегат по всем deep-ссылкам</div></div></div>
+      <div class="funnel" id="funnel"></div>
+    </article>
+    <article class="card table-card rv" style="--i:5">
+      <div class="card-h"><span class="card-idx">02 / deep-links</span><div><div class="card-t">Разбивка по deep-ссылкам</div></div></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr>
+        <th>Ссылка</th><th>Бот-приватка</th><th>Кампания</th><th class="num">Лиды</th><th class="num">Покупки</th><th>Конверсия</th><th class="num">Выручка</th><th class="num">Чек / лид</th>
+      </tr></thead><tbody id="pvBody"></tbody></table></div>
+    </article>
+  </div>
+</section>
 
-    <!-- Task 6: Campaign Performance Table with Toggle -->
-    <div class="section-card">
-      <div class="section-header-row">
-        <div class="section-title">📊 Campaign Performance <span style="font-size:0.8rem; color:var(--text-muted); font-weight:normal;" id="table-hint">(Click a row for details & tags)</span></div>
-        <div class="toggle-group">
-          <button type="button" id="tab-links" class="toggle-btn active">По ссылкам</button>
-          <button type="button" id="tab-advertisers" class="toggle-btn">По рекламодателям</button>
+<!-- ========== ЭКРАН: ПРОЕКТЫ ========== -->
+<section class="screen" id="scr-projects">
+  <div class="pr-grid">
+    <article class="card form-card rv" style="--i:0">
+      <div class="card-h"><span class="card-idx">01 / новый</span><div><div class="card-t">Добавить проект</div><div class="card-s">Канал или бот-приватка</div></div></div>
+      <form class="form-body" id="projForm" novalidate>
+        <div class="fld"><label>Название</label><input class="inp" id="f-name" placeholder="Например: Крипто Инсайд"></div>
+        <div class="fld"><label>Тип проекта</label>
+          <select class="inp" id="f-type"><option value="channel">Telegram-канал</option><option value="bot_subscription">Бот-приватка</option></select>
         </div>
-      </div>
-      <table>
-        <thead id="campaigns-table-head">
-          <tr>
-            <th>Админ</th>
-            <th>Пост/Креатив</th>
-            <th>Цена</th>
-            <th>Заход</th>
-            <th>Retention 24ч/48ч</th>
-            <th>Конверсия в покупку %</th>
-            <th>LTV / Выручка</th>
-            <th>CPS</th>
-          </tr>
-        </thead>
-        <tbody id="campaigns-table-body">
-          <tr>
-            <td colspan="8" style="text-align: center; color: var(--text-muted);">Loading metrics...</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Task 7: Privatka Block -->
-    <div class="section-card">
-      <div class="section-title">🔒 Приватки (Deep-Link Performance)</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Название</th>
-            <th>Ссылка</th>
-            <th>Перешло</th>
-            <th>Купили</th>
-            <th>% Конверсии</th>
-            <th>Ср. чек на лид</th>
-          </tr>
-        </thead>
-        <tbody id="privatka-table-body">
-          <tr>
-            <td colspan="6" style="text-align: center; color: var(--text-muted);">Loading privatka metrics...</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Project Management Section -->
-    <div class="section-card">
-      <div class="section-title">📁 Project Management</div>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Project Name</th>
-            <th>Type</th>
-            <th>Telegram Chat ID</th>
-            <th>Bot Username</th>
-          </tr>
-        </thead>
-        <tbody id="projects-table-body">
-          <tr>
-            <td colspan="5" style="text-align: center; color: var(--text-muted);">Loading projects...</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <form id="add-project-form" class="form-grid">
-        <div class="form-group">
-          <label>Project Name</label>
-          <input type="text" id="proj-name" placeholder="e.g. My Channel" required>
-        </div>
-        <div class="form-group">
-          <label>Type</label>
-          <select id="proj-type" required>
-            <option value="channel">Channel (Type: channel)</option>
-            <option value="bot_subscription">Bot Subscription (Type: bot_subscription)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Telegram Chat ID</label>
-          <input type="text" id="proj-chat-id" placeholder="e.g. -1001234567890">
-        </div>
-        <div class="form-group">
-          <label>Bot Username</label>
-          <input type="text" id="proj-bot-username" placeholder="e.g. my_bot">
-        </div>
-        <div class="form-group">
-          <button type="submit">➕ Add Project</button>
-        </div>
+        <div class="fld" id="fldChat"><label>Chat ID канала</label><input class="inp mono" id="f-chat" placeholder="-100…"></div>
+        <div class="fld" id="fldBot" hidden><label>Username бота</label><input class="inp mono" id="f-bot" placeholder="@my_private_bot"></div>
+        <div class="fld"><label>Связать с проектом</label><select class="inp" id="f-link"><option value="">— без связи —</option></select></div>
+        <button class="btn btn-primary" type="submit" style="justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Добавить проект</button>
+        <div class="form-note">Связка «канал ↔ приватка» позволяет боту выдавать комбинированные ссылки и корректно атрибутировать оплаты.</div>
       </form>
-    </div>
+    </article>
+    <article class="card table-card rv" style="--i:1">
+      <div class="card-h"><span class="card-idx">02 / реестр</span><div><div class="card-t">Реестр проектов</div><div class="card-s" id="projSub"></div></div></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr>
+        <th>Проект</th><th>Тип</th><th>Идентификатор</th><th>Связан с</th><th class="num">Кампаний</th><th class="num">Ссылок</th>
+      </tr></thead><tbody id="projBody"></tbody></table></div>
+    </article>
   </div>
+</section>
 
-  <!-- Modal Details & Tags Overlay -->
-  <div class="modal-overlay" id="campaign-modal">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h2 id="modal-title" style="font-size: 1.3rem;">Campaign Details</h2>
-        <button class="modal-close" id="modal-close-btn">&times;</button>
-      </div>
+</div>
+</main>
+</div>
 
-      <!-- Campaign Tags Section -->
-      <div style="margin-bottom: 2rem;">
-        <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--accent-blue);">🏷️ Campaign Tags</h3>
-        <div id="modal-tags-list" class="tags-list-container">
-          <!-- Populated dynamically -->
-        </div>
+<div id="modalRoot"></div>
+<div class="toast-root" id="toastRoot"></div>
 
-        <form id="add-tag-form" style="display: flex; gap: 0.75rem; align-items: center; margin-top: 1rem;">
-          <input type="text" id="new-tag-key" placeholder="Tag Key (e.g. geo)" required style="flex: 1;">
-          <input type="text" id="new-tag-val" placeholder="Tag Value (e.g. CIS)" required style="flex: 1;">
-          <button type="submit" class="btn-sm">➕ Add Tag</button>
-        </form>
-      </div>
-
-      <!-- Campaign Links Section -->
-      <div style="margin-bottom: 2rem;">
-        <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--accent-blue);">🔗 Links</h3>
-        <div id="modal-links-list" class="tags-list-container">
-          <!-- Populated dynamically -->
-        </div>
-      </div>
-
-      <!-- Campaign Event History Section -->
-      <div>
-        <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--accent-purple);">📜 Event History</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Date & Time</th>
-              <th>Event Type</th>
-              <th>TG User ID</th>
-              <th>Amount</th>
-            </tr>
-          </thead>
-          <tbody id="modal-history-table-body">
-            <tr>
-              <td colspan="4" style="text-align: center; color: var(--text-muted);">Loading history...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <script src="app.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
