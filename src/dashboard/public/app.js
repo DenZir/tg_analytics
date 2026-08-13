@@ -509,6 +509,10 @@ function renderCampaignLinks(campaignId, linksList) {
     return;
   }
 
+  const allCampaigns = (extendedData?.campaigns || [])
+    .slice()
+    .sort((a, b) => a.advertiser.localeCompare(b.advertiser));
+
   linksList.forEach((l) => {
     const row = document.createElement("div");
     row.className = "tag-row";
@@ -517,19 +521,27 @@ function renderCampaignLinks(campaignId, linksList) {
     const safeLabel = l.label ? escapeHtml(l.label) : "без названия";
     const safeType = escapeHtml(l.linkType);
 
+    const optionsHtml = allCampaigns
+      .filter((c) => c.id !== campaignId)
+      .map((c) => `<option value="${c.id}">${escapeHtml(c.advertiser)} (#${c.id})</option>`)
+      .join("");
+
     row.innerHTML = `
       <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;">
         <strong>${safeLabel}</strong>
         <span style="color: var(--text-muted); font-size: 0.8rem;"> (${safeType})</span><br>
         <code style="font-size: 0.8rem;">${safeRef}</code>
       </span>
-      <input type="number" placeholder="Campaign ID" class="move-link-input" style="width: 110px;">
+      <select class="move-link-select" style="max-width: 220px; flex-shrink: 0;">
+        <option value="">Move to campaign…</option>
+        ${optionsHtml}
+      </select>
       <button class="btn-sm btn-move">Move</button>
     `;
 
-    const input = row.querySelector(".move-link-input");
+    const select = row.querySelector(".move-link-select");
     row.querySelector(".btn-move").addEventListener("click", async () => {
-      const targetCampaignId = Number(input.value);
+      const targetCampaignId = Number(select.value);
       if (!targetCampaignId) return;
       await moveLink(l.id, targetCampaignId, campaignId);
     });
