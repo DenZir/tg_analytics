@@ -1,6 +1,7 @@
 import { db } from "../db/index.js";
 import { events } from "../db/schema.js";
 import { eq, desc } from "drizzle-orm";
+import { aggregate } from "../jobs/dailyAggregate.js";
 
 export interface LogEventInput {
   linkId?: number;
@@ -41,6 +42,10 @@ export async function logEvent(input: LogEventInput) {
         ts: input.ts ?? new Date(),
       })
       .returning();
+
+    aggregate().catch((err) => {
+      console.error("[events] Failed to refresh daily aggregates:", err);
+    });
 
     return insertedEvent;
   } catch (error: any) {
