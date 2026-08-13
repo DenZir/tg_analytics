@@ -469,6 +469,8 @@ async function loadCampaignHistory(campaignId) {
     if (!res.ok) return;
 
     const data = await res.json();
+    renderCampaignLinks(campaignId, data.links || []);
+
     const events = data.events || [];
     tbody.innerHTML = "";
 
@@ -495,6 +497,64 @@ async function loadCampaignHistory(campaignId) {
     });
   } catch (err) {
     console.error("Failed to load history:", err);
+  }
+}
+
+function renderCampaignLinks(campaignId, linksList) {
+  const container = document.getElementById("modal-links-list");
+  container.innerHTML = "";
+
+  if (linksList.length === 0) {
+    container.innerHTML = `<div style="color: var(--text-muted); font-size: 0.85rem;">No links for this campaign yet.</div>`;
+    return;
+  }
+
+  linksList.forEach((l) => {
+    const row = document.createElement("div");
+    row.className = "tag-row";
+
+    const safeRef = escapeHtml(l.telegramRef);
+    const safeLabel = l.label ? escapeHtml(l.label) : "без названия";
+    const safeType = escapeHtml(l.linkType);
+
+    row.innerHTML = `
+      <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;">
+        <strong>${safeLabel}</strong>
+        <span style="color: var(--text-muted); font-size: 0.8rem;"> (${safeType})</span><br>
+        <code style="font-size: 0.8rem;">${safeRef}</code>
+      </span>
+      <input type="number" placeholder="Campaign ID" class="move-link-input" style="width: 110px;">
+      <button class="btn-sm btn-move">Move</button>
+    `;
+
+    const input = row.querySelector(".move-link-input");
+    row.querySelector(".btn-move").addEventListener("click", async () => {
+      const targetCampaignId = Number(input.value);
+      if (!targetCampaignId) return;
+      await moveLink(l.id, targetCampaignId, campaignId);
+    });
+
+    container.appendChild(row);
+  });
+}
+
+async function moveLink(linkId, targetCampaignId, currentCampaignId) {
+  try {
+    const res = await fetch(`/api/links/${linkId}/campaign`, {
+      method: "PATCH",
+      headers: getHeaders(),
+      body: JSON.stringify({ campaignId: targetCampaignId }),
+    });
+
+    if (res.ok) {
+      await loadCampaignHistory(currentCampaignId);
+      await fetchMetrics();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      alert(`Failed to move link: ${body.error || res.statusText}`);
+    }
+  } catch (err) {
+    console.error("Failed to move link:", err);
   }
 }
 

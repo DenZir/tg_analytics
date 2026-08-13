@@ -11,6 +11,8 @@ import {
   linkProjects,
   deleteProjectCascade,
   getDistinctTagValues,
+  getProjectByChatId,
+  getOrCreateUnassignedCampaign,
 } from "../services/campaigns.js";
 import { logEvent } from "../services/events.js";
 import { getMetrics } from "../services/metrics.js";
@@ -952,13 +954,26 @@ if (channelBot) {
       const isIn = ["member", "administrator", "creator", "restricted"].includes(newStatus);
 
       if (!wasIn && isIn) {
-        // Fresh join — only attributable (and worth logging) if it came through a tracked invite link.
-        // Telegram only populates invite_link for joins, never for leaves.
+        // Fresh join — Telegram only populates invite_link for joins, never for leaves.
         const inviteUrl = update.invite_link?.invite_link;
         if (!inviteUrl) return;
 
-        const link = await getLinkByRef(inviteUrl);
-        if (!link) return;
+        let link = await getLinkByRef(inviteUrl);
+
+        if (!link) {
+          // Link wasn't created through our bot (e.g. made manually by another admin,
+          // or predates tracking) — auto-register it under a per-project "unassigned"
+          // bucket so it still gets attributed, rather than dropping the join silently.
+          const project = await getProjectByChatId(String(update.chat.id));
+          if (!project) return; // channel isn't registered at all, nothing to attach to
+
+          const unassignedCampaign = await getOrCreateUnassignedCampaign(project.id);
+          const label = update.invite_link?.name || null;
+          link = await createLinkForCampaign(unassignedCampaign.id, inviteUrl, "invite", label);
+          console.log(
+            `[channelBot] Auto-registered unknown invite link ${inviteUrl} under unassigned campaign ${unassignedCampaign.id}`
+          );
+        }
 
         await logEvent({
           linkId: link.id,

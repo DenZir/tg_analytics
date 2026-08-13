@@ -287,6 +287,50 @@ export async function createCampaignWithLinks(
   };
 }
 
+export const UNASSIGNED_ADVERTISER = "Не размечено (авто)";
+
+export async function getProjectByChatId(chatId: string) {
+  const project = await db.query.projects.findFirst({
+    where: eq(projects.telegramChatId, chatId),
+  });
+  return project || null;
+}
+
+export async function getOrCreateUnassignedCampaign(projectId: number) {
+  const existing = await db.query.campaigns.findFirst({
+    where: and(eq(campaigns.projectId, projectId), eq(campaigns.advertiser, UNASSIGNED_ADVERTISER)),
+  });
+  if (existing) return existing;
+
+  const [created] = await db
+    .insert(campaigns)
+    .values({ projectId, advertiser: UNASSIGNED_ADVERTISER, price: 0 })
+    .returning();
+
+  return created;
+}
+
+export async function reassignLinkCampaign(linkId: number, campaignId: number) {
+  const campaign = await db.query.campaigns.findFirst({
+    where: eq(campaigns.id, campaignId),
+  });
+  if (!campaign) {
+    throw new Error(`Campaign ${campaignId} not found`);
+  }
+
+  const [updated] = await db
+    .update(links)
+    .set({ campaignId })
+    .where(eq(links.id, linkId))
+    .returning();
+
+  if (!updated) {
+    throw new Error(`Link ${linkId} not found`);
+  }
+
+  return updated;
+}
+
 export async function getLinkByRef(telegramRef: string) {
   const link = await db.query.links.findFirst({
     where: eq(links.telegramRef, telegramRef),

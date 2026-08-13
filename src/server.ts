@@ -14,6 +14,7 @@ import {
   deleteCampaignTag,
   getCampaignFullHistory,
   getAttributionForUser,
+  reassignLinkCampaign,
 } from "./services/campaigns.js";
 import { logEvent } from "./services/events.js";
 import {
@@ -188,6 +189,22 @@ app.get("/api/campaigns/:id/history", async (req, res) => {
     res.json(history);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// PATCH /api/links/:id/campaign
+app.patch("/api/links/:id/campaign", async (req, res) => {
+  try {
+    const linkId = Number(req.params.id);
+    const { campaignId } = req.body;
+    if (!campaignId) {
+      return res.status(400).json({ error: "Missing campaignId in request body" });
+    }
+
+    const updated = await reassignLinkCampaign(linkId, Number(campaignId));
+    res.json(updated);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
 });
 
