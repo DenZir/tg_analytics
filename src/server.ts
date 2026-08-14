@@ -22,6 +22,7 @@ import {
   getRetentionStats,
   getPurchaseConversion,
   getAdvertiserStats,
+  getPrivatkaFinance,
 } from "./services/metrics.js";
 import { eq } from "drizzle-orm";
 
@@ -335,6 +336,16 @@ app.get("/api/metrics/extended", async (_req, res) => {
       campaigns: extendedCampaigns,
       advertisers,
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/privatkas/finance
+app.get("/api/privatkas/finance", async (_req, res) => {
+  try {
+    const finance = await getPrivatkaFinance();
+    res.json(finance);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

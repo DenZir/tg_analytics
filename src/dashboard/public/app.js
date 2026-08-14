@@ -828,16 +828,87 @@ $('#projForm').addEventListener('submit', async e => {
   }
 });
 
+/* ================= ПРИВАТКИ ================= */
+function pfBlock(label, stats) {
+  return `<div class="pf-block">
+    <div class="pf-lbl">${label}</div>
+    <div class="pf-val">${fmtM(stats.revenue)}</div>
+    <div class="pf-sub">Ср. чек: ${stats.avgCheck !== null ? fmt1(stats.avgCheck) + ' ₽' : '—'} · Плательщики: ${fmtN(stats.uniquePayers)}</div>
+    <div class="pf-break">Новые: ${fmtN(stats.paymentsCount)} (${fmtM(stats.paymentsRevenue)}) · Продления: ${fmtN(stats.renewalsCount)} (${fmtM(stats.renewalsRevenue)})</div>
+  </div>`;
+}
+
+function renderPrivatkaCard(p, i) {
+  return `<article class="card pf-card rv" style="--i:${i}">
+    <div class="card-h"><span class="card-idx">${String(i + 1).padStart(2, '0')} / приватка</span><div><div class="card-t">${escapeHtml(p.projectName)}</div><div class="card-s">Финансы за 4 окна: сегодня, 7 дней, 30 дней, всё время</div></div></div>
+    <div class="pf-body">
+      <div class="pf-grid">
+        ${pfBlock('Сегодня', p.today)}
+        ${pfBlock('7 дней', p.week)}
+        ${pfBlock('30 дней', p.month)}
+        ${pfBlock('Всё время', p.allTime)}
+      </div>
+      <div class="pf-foot">
+        <div class="pf-arppu"><b>${p.arppu !== null ? fmtM(p.arppu) : '—'}</b><span>ARPPU</span></div>
+        <div class="pf-trend">${spark(p.dailySeries.map(d => d.revenue), '#3DDC97')}</div>
+      </div>
+    </div>
+  </article>`;
+}
+
+function renderPrivatkaCompare(list) {
+  if (list.length < 2) { $('#privatkaCompareWrap').innerHTML = ''; return; }
+  const sorted = [...list].sort((a, b) => b.allTime.revenue - a.allTime.revenue);
+  $('#privatkaCompareWrap').innerHTML = `
+  <article class="card table-card rv" style="--i:${list.length}">
+    <div class="card-h"><span class="card-idx">${String(list.length + 1).padStart(2, '0')} / сравнение</span><div><div class="card-t">Сравнение приваток</div><div class="card-s">по выручке за всё время</div></div></div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Приватка</th><th class="num">Доход (всё время)</th><th class="num">Средний чек (всё время)</th><th class="num">ARPPU</th></tr></thead>
+        <tbody>
+          ${sorted.map(p => `<tr>
+            <td><div class="cell-main">${escapeHtml(p.projectName)}</div></td>
+            <td class="num" style="color:var(--green)">${fmtM(p.allTime.revenue)}</td>
+            <td class="num">${p.allTime.avgCheck !== null ? fmt1(p.allTime.avgCheck) + ' ₽' : '—'}</td>
+            <td class="num">${p.arppu !== null ? fmtM(p.arppu) : '—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </article>`;
+}
+
+async function renderPrivatkas() {
+  let list;
+  try {
+    list = await fetchJSON('/api/privatkas/finance');
+  } catch (err) {
+    toast(`Не удалось загрузить финансы приваток: ${err.message}`, 'warn');
+    list = [];
+  }
+
+  if (!list.length) {
+    $('#privatkaCards').innerHTML = '<div style="padding:16px 18px;font-size:12px;color:var(--dim)">Нет зарегистрированных приваток</div>';
+    $('#privatkaCompareWrap').innerHTML = '';
+    return;
+  }
+
+  $('#privatkaCards').innerHTML = list.map((p, i) => renderPrivatkaCard(p, i)).join('');
+  renderPrivatkaCompare(list);
+}
+
 /* ================= НАВИГАЦИЯ / ЭКРАНЫ ================= */
 const SCREENS = {
   overview: { t: 'Обзор', s: 'Сводка по закупкам, подпискам и выручке · данные из dailyStats и событий', c: { p: 1, s: 0, e: 0 } },
   campaigns: { t: 'Кампании', s: 'Эффективность закупок: режимы «по ссылкам» и «по рекламодателям»', c: { p: 0, s: 1, e: 1 } },
+  privatkas: { t: 'Приватки', s: 'Финансы подписочных ботов: доход, средний чек, ARPPU', c: { p: 0, s: 0, e: 0 } },
   projects: { t: 'Проекты', s: 'Реестр каналов и ботов-приваток, связывание проектов', c: { p: 0, s: 0, e: 0 } },
 };
 
 async function renderCurrentScreen() {
   if (state.screen === 'overview') { renderKPIs(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
   else if (state.screen === 'campaigns') await renderCampaigns();
+  else if (state.screen === 'privatkas') await renderPrivatkas();
   else if (state.screen === 'projects') await renderProjects();
 }
 
@@ -851,6 +922,7 @@ async function go(scr) {
   $('#periodSeg').hidden = !m.c.p; $('#searchWrap').hidden = !m.c.s; $('#exportBtn').hidden = !m.c.e;
   if (scr === 'overview') { renderKPIs(); ensureChart(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
   if (scr === 'campaigns') await renderCampaigns();
+  if (scr === 'privatkas') await renderPrivatkas();
   if (scr === 'projects') await renderProjects();
 }
 $$('#nav .nav-it').forEach(b => b.addEventListener('click', () => go(b.dataset.scr)));

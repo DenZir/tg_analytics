@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { dailyStats, campaigns, campaignTags, links, events } from "../db/schema.js";
+import { dailyStats, campaigns, campaignTags, links, events, projects } from "../db/schema.js";
 import { eq, and, inArray } from "drizzle-orm";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 
@@ -235,4 +235,146 @@ export async function getMetrics() {
     campaigns: campaignMetrics,
     daily,
   };
+}
+
+type PrivatkaFinanceRow = {
+  projectId: number;
+  projectName: string;
+  eventType: string;
+  amount: number;
+  tgUserId: string;
+  ts: Date;
+};
+
+type PrivatkaWindowStats = {
+  revenue: number;
+  avgCheck: number | null;
+  paymentsCount: number;
+  renewalsCount: number;
+  paymentsRevenue: number;
+  renewalsRevenue: number;
+  uniquePayers: number;
+};
+
+// Bucket a timestamp to its UTC calendar date, mirroring the day-bucketing
+// convention already used by src/jobs/dailyAggregate.ts
+// (strftime('%Y-%m-%d', ts, 'unixepoch')).
+function dayKey(ts: Date): string {
+  return ts.toISOString().slice(0, 10);
+}
+
+function computeWindowStats(rows: PrivatkaFinanceRow[]): PrivatkaWindowStats {
+  let revenue = 0;
+  let paymentsCount = 0;
+  let renewalsCount = 0;
+  let paymentsRevenue = 0;
+  let renewalsRevenue = 0;
+  const payers = new Set<string>();
+
+  for (const r of rows) {
+    revenue += r.amount;
+    payers.add(r.tgUserId);
+    if (r.eventType === EVENT_TYPES.PAYMENT) {
+      paymentsCount += 1;
+      paymentsRevenue += r.amount;
+    } else if (r.eventType === EVENT_TYPES.RENEWAL) {
+      renewalsCount += 1;
+      renewalsRevenue += r.amount;
+    }
+  }
+
+  const avgCheck = rows.length > 0 ? revenue / rows.length : null;
+
+  return {
+    revenue,
+    avgCheck,
+    paymentsCount,
+    renewalsCount,
+    paymentsRevenue,
+    renewalsRevenue,
+    uniquePayers: payers.size,
+  };
+}
+
+export async function getPrivatkaFinance() {
+  const privatkaProjects = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.type, "bot_subscription"));
+
+  const rows: PrivatkaFinanceRow[] = await db
+    .select({
+      projectId: projects.id,
+      projectName: projects.name,
+      eventType: events.eventType,
+      amount: events.amount,
+      tgUserId: events.tgUserId,
+      ts: events.ts,
+    })
+    .from(events)
+    .innerJoin(links, eq(events.linkId, links.id))
+    .innerJoin(campaigns, eq(links.campaignId, campaigns.id))
+    .innerJoin(projects, eq(campaigns.projectId, projects.id))
+    .where(
+      and(
+        eq(projects.type, "bot_subscription"),
+        inArray(events.eventType, [EVENT_TYPES.PAYMENT, EVENT_TYPES.RENEWAL])
+      )
+    );
+
+  const rowsByProject = new Map<number, PrivatkaFinanceRow[]>();
+  for (const r of rows) {
+    const list = rowsByProject.get(r.projectId) || [];
+    list.push(r);
+    rowsByProject.set(r.projectId, list);
+  }
+
+  const now = new Date();
+  const todayKey = dayKey(now);
+  const MS_DAY = 24 * 60 * 60 * 1000;
+  const weekCutoff = now.getTime() - 7 * MS_DAY;
+  const monthCutoff = now.getTime() - 30 * MS_DAY;
+
+  return privatkaProjects.map((p) => {
+    const projRows = rowsByProject.get(p.id) || [];
+
+    const todayRows = projRows.filter((r) => dayKey(r.ts) === todayKey);
+    const weekRows = projRows.filter((r) => r.ts.getTime() >= weekCutoff);
+    const monthRows = projRows.filter((r) => r.ts.getTime() >= monthCutoff);
+
+    const today = computeWindowStats(todayRows);
+    const week = computeWindowStats(weekRows);
+    const month = computeWindowStats(monthRows);
+    const allTime = computeWindowStats(projRows);
+
+    const allTimePayers = new Set(projRows.map((r) => r.tgUserId));
+    const arppu = allTimePayers.size > 0 ? allTime.revenue / allTimePayers.size : null;
+
+    const dailyBuckets = new Map<string, { revenue: number; payments: number }>();
+    for (const r of projRows) {
+      const key = dayKey(r.ts);
+      const entry = dailyBuckets.get(key) || { revenue: 0, payments: 0 };
+      entry.revenue += r.amount;
+      entry.payments += 1;
+      dailyBuckets.set(key, entry);
+    }
+
+    const dailySeries = [];
+    for (let i = 29; i >= 0; i--) {
+      const key = dayKey(new Date(now.getTime() - i * MS_DAY));
+      const bucket = dailyBuckets.get(key) || { revenue: 0, payments: 0 };
+      dailySeries.push({ date: key, revenue: bucket.revenue, payments: bucket.payments });
+    }
+
+    return {
+      projectId: p.id,
+      projectName: p.name,
+      today,
+      week,
+      month,
+      allTime,
+      arppu,
+      dailySeries,
+    };
+  });
 }

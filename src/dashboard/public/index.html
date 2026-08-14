@@ -242,6 +242,23 @@ th.num{text-align:right}
 .empty p{font-size:12.5px;color:var(--muted);max-width:340px}
 .empty p b{color:var(--text)}
 
+/* ============ ПРИВАТКИ ============ */
+.pf-card{margin-bottom:14px}
+.pf-body{padding:16px 18px 18px}
+.pf-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.pf-block{border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025);padding:12px 13px}
+.pf-lbl{font:600 10px var(--body);letter-spacing:.07em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.pf-val{font:600 19px/1.1 var(--mono);letter-spacing:-.01em;color:var(--green)}
+.pf-sub{font-size:11px;color:var(--muted);margin-top:6px}
+.pf-break{font-size:10.5px;color:var(--dim);margin-top:5px;line-height:1.5}
+.pf-foot{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding-top:2px}
+.pf-arppu{display:flex;flex-direction:column;gap:2px}
+.pf-arppu b{font:600 17px var(--mono);color:var(--text)}
+.pf-arppu span{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.pf-trend{flex:1;min-width:160px;max-width:320px}
+.pf-trend svg{width:100%;height:34px;display:block}
+@media (max-width:1000px){.pf-grid{grid-template-columns:repeat(2,1fr)}}
+
 /* ============ ПРОЕКТЫ ============ */
 .pr-grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;align-items:start}
 .form-card{position:sticky;top:84px}
@@ -358,6 +375,7 @@ tr.flash td{animation:flash 1.6s ease}
   <nav id="nav">
     <button class="nav-it on" data-scr="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="lbl">Обзор</span></button>
     <button class="nav-it" data-scr="campaigns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 17 5v13L3 12.5v-2z"/><path d="M7 13.5V18a2 2 0 0 0 4 0v-3"/><path d="M17 8.5c1.7.6 2.5 1.7 2.5 3s-.8 2.4-2.5 3"/></svg><span class="lbl">Кампании</span><span class="nbadge" id="nb-camp">—</span></button>
+    <button class="nav-it" data-scr="privatkas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg><span class="lbl">Приватки</span></button>
     <button class="nav-it" data-scr="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3.5 13 8.5 4.7L20.5 13"/><path d="m3.5 17 8.5 4.7L20.5 17" opacity=".45"/></svg><span class="lbl">Проекты</span><span class="nbadge" id="nb-proj">—</span></button>
   </nav>
   <div class="side-spacer"></div>
@@ -460,6 +478,12 @@ tr.flash td{animation:flash 1.6s ease}
     </div>
     <div class="hint-row">Клик по строке — карточка кампании: теги, ссылки с перевесом, история событий</div>
   </article>
+</section>
+
+<!-- ========== ЭКРАН: ПРИВАТКИ ========== -->
+<section class="screen" id="scr-privatkas">
+  <div id="privatkaCards"></div>
+  <div id="privatkaCompareWrap"></div>
 </section>
 
 <!-- ========== ЭКРАН: ПРОЕКТЫ ========== -->
