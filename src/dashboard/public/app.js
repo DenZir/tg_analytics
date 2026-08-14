@@ -133,6 +133,8 @@ const DATA = {
   dateList: [],          // sorted ascending distinct dates present in daily
   histories: null,       // Map<campaignId, history> once loaded
   historiesPromise: null,
+  utmLinks: [],          // /api/utm/links — independent UTM tracking, not campaign links
+  utmSources: [],        // /api/utm/sources rollup
 };
 
 function buildIndexes() {
@@ -564,6 +566,7 @@ function exportPrivatkasCsv() {
 
 $('#exportBtn').addEventListener('click', () => {
   if (state.screen === 'privatkas') { exportPrivatkasCsv(); return; }
+  if (state.screen === 'utm') { exportUtmCsv(); return; }
   const view = state.campaignsView;
   if (!view || !view.rows.length) { toast('Нет данных для экспорта', 'warn'); return; }
   const rows = [];
@@ -844,6 +847,244 @@ $('#projForm').addEventListener('submit', async e => {
   }
 });
 
+/* ================= UTM-МЕТКИ =================
+   Independent tracking mechanic — separate from campaigns/links (channel-invite
+   ad attribution). Do not conflate: a "UTM link" here has no relation to a
+   campaign link row, it's tracked purely by utm_source/medium/campaign/content. */
+function roiCls(v) { if (v === null || v === undefined) return ''; return v >= 100 ? 'r-good' : v >= 70 ? 'r-mid' : 'r-bad'; }
+function convCell(pct) {
+  if (pct === null || pct === undefined) return '<span style="color:var(--dim)">—</span>';
+  return `<div class="convcell"><span class="mono" style="font-size:12px">${fmtPct(pct)}</span><div class="bar"><i style="width:${Math.min(100, pct)}%"></i></div></div>`;
+}
+function fmtHours(h) {
+  if (h === null || h === undefined) return '—';
+  if (h < 24) return fmt1(h) + 'ч';
+  const days = Math.floor(h / 24), rem = Math.round(h % 24);
+  return rem ? `${days}д ${rem}ч` : `${days}д`;
+}
+
+function renderUtmKpis(links) {
+  const sum = key => links.reduce((s, l) => s + (l[key] || 0), 0);
+  const starts = sum('starts'), uniqueStarts = sum('uniqueStarts'), purchases = sum('purchases'), revenue = sum('revenue');
+  const uniquePurchasers = sum('uniquePurchasers');
+  const conv = uniqueStarts ? uniquePurchasers / uniqueStarts * 100 : null;
+  const cards = [
+    { lbl: 'Заходы', icon: IC.users, c: '#57B6FF', val: fmtN(starts), sub: `уникальных: ${fmtN(uniqueStarts)}` },
+    { lbl: 'Уникальные заходы', icon: IC.target, c: '#9B8CFF', val: fmtN(uniqueStarts), sub: `${links.length} ${plural(links.length, 'метка', 'метки', 'меток')}` },
+    { lbl: 'Покупки', icon: IC.card, c: '#FFB454', val: fmtN(purchases), sub: `конверсия: ${conv !== null ? fmtPct(conv) : '—'}` },
+    { lbl: 'Выручка', icon: IC.rub, c: '#3DDC97', val: fmtM(revenue), sub: `уник. плательщиков: ${fmtN(uniquePurchasers)}` },
+  ];
+  $('#utmKpis').innerHTML = cards.map((k, i) => `
+    <article class="card kpi rv" style="--i:${i}">
+      <div class="kpi-top"><span class="kpi-ic" style="${hueBox(k.c)}">${k.icon}</span><span class="kpi-lbl">${k.lbl}</span></div>
+      <div class="kpi-val">${k.val}</div>
+      <div class="kpi-sub">${k.sub}</div>
+    </article>`).join('');
+}
+
+function renderUtmSources(sources) {
+  if (!sources.length) {
+    $('#utmSourcesBody').innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--dim);padding:22px">Источников пока нет</td></tr>`;
+    return;
+  }
+  const sorted = [...sources].sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
+  $('#utmSourcesBody').innerHTML = sorted.map((s, i) => `<tr style="--i:${i};cursor:default">
+    <td><div class="cell-main">${escapeHtml(s.utmSource)}</div></td>
+    <td class="num">${fmtN(s.linksCount)}</td>
+    <td class="num">${fmtN(s.starts)}</td>
+    <td class="num">${fmtN(s.uniqueStarts)}</td>
+    <td class="num">${fmtN(s.purchases)}</td>
+    <td>${convCell(s.conversionPct)}</td>
+    <td class="num" style="color:var(--green)">${fmtM(s.revenue)}</td>
+    <td class="num">${s.cac !== null && s.cac !== undefined ? fmt1(s.cac) + ' ₽' : '—'}</td>
+    <td class="num ${roiCls(s.roi)}">${s.roi !== null && s.roi !== undefined ? fmtPct(s.roi) : '—'}</td>
+    <td class="num">${s.renewalRatePct !== null && s.renewalRatePct !== undefined ? fmtPct(s.renewalRatePct) : '—'}</td>
+  </tr>`).join('');
+}
+
+function renderUtmLinksTable(links) {
+  $('#utmLinksSub').textContent = `${links.length} ${plural(links.length, 'ссылка', 'ссылки', 'ссылок')}`;
+  const empty = $('#utmEmpty'), body = $('#utmLinksBody');
+  if (!links.length) {
+    empty.classList.add('show');
+    body.style.display = 'none';
+    body.innerHTML = '';
+    return;
+  }
+  empty.classList.remove('show');
+  body.style.display = '';
+  const sorted = [...links].sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
+  body.innerHTML = sorted.map((l, i) => `<tr data-id="${l.id}" style="--i:${i}">
+    <td><div class="cell-main">${escapeHtml(l.label || l.slug)}</div><div class="cell-sub">${escapeHtml(l.utmSource)}/${escapeHtml(l.utmMedium)}/${escapeHtml(l.utmCampaign)}</div></td>
+    <td class="num">${fmtN(l.starts)}</td>
+    <td class="num">${fmtN(l.uniqueStarts)}</td>
+    <td class="num">${fmtN(l.purchases)}</td>
+    <td>${convCell(l.conversionPct)}</td>
+    <td class="num" style="color:var(--green)">${fmtM(l.revenue)}</td>
+    <td class="num">${l.cac !== null && l.cac !== undefined ? fmt1(l.cac) + ' ₽' : '—'}</td>
+    <td class="num ${roiCls(l.roi)}">${l.roi !== null && l.roi !== undefined ? fmtPct(l.roi) : '—'}</td>
+    <td class="num">${l.renewalRatePct !== null && l.renewalRatePct !== undefined ? fmtPct(l.renewalRatePct) : '—'}</td>
+    <td class="mono" style="font-size:12px">${fmtHours(l.medianTimeToPurchaseHours)}</td>
+  </tr>`).join('');
+  $$('#utmLinksBody tr[data-id]').forEach(tr => tr.addEventListener('click', () => openUtmLink(+tr.dataset.id)));
+}
+
+async function renderUtm() {
+  let links, sources;
+  try {
+    [links, sources] = await Promise.all([
+      fetchJSON('/api/utm/links'),
+      fetchJSON('/api/utm/sources'),
+    ]);
+  } catch (err) {
+    toast(`Не удалось загрузить UTM-метки: ${err.message}`, 'warn');
+    links = []; sources = [];
+  }
+  DATA.utmLinks = links;
+  DATA.utmSources = sources;
+  $('#nb-utm').textContent = links.length;
+  renderUtmKpis(links);
+  renderUtmSources(sources);
+  renderUtmLinksTable(links);
+}
+
+function showUtmResult(value, kind) {
+  const box = $('#utmResult');
+  box.hidden = false;
+  box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span>${kind === 'link' ? 'Диплинк создан:' : 'Slug создан:'}</span>
+    <span class="mono" style="color:var(--accent)">${escapeHtml(value)}</span>
+    <button class="btn tiny copy-btn" type="button" data-url="${escapeHtml(value)}">${IC.copy} Копировать</button>
+  </div>`;
+  box.querySelector('.copy-btn').addEventListener('click', () => {
+    navigator.clipboard?.writeText(value).catch(() => {});
+    toast('Скопировано в буфер', 'info');
+  });
+}
+
+$('#utmForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const utmSource = $('#u-source').value.trim();
+  const utmMedium = $('#u-medium').value.trim();
+  const utmCampaign = $('#u-campaign').value.trim();
+  const utmContent = $('#u-content').value.trim();
+  const label = $('#u-label').value.trim();
+  const spendRaw = $('#u-spend').value.trim();
+  const slug = $('#u-slug').value.trim();
+  let botUsername = $('#u-bot').value.trim();
+  if (botUsername.startsWith('@')) botUsername = botUsername.slice(1);
+  if (!utmSource || !utmMedium || !utmCampaign) { toast('Заполните источник, канал и кампанию', 'warn'); return; }
+
+  const body = { utmSource, utmMedium, utmCampaign };
+  if (utmContent) body.utmContent = utmContent;
+  if (label) body.label = label;
+  if (spendRaw) {
+    const spend = Number(spendRaw);
+    if (!Number.isFinite(spend) || spend < 0) { toast('Бюджет должен быть неотрицательным числом', 'warn'); return; }
+    body.spend = spend;
+  }
+  if (slug) body.slug = slug;
+  if (botUsername) body.botUsername = botUsername;
+
+  try {
+    const created = await fetchJSON('/api/utm/links', { method: 'POST', body: JSON.stringify(body) });
+    e.target.reset();
+    if (created.deepLink) showUtmResult(created.deepLink, 'link');
+    else showUtmResult(created.slug, 'slug');
+    toast(`UTM-ссылка «${created.slug}» создана`);
+    await renderUtm();
+  } catch (err) {
+    toast(`Не удалось создать UTM-ссылку: ${err.message}`, 'warn');
+  }
+});
+
+async function openUtmLink(id) {
+  let detail;
+  try {
+    detail = await fetchJSON(`/api/utm/links/${id}`);
+  } catch (err) {
+    toast(`Не удалось загрузить UTM-ссылку: ${err.message}`, 'warn');
+    return;
+  }
+  renderUtmModal(detail);
+}
+
+function renderUtmModal(l) {
+  const deepLink = l.deepLink || null;
+  const series = l.dailySeries || [];
+  $('#modalRoot').innerHTML = `
+  <div class="m-ov" id="mOv">
+    <article class="modal" role="dialog" aria-modal="true">
+      <header class="m-head">
+        <div>
+          <div class="m-eyebrow">UTM-ссылка · создана ${l.createdAt ? dDate(l.createdAt) : '—'}</div>
+          <h2>${escapeHtml(l.label || l.slug)}</h2>
+          <div class="m-chips">
+            <span class="chip neutral mono">${escapeHtml(l.utmSource)}</span>
+            <span class="chip neutral mono">${escapeHtml(l.utmMedium)}</span>
+            <span class="chip neutral mono">${escapeHtml(l.utmCampaign)}</span>
+            ${l.utmContent ? `<span class="chip neutral mono">${escapeHtml(l.utmContent)}</span>` : ''}
+          </div>
+        </div>
+        <button class="x-btn" id="mClose">${IC.x}</button>
+      </header>
+      <div class="m-stats">
+        <div class="m-stat"><b>${fmtN(l.starts)}</b><span>заходы</span></div>
+        <div class="m-stat"><b>${fmtN(l.purchases)}</b><span>покупки</span></div>
+        <div class="m-stat"><b style="color:var(--green)">${fmtM(l.revenue)}</b><span>выручка</span></div>
+        <div class="m-stat"><b>${l.conversionPct !== null && l.conversionPct !== undefined ? fmtPct(l.conversionPct) : '—'}</b><span>конверсия</span></div>
+      </div>
+      <div class="m-body">
+        <section class="m-sec">
+          <div class="m-sec-h"><span class="card-idx">01 / метрики</span><h3>Дополнительные показатели</h3></div>
+          <div style="display:flex;gap:22px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)">
+            <div>CAC: <b class="mono" style="color:var(--text)">${l.cac !== null && l.cac !== undefined ? fmt1(l.cac) + ' ₽' : '—'}</b></div>
+            <div>ROI: <b class="mono ${roiCls(l.roi)}">${l.roi !== null && l.roi !== undefined ? fmtPct(l.roi) : '—'}</b></div>
+            <div>Продления: <b class="mono" style="color:var(--text)">${l.renewalRatePct !== null && l.renewalRatePct !== undefined ? fmtPct(l.renewalRatePct) : '—'}</b> (${fmtM(l.renewalsRevenue || 0)})</div>
+            <div>Медиана до покупки: <b class="mono" style="color:var(--text)">${fmtHours(l.medianTimeToPurchaseHours)}</b></div>
+            <div>Бюджет: <b class="mono" style="color:var(--text)">${l.spend !== null && l.spend !== undefined ? fmtM(l.spend) : '—'}</b></div>
+          </div>
+        </section>
+        <section class="m-sec">
+          <div class="m-sec-h"><span class="card-idx">02 / динамика</span><h3>Заходы и выручка за 30 дней</h3></div>
+          <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+            <div style="flex:1;min-width:200px">${spark(series.map(d => d.starts), '#57B6FF')}<div style="font-size:10.5px;color:var(--dim);margin-top:4px">Заходы</div></div>
+            <div style="flex:1;min-width:200px">${spark(series.map(d => d.revenue), '#3DDC97')}<div style="font-size:10.5px;color:var(--dim);margin-top:4px">Выручка</div></div>
+          </div>
+        </section>
+        <section class="m-sec">
+          <div class="m-sec-h"><span class="card-idx">03 / диплинк</span><h3>Ссылка для трафика</h3></div>
+          <div class="lk-row">
+            <div class="lk-top">
+              <span class="lk-txt"><b>${escapeHtml(l.slug)}</b>${deepLink ? `<span class="lk-url">${escapeHtml(deepLink)}</span>` : '<span class="lk-url">username бота не указан — используйте slug вручную</span>'}</span>
+              <button class="btn tiny copy-btn" data-url="${escapeHtml(deepLink || l.slug)}">${IC.copy} Копировать</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </article>
+  </div>`;
+  const ov = $('#mOv');
+  requestAnimationFrame(() => ov.classList.add('show'));
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
+  $('#mClose').addEventListener('click', closeModal);
+  ov.querySelectorAll('.copy-btn').forEach(b => b.addEventListener('click', () => {
+    navigator.clipboard?.writeText(b.dataset.url).catch(() => {});
+    toast('Скопировано в буфер', 'info');
+  }));
+}
+
+function exportUtmCsv() {
+  const list = DATA.utmLinks;
+  if (!list || !list.length) { toast('Нет данных для экспорта', 'warn'); return; }
+  const rows = [];
+  rows.push(['Slug', 'Источник', 'Канал', 'Кампания', 'Контент', 'Название', 'Заходы', 'Уникальные', 'Покупки', 'Выручка ₽', 'Конверсия %', 'CAC', 'ROI %', 'Продления %', 'Медиана до покупки, ч']);
+  list.forEach(l => rows.push([l.slug, l.utmSource, l.utmMedium, l.utmCampaign, l.utmContent || '', l.label || '', l.starts, l.uniqueStarts, l.purchases, l.revenue, l.conversionPct ?? '', l.cac ?? '', l.roi ?? '', l.renewalRatePct ?? '', l.medianTimeToPurchaseHours ?? '']));
+  const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-utm.csv'; a.click();
+  toast('CSV выгружен: ' + rows.length + ' строк', 'info');
+}
+
 /* ================= ПРИВАТКИ ================= */
 function pfBlock(label, stats) {
   return `<div class="pf-block">
@@ -918,6 +1159,7 @@ async function renderPrivatkas() {
 const SCREENS = {
   overview: { t: 'Обзор', s: 'Сводка по закупкам, подпискам и выручке · данные из dailyStats и событий', c: { p: 1, s: 0, e: 0 } },
   campaigns: { t: 'Кампании', s: 'Эффективность закупок: режимы «по ссылкам» и «по рекламодателям»', c: { p: 0, s: 1, e: 1 } },
+  utm: { t: 'UTM-метки', s: 'Независимый трекинг источников трафика: старты, покупки, CAC/ROI по utm-меткам', c: { p: 0, s: 0, e: 1 } },
   privatkas: { t: 'Приватки', s: 'Финансы подписочных ботов: доход, средний чек, ARPPU', c: { p: 0, s: 0, e: 1 } },
   projects: { t: 'Проекты', s: 'Реестр каналов и ботов-приваток, связывание проектов', c: { p: 0, s: 0, e: 0 } },
 };
@@ -925,6 +1167,7 @@ const SCREENS = {
 async function renderCurrentScreen() {
   if (state.screen === 'overview') { renderKPIs(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
   else if (state.screen === 'campaigns') await renderCampaigns();
+  else if (state.screen === 'utm') await renderUtm();
   else if (state.screen === 'privatkas') await renderPrivatkas();
   else if (state.screen === 'projects') await renderProjects();
 }
@@ -939,6 +1182,7 @@ async function go(scr) {
   $('#periodSeg').hidden = !m.c.p; $('#searchWrap').hidden = !m.c.s; $('#exportBtn').hidden = !m.c.e;
   if (scr === 'overview') { renderKPIs(); ensureChart(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
   if (scr === 'campaigns') await renderCampaigns();
+  if (scr === 'utm') await renderUtm();
   if (scr === 'privatkas') await renderPrivatkas();
   if (scr === 'projects') await renderProjects();
 }

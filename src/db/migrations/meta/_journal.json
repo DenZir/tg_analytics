@@ -36,6 +36,13 @@
       "when": 1786612134395,
       "tag": "0004_lethal_mach_iv",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786731168072,
+      "tag": "0005_panoramic_nomad",
+      "breakpoints": true
     }
   ]
 }

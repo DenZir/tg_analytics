@@ -375,6 +375,7 @@ tr.flash td{animation:flash 1.6s ease}
   <nav id="nav">
     <button class="nav-it on" data-scr="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="lbl">Обзор</span></button>
     <button class="nav-it" data-scr="campaigns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 17 5v13L3 12.5v-2z"/><path d="M7 13.5V18a2 2 0 0 0 4 0v-3"/><path d="M17 8.5c1.7.6 2.5 1.7 2.5 3s-.8 2.4-2.5 3"/></svg><span class="lbl">Кампании</span><span class="nbadge" id="nb-camp">—</span></button>
+    <button class="nav-it" data-scr="utm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.7 3.3h6a2 2 0 0 1 2 2v6l-9.6 9.6a1.5 1.5 0 0 1-2.1 0l-5.9-5.9a1.5 1.5 0 0 1 0-2.1l9.6-9.6z"/><circle cx="16.8" cy="7.2" r="1.4"/></svg><span class="lbl">UTM-метки</span><span class="nbadge" id="nb-utm">—</span></button>
     <button class="nav-it" data-scr="privatkas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg><span class="lbl">Приватки</span></button>
     <button class="nav-it" data-scr="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3.5 13 8.5 4.7L20.5 13"/><path d="m3.5 17 8.5 4.7L20.5 17" opacity=".45"/></svg><span class="lbl">Проекты</span><span class="nbadge" id="nb-proj">—</span></button>
   </nav>
@@ -478,6 +479,51 @@ tr.flash td{animation:flash 1.6s ease}
     </div>
     <div class="hint-row">Клик по строке — карточка кампании: теги, ссылки с перевесом, история событий</div>
   </article>
+</section>
+
+<!-- ========== ЭКРАН: UTM-МЕТКИ ========== -->
+<section class="screen" id="scr-utm">
+  <div class="kpis" id="utmKpis"></div>
+  <div class="pr-grid">
+    <article class="card form-card rv" style="--i:0">
+      <div class="card-h"><span class="card-idx">01 / новая метка</span><div><div class="card-t">Создать UTM-ссылку</div><div class="card-s">Независимый трекинг источников трафика</div></div></div>
+      <form class="form-body" id="utmForm" novalidate>
+        <div class="fld"><label>Источник (utm_source)</label><input class="inp" id="u-source" placeholder="vk, instagram, telegram_ads…"></div>
+        <div class="fld"><label>Канал (utm_medium)</label><input class="inp" id="u-medium" placeholder="cpc, social, email…"></div>
+        <div class="fld"><label>Кампания (utm_campaign)</label><input class="inp" id="u-campaign" placeholder="summer_sale…"></div>
+        <div class="fld"><label>Контент (utm_content)</label><input class="inp" id="u-content" placeholder="необязательно"></div>
+        <div class="fld"><label>Название</label><input class="inp" id="u-label" placeholder="Человекочитаемое описание"></div>
+        <div class="fld"><label>Бюджет ₽</label><input class="inp mono" id="u-spend" type="number" min="0" step="0.01" placeholder="для расчёта CAC/ROI"></div>
+        <div class="fld"><label>Свой slug</label><input class="inp mono" id="u-slug" placeholder="автогенерация, если пусто"></div>
+        <div class="fld"><label>Username бота</label><input class="inp mono" id="u-bot" placeholder="@my_bot"></div>
+        <button class="btn btn-primary" type="submit" style="justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Создать ссылку</button>
+        <div class="form-note" id="utmResult" hidden></div>
+        <div class="form-note">UTM-метки — независимая система трекинга источников трафика, отдельная от ссылок кампаний.</div>
+      </form>
+    </article>
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <article class="card table-card rv" style="--i:1">
+        <div class="card-h"><span class="card-idx">02 / источники</span><div><div class="card-t">Сводка по источникам</div><div class="card-s">Где лучше всего работает бюджет — сравнение по utm_source</div></div></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr>
+          <th>Источник</th><th class="num">Ссылок</th><th class="num">Заходы</th><th class="num">Уникальные</th><th class="num">Покупки</th><th>Конверсия %</th><th class="num">Выручка</th><th class="num">CAC</th><th class="num">ROI %</th><th class="num">Продления %</th>
+        </tr></thead><tbody id="utmSourcesBody"></tbody></table></div>
+      </article>
+      <article class="card table-card rv" style="--i:2">
+        <div class="card-h"><span class="card-idx">03 / ссылки</span><div><div class="card-t">UTM-ссылки</div><div class="card-s" id="utmLinksSub"></div></div></div>
+        <div class="tbl-wrap">
+          <table class="tbl"><thead><tr>
+            <th>Метка</th><th class="num">Заходы</th><th class="num">Уникальные</th><th class="num">Покупки</th><th>Конверсия %</th><th class="num">Выручка</th><th class="num">CAC</th><th class="num">ROI %</th><th class="num">Продления %</th><th>Медиана до покупки</th>
+          </tr></thead><tbody id="utmLinksBody"></tbody></table>
+          <div class="empty" id="utmEmpty">
+            <div class="e-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.7 3.3h6a2 2 0 0 1 2 2v6l-9.6 9.6a1.5 1.5 0 0 1-2.1 0l-5.9-5.9a1.5 1.5 0 0 1 0-2.1l9.6-9.6z"/><circle cx="16.8" cy="7.2" r="1.4"/></svg></div>
+            <h4>UTM-меток пока нет</h4>
+            <p>Создайте первую метку в форме слева, чтобы начать отслеживать источник трафика.</p>
+          </div>
+        </div>
+        <div class="hint-row">Клик по строке — карточка ссылки: динамика по дням и диплинк для трафика</div>
+      </article>
+    </div>
+  </div>
 </section>
 
 <!-- ========== ЭКРАН: ПРИВАТКИ ========== -->

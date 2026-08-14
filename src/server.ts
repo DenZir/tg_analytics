@@ -24,6 +24,14 @@ import {
   getAdvertiserStats,
   getPrivatkaFinance,
 } from "./services/metrics.js";
+import {
+  createUtmLink,
+  listUtmLinksWithMetrics,
+  getUtmLinkDetail,
+  getUtmSourceRollup,
+  recordUtmHit,
+  recordUtmPurchase,
+} from "./services/utm.js";
 import { eq } from "drizzle-orm";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -346,6 +354,118 @@ app.get("/api/privatkas/finance", async (_req, res) => {
   try {
     const finance = await getPrivatkaFinance();
     res.json(finance);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- UTM Links API ---
+
+// POST /api/utm/links
+app.post("/api/utm/links", async (req, res) => {
+  try {
+    const { utmSource, utmMedium, utmCampaign, utmContent, label, spend, slug, botUsername } =
+      req.body;
+
+    if (!utmSource || !utmMedium || !utmCampaign) {
+      return res
+        .status(400)
+        .json({ error: "Missing required fields (utmSource, utmMedium, utmCampaign)" });
+    }
+
+    const link = await createUtmLink({
+      utmSource: String(utmSource),
+      utmMedium: String(utmMedium),
+      utmCampaign: String(utmCampaign),
+      utmContent: utmContent !== undefined ? String(utmContent) : undefined,
+      label: label !== undefined ? String(label) : undefined,
+      spend: spend !== undefined ? Number(spend) : undefined,
+      slug: slug !== undefined ? String(slug) : undefined,
+    });
+
+    const response: Record<string, unknown> = { ...link };
+    if (botUsername) {
+      response.deepLink = `https://t.me/${botUsername}?start=${link.slug}`;
+    }
+
+    res.status(201).json(response);
+  } catch (error: any) {
+    if (
+      error.message &&
+      (error.message.includes("already taken") || error.message.includes("Invalid slug"))
+    ) {
+      return res.status(409).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/utm/links
+app.get("/api/utm/links", async (_req, res) => {
+  try {
+    const linksList = await listUtmLinksWithMetrics();
+    res.json(linksList);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/utm/links/:id
+app.get("/api/utm/links/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const detail = await getUtmLinkDetail(id);
+    if (!detail) {
+      return res.status(404).json({ error: "UTM link not found" });
+    }
+    res.json(detail);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/utm/sources
+app.get("/api/utm/sources", async (_req, res) => {
+  try {
+    const rollup = await getUtmSourceRollup();
+    res.json(rollup);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/utm/hit
+app.post("/api/utm/hit", async (req, res) => {
+  try {
+    const { slug, tgUserId } = req.body;
+    if (!slug || !tgUserId) {
+      return res.status(400).json({ error: "Missing required fields (slug, tgUserId)" });
+    }
+
+    const result = await recordUtmHit(String(slug), String(tgUserId));
+    if (!result.found) {
+      return res.status(404).json({ error: "Unknown UTM slug" });
+    }
+
+    res.status(201).json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/utm/purchase
+app.post("/api/utm/purchase", async (req, res) => {
+  try {
+    const { tgUserId, amount, eventType } = req.body;
+    if (!tgUserId || amount === undefined) {
+      return res.status(400).json({ error: "Missing required fields (tgUserId, amount)" });
+    }
+    if (eventType !== "payment" && eventType !== "renewal") {
+      return res.status(400).json({ error: "eventType must be 'payment' or 'renewal'" });
+    }
+
+    const result = await recordUtmPurchase(String(tgUserId), Number(amount), eventType);
+    res.status(200).json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

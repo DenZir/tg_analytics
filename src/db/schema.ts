@@ -85,3 +85,45 @@ export const dailyStats = sqliteTable(
     ),
   ]
 );
+
+// --- Independent UTM-tracking mechanic (separate from the campaigns/links/events model above) ---
+
+export const utmLinks = sqliteTable("utm_links", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  slug: text("slug").notNull().unique(),
+  utmSource: text("utm_source").notNull(),
+  utmMedium: text("utm_medium").notNull(),
+  utmCampaign: text("utm_campaign").notNull(),
+  utmContent: text("utm_content"),
+  label: text("label"),
+  spend: real("spend"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const utmEvents = sqliteTable(
+  "utm_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    utmLinkId: integer("utm_link_id")
+      .notNull()
+      .references(() => utmLinks.id),
+    tgUserId: text("tg_user_id").notNull(),
+    eventType: text("event_type").notNull(), // 'start' | 'payment' | 'renewal'
+    amount: real("amount").notNull().default(0),
+    ts: integer("ts", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    unique("utm_events_link_user_type_ts_unique").on(
+      table.utmLinkId,
+      table.tgUserId,
+      table.eventType,
+      table.ts
+    ),
+    index("utm_events_user_ts_idx").on(table.tgUserId, table.ts),
+    index("utm_events_link_idx").on(table.utmLinkId),
+  ]
+);
