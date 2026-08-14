@@ -5,7 +5,6 @@ import {
   createProject,
   getAllProjects,
   createCampaign,
-  createDeepLinkForCampaign,
   createCampaignWithLinks,
   updateProjectConfig,
   linkProjects,
@@ -67,7 +66,6 @@ interface UserState {
   advertiser?: string;
   price?: number;
   linkName?: string;
-  includePrivatka?: boolean;
   isClosedLink?: boolean;
   tags?: Record<string, string>;
   cardMessageId?: number;
@@ -114,7 +112,7 @@ async function sendMainMenu(ctx: any) {
 }
 
 async function renderDraftCard(ctx: any, userId: number, editMode = true) {
-  const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+  const state = userStates.get(userId) || { isClosedLink: false };
   userStates.set(userId, state);
 
   const projectsList = await getAllProjects();
@@ -124,7 +122,6 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
   const advertiserText = state.advertiser ? escapeHtml(state.advertiser) : "не указан";
   const linkNameText = state.linkName ? escapeHtml(state.linkName) : "не указано";
   const priceText = state.price !== undefined ? `${state.price} ₽` : "не указана";
-  const privatkaStatus = state.includePrivatka ? "Включена 🟢" : "Выключена 🔴";
   const closedStatus = state.isClosedLink ? "Закрытая (заявка) 🔒" : "Прямая 🔓";
 
   const tagsText = state.tags && Object.keys(state.tags).length > 0
@@ -152,7 +149,6 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
     `👤 <b>Продавец</b>: ${advertiserText}\n` +
     `🔤 <b>Название ссылки</b>: ${linkNameText}\n` +
     `💰 <b>Цена</b>: ${priceText}\n` +
-    `🔒 <b>Приватка</b>: ${privatkaStatus}\n` +
     `🚪 <b>Ссылка</b>: ${closedStatus}\n` +
     `🏷️ <b>Теги</b>: ${tagsText}` +
     noticeText;
@@ -171,7 +167,6 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
     ],
     [
       Markup.button.callback("🏷️ Теги", "card_input_tags"),
-      Markup.button.callback(`🔒 Приватка: ${state.includePrivatka ? "Вкл" : "Выкл"}`, "card_toggle_privatka"),
     ],
     [
       Markup.button.callback(`🚪 Ссылка: ${state.isClosedLink ? "Закрытая" : "Прямая"}`, "card_toggle_closed"),
@@ -535,7 +530,7 @@ if (channelBot) {
 
       if (data === "menu_newlink") {
         await ctx.answerCbQuery();
-        userStates.set(userId, { includePrivatka: false, isClosedLink: false });
+        userStates.set(userId, { isClosedLink: false });
         return renderDraftCard(ctx, userId);
       }
 
@@ -720,7 +715,7 @@ if (channelBot) {
       if (data.startsWith("set_chan_")) {
         await ctx.answerCbQuery();
         const chanId = Number(data.split("_")[2]);
-        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+        const state = userStates.get(userId) || { isClosedLink: false };
         state.projectId = chanId;
         userStates.set(userId, state);
         return renderDraftCard(ctx, userId);
@@ -733,7 +728,7 @@ if (channelBot) {
 
       if (data === "card_input_adv") {
         await ctx.answerCbQuery();
-        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+        const state = userStates.get(userId) || { isClosedLink: false };
         state.awaitingField = "advertiser";
         userStates.set(userId, state);
         return renderDraftCard(ctx, userId);
@@ -741,7 +736,7 @@ if (channelBot) {
 
       if (data === "card_input_linkname") {
         await ctx.answerCbQuery();
-        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+        const state = userStates.get(userId) || { isClosedLink: false };
         state.awaitingField = "linkName";
         userStates.set(userId, state);
         return renderDraftCard(ctx, userId);
@@ -749,7 +744,7 @@ if (channelBot) {
 
       if (data === "card_input_price") {
         await ctx.answerCbQuery();
-        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+        const state = userStates.get(userId) || { isClosedLink: false };
         state.awaitingField = "price";
         userStates.set(userId, state);
         return renderDraftCard(ctx, userId);
@@ -757,7 +752,7 @@ if (channelBot) {
 
       if (data === "card_input_tags") {
         await ctx.answerCbQuery();
-        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+        const state = userStates.get(userId) || { isClosedLink: false };
         state.awaitingField = "tags";
         userStates.set(userId, state);
         return renderDraftCard(ctx, userId);
@@ -765,7 +760,7 @@ if (channelBot) {
 
       if (data === "card_select_creative") {
         await ctx.answerCbQuery();
-        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+        const state = userStates.get(userId) || { isClosedLink: false };
         userStates.set(userId, state);
 
         const existingCreatives = await getDistinctTagValues("creative");
@@ -794,7 +789,7 @@ if (channelBot) {
       if (data.startsWith("set_cr_")) {
         await ctx.answerCbQuery();
         const idx = Number(data.split("_")[2]);
-        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+        const state = userStates.get(userId) || { isClosedLink: false };
         const val = state.tempCreativesList?.[idx];
 
         if (val) {
@@ -808,47 +803,17 @@ if (channelBot) {
 
       if (data === "card_input_new_creative") {
         await ctx.answerCbQuery();
-        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+        const state = userStates.get(userId) || { isClosedLink: false };
         state.awaitingField = "creative";
         userStates.set(userId, state);
         return renderDraftCard(ctx, userId);
       }
 
       if (data === "card_toggle_closed") {
-        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
+        const state = userStates.get(userId) || { isClosedLink: false };
         state.isClosedLink = !state.isClosedLink;
         userStates.set(userId, state);
         await ctx.answerCbQuery(state.isClosedLink ? "Закрытая ссылка (заявка) 🔒" : "Прямая ссылка 🔓");
-        return renderDraftCard(ctx, userId);
-      }
-
-      if (data === "card_toggle_privatka") {
-        const state = userStates.get(userId) || { includePrivatka: false, isClosedLink: false };
-
-        if (!state.projectId) {
-          return ctx.answerCbQuery("⚠️ Сначала выберите канал!");
-        }
-
-        const projectsList = await getAllProjects();
-        const selectedProject = projectsList.find((p) => p.id === state.projectId);
-
-        let targetBotUsername: string | null = null;
-        if (selectedProject?.linkedProjectId) {
-          const linkedProj = projectsList.find((p) => p.id === selectedProject.linkedProjectId);
-          if (linkedProj?.botUsername) {
-            targetBotUsername = linkedProj.botUsername;
-          }
-        } else if (selectedProject?.botUsername) {
-          targetBotUsername = selectedProject.botUsername;
-        }
-
-        if (!targetBotUsername && !state.includePrivatka) {
-          return ctx.answerCbQuery("⚠️ У выбранного канала не настроена приватка! Привяжите её в '📢 Каналы'");
-        }
-
-        state.includePrivatka = !state.includePrivatka;
-        userStates.set(userId, state);
-        await ctx.answerCbQuery(state.includePrivatka ? "Приватка включена 🟢" : "Приватка выключена 🔴");
         return renderDraftCard(ctx, userId);
       }
 
@@ -877,7 +842,6 @@ if (channelBot) {
             state.price,
             state.linkName,
             state.tags || {},
-            state.includePrivatka || false,
             state.isClosedLink || false,
             createInviteForCampaign
           );
@@ -889,10 +853,6 @@ if (channelBot) {
             linksResultText += `📢 <b>${linkTypeLabel} канала</b>:\n${creationResult.channelLink.inviteLink}\n\n`;
           } else {
             linksResultText += `⚠️ У канала не указан telegramChatId (добавьте через seedProject).\n\n`;
-          }
-
-          if (creationResult.privatkaLink) {
-            linksResultText += `🔒 <b>Deep-Link приватки</b>:\n${creationResult.privatkaLink.deepLink}\n\n`;
           }
 
           const safeAdv = escapeHtml(state.advertiser);

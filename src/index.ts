@@ -1,8 +1,8 @@
 import { startServer } from "./server.js";
 import "./jobs/dailyAggregate.js";
 import { startChannelBot } from "./bots/channelBot.js";
-import { startPrivBot } from "./bots/privBot.js";
 
 startServer();
 startChannelBot();
-startPrivBot();
+// privBot is no longer started: deep-link attribution into the privatka bot was removed.
+// The file itself (./bots/privBot.js) is left in place in case this is needed again later.

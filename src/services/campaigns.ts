@@ -206,38 +206,12 @@ export async function createLinkForCampaign(
   return insertedLink;
 }
 
-export async function createDeepLinkForCampaign(
-  campaignId: number,
-  botUsername: string,
-  payload?: string,
-  label?: string
-) {
-  const cleanUsername = botUsername.startsWith("@")
-    ? botUsername.slice(1)
-    : botUsername;
-
-  const finalPayload =
-    payload || `ad_${campaignId}_${Date.now().toString(36)}`;
-
-  const savedLink = await createLinkForCampaign(
-    campaignId,
-    finalPayload,
-    "deeplink",
-    label
-  );
-
-  const deepLink = `https://t.me/${cleanUsername}?start=${finalPayload}`;
-
-  return { deepLink, savedLink, payload: finalPayload };
-}
-
 export async function createCampaignWithLinks(
   projectId: number,
   advertiser: string,
   price: number,
   linkName: string,
   tags?: Array<{ tagKey: string; tagValue: string }> | Record<string, string>,
-  includePrivatka: boolean = false,
   isClosedLink: boolean = false,
   createInviteFn?: (channelId: string | number, campaignId: number, name?: string, isClosed?: boolean, label?: string) => Promise<{ inviteLink: string; savedLink: any }>
 ) {
@@ -253,7 +227,6 @@ export async function createCampaignWithLinks(
   });
 
   let channelLink: { inviteLink: string; savedLink: any } | null = null;
-  let privatkaLink: { deepLink: string; savedLink: any; payload: string } | null = null;
 
   // 1. Channel invite link
   if (project?.type === "channel" && project.telegramChatId && createInviteFn) {
@@ -261,30 +234,9 @@ export async function createCampaignWithLinks(
     channelLink = await createInviteFn(project.telegramChatId, campaign.id, inviteName, isClosedLink, linkName);
   }
 
-  // 2. Privatka deep-link (if includePrivatka is true)
-  if (includePrivatka) {
-    let targetBotUsername: string | null = null;
-
-    if (project?.type === "channel" && project.linkedProjectId) {
-      const linkedProj = await db.query.projects.findFirst({
-        where: eq(projects.id, project.linkedProjectId),
-      });
-      if (linkedProj?.botUsername) {
-        targetBotUsername = linkedProj.botUsername;
-      }
-    } else if (project?.type === "bot_subscription" && project.botUsername) {
-      targetBotUsername = project.botUsername;
-    }
-
-    if (targetBotUsername) {
-      privatkaLink = await createDeepLinkForCampaign(campaign.id, targetBotUsername, undefined, linkName);
-    }
-  }
-
   return {
     campaign,
     channelLink,
-    privatkaLink,
   };
 }
 

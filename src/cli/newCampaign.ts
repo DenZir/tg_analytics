@@ -1,7 +1,7 @@
 import { db } from "../db/index.js";
 import { projects } from "../db/schema.js";
 import { eq } from "drizzle-orm";
-import { createCampaign, createDeepLinkForCampaign } from "../services/campaigns.js";
+import { createCampaign } from "../services/campaigns.js";
 import { createInviteForCampaign } from "../bots/channelBot.js";
 
 async function main() {
@@ -11,8 +11,6 @@ async function main() {
   let price: number | null = null;
   let projectId: number | null = null;
   let channelId: string | undefined = undefined;
-  let privBot: string | undefined = undefined;
-  let payload: string | undefined = undefined;
   let linkName: string | undefined = undefined;
   const tags: Record<string, string> = {};
 
@@ -27,10 +25,6 @@ async function main() {
       projectId = parseInt(rawArgs[++i], 10);
     } else if ((arg === "--channel-id" || arg === "-c") && i + 1 < rawArgs.length) {
       channelId = rawArgs[++i];
-    } else if (arg === "--priv-bot" && i + 1 < rawArgs.length) {
-      privBot = rawArgs[++i];
-    } else if (arg === "--payload" && i + 1 < rawArgs.length) {
-      payload = rawArgs[++i];
     } else if ((arg === "--link-name" || arg === "-l") && i + 1 < rawArgs.length) {
       linkName = rawArgs[++i];
     } else if (arg === "--tag" && i + 1 < rawArgs.length) {
@@ -53,7 +47,7 @@ async function main() {
 
   if (!advertiser || price === null || isNaN(price)) {
     console.error(
-      "Usage: npm run cli -- --advertiser <name> --price <price> [--project-id <id>] [--channel-id <channelId>] [--priv-bot <botUsername>] [--payload <customPayload>] [--tag key=value ...]"
+      "Usage: npm run cli -- --advertiser <name> --price <price> [--project-id <id>] [--channel-id <channelId>] [--tag key=value ...]"
     );
     process.exit(1);
   }
@@ -99,15 +93,6 @@ async function main() {
     }
   }
 
-  if (privBot) {
-    console.log(`\nGenerating Deep-Link for private bot ${privBot}...`);
-    try {
-      const deepLinkResult = await createDeepLinkForCampaign(campaign.id, privBot, payload, linkName);
-      console.log("Generated Deep-Link:", deepLinkResult.deepLink);
-    } catch (err: any) {
-      console.error("Failed to create Deep-Link:", err.message);
-    }
-  }
 }
 
 main().catch((err) => {

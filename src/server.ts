@@ -22,7 +22,6 @@ import {
   getRetentionStats,
   getPurchaseConversion,
   getAdvertiserStats,
-  getPrivatkaStats,
 } from "./services/metrics.js";
 import { eq } from "drizzle-orm";
 
@@ -331,12 +330,10 @@ app.get("/api/metrics/extended", async (_req, res) => {
     );
 
     const advertisers = await getAdvertiserStats();
-    const privatka = await getPrivatkaStats();
 
     res.json({
       campaigns: extendedCampaigns,
       advertisers,
-      privatka,
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

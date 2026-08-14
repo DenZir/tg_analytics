@@ -190,54 +190,6 @@ export async function getAdvertiserStats() {
   return result;
 }
 
-export async function getPrivatkaStats() {
-  const deeplinks = await db
-    .select()
-    .from(links)
-    .where(eq(links.linkType, "deeplink"));
-
-  const campaignsList = await db.select().from(campaigns);
-  const eventsList = await db.select().from(events);
-
-  const result = [];
-
-  for (const l of deeplinks) {
-    const camp = campaignsList.find((c) => c.id === l.campaignId);
-    const linkEvents = eventsList.filter((e) => e.linkId === l.id);
-
-    const leadsCount = linkEvents.filter((e) => e.eventType === EVENT_TYPES.LEAD).length;
-
-    const paymentEvents = linkEvents.filter((e) => e.eventType === EVENT_TYPES.PAYMENT);
-    const uniquePurchasers = new Set(paymentEvents.map((e) => e.tgUserId));
-    const purchasedCount = uniquePurchasers.size;
-
-    const revenueEvents = linkEvents.filter(
-      (e) => e.eventType === EVENT_TYPES.PAYMENT || e.eventType === EVENT_TYPES.RENEWAL
-    );
-    const totalRevenueForLink = revenueEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
-
-    const conversionPct = leadsCount > 0
-      ? Number(((purchasedCount / leadsCount) * 100).toFixed(2))
-      : null;
-
-    const avgCheckPerLead = leadsCount > 0
-      ? Number((totalRevenueForLink / leadsCount).toFixed(2))
-      : null;
-
-    result.push({
-      campaignId: l.campaignId,
-      advertiser: camp?.advertiser || `Campaign #${l.campaignId}`,
-      telegramRef: l.telegramRef,
-      leadsCount,
-      purchasedCount,
-      conversionPct,
-      avgCheckPerLead,
-    });
-  }
-
-  return result;
-}
-
 export async function getMetrics() {
   const statsList = await db.select().from(dailyStats);
   const campaignsList = await db.select().from(campaigns);
