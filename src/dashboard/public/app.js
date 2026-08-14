@@ -547,7 +547,23 @@ addEventListener('keydown', e => {
 });
 
 /* CSV */
+function exportPrivatkasCsv() {
+  const list = state.privatkasView;
+  if (!list || !list.length) { toast('Нет данных для экспорта', 'warn'); return; }
+  const rows = [];
+  rows.push(['Приватка', 'Период', 'Доход', 'Средний чек', 'Платежи', 'Продления', 'Уникальные плательщики', 'ARPPU']);
+  list.forEach(p => {
+    [['Сегодня', p.today], ['7 дней', p.week], ['30 дней', p.month], ['Всё время', p.allTime]].forEach(([label, stats]) => {
+      rows.push([p.projectName, label, stats.revenue, stats.avgCheck !== null ? stats.avgCheck.toFixed(2) : '', stats.paymentsCount, stats.renewalsCount, stats.uniquePayers, label === 'Всё время' ? (p.arppu !== null ? p.arppu.toFixed(2) : '') : '']);
+    });
+  });
+  const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-privatkas.csv'; a.click();
+  toast('CSV выгружен: ' + rows.length + ' строк', 'info');
+}
+
 $('#exportBtn').addEventListener('click', () => {
+  if (state.screen === 'privatkas') { exportPrivatkasCsv(); return; }
   const view = state.campaignsView;
   if (!view || !view.rows.length) { toast('Нет данных для экспорта', 'warn'); return; }
   const rows = [];
@@ -886,6 +902,7 @@ async function renderPrivatkas() {
     toast(`Не удалось загрузить финансы приваток: ${err.message}`, 'warn');
     list = [];
   }
+  state.privatkasView = list;
 
   if (!list.length) {
     $('#privatkaCards').innerHTML = '<div style="padding:16px 18px;font-size:12px;color:var(--dim)">Нет зарегистрированных приваток</div>';
@@ -901,7 +918,7 @@ async function renderPrivatkas() {
 const SCREENS = {
   overview: { t: 'Обзор', s: 'Сводка по закупкам, подпискам и выручке · данные из dailyStats и событий', c: { p: 1, s: 0, e: 0 } },
   campaigns: { t: 'Кампании', s: 'Эффективность закупок: режимы «по ссылкам» и «по рекламодателям»', c: { p: 0, s: 1, e: 1 } },
-  privatkas: { t: 'Приватки', s: 'Финансы подписочных ботов: доход, средний чек, ARPPU', c: { p: 0, s: 0, e: 0 } },
+  privatkas: { t: 'Приватки', s: 'Финансы подписочных ботов: доход, средний чек, ARPPU', c: { p: 0, s: 0, e: 1 } },
   projects: { t: 'Проекты', s: 'Реестр каналов и ботов-приваток, связывание проектов', c: { p: 0, s: 0, e: 0 } },
 };
 
