@@ -48,7 +48,7 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const fmtN = n => Math.round(n || 0).toLocaleString('ru-RU');
-const fmtM = n => '$' + fmtN(n);
+const fmtM = n => fmtN(n) + ' ₽';
 const fmt1 = n => (Math.round((n || 0) * 10) / 10).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmtPct = n => fmt1(n) + '%';
 const plural = (n, a, b, c) => { n = Math.abs(n) % 100; const d = n % 10; if (n > 10 && n < 20) return c; if (d > 1 && d < 5) return b; if (d === 1) return a; return c; };
@@ -73,7 +73,7 @@ const IC = {
   up:ic('<path d="M7 17 17 7M9 7h8v8"/>'), x:ic('<path d="M6 6l12 12M18 6 6 18"/>'),
   check:ic('<path d="m5 12.5 4.5 4.5L19 7"/>'), warn:ic('<path d="M12 8v5m0 3.5v.01M10.3 3.9 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'),
   copy:ic('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
-  dollar:ic('<path d="M12 2v20M16.5 6.5c-.8-1.3-2.5-2-4.5-2-2.5 0-4.5 1.3-4.5 3.5 0 4.5 9 2.5 9 7 0 2.2-2 3.5-4.5 3.5-2 0-3.7-.7-4.5-2"/>'),
+  rub:ic('<path d="M7 20h7M7 16h7M7 4h4.5a4 4 0 0 1 0 8H7V4zm0 0v16"/>'),
   users:ic('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.7-3.2 3.3-5 6.5-5s5.8 1.8 6.5 5"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M17.8 15.3c2 .7 3.3 2.2 3.7 4.7"/>'),
   target:ic('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>'),
   cps:ic('<path d="M4 19h16M6 16V9m4 7V5m4 11v-5m4 5V8"/>'),
@@ -337,10 +337,10 @@ function renderKPIs() {
     { lbl: 'Подписчики', icon: IC.users, c: '#9B8CFF', val: cur.subs, fmt: fmtN,
       delta: dl(cur.subs, prev ? prev.subs : null),
       sub: prev ? `${fmtN(prev.subs)} за пред. период` : 'за выбранный период', sparkV: sparkSubs },
-    { lbl: 'Выручка', icon: IC.dollar, c: '#3DDC97', val: cur.revenue, fmt: fmtM,
+    { lbl: 'Выручка', icon: IC.rub, c: '#3DDC97', val: cur.revenue, fmt: fmtM,
       delta: dl(cur.revenue, prev ? prev.revenue : null),
       sub: prev ? `${fmtM(prev.revenue)} за пред. период` : 'за выбранный период', sparkV: sparkRev },
-    { lbl: 'Средний CPS', icon: IC.cps, c: '#FFB454', val: cps, fmt: v => '$' + fmt1(v),
+    { lbl: 'Средний CPS', icon: IC.cps, c: '#FFB454', val: cps, fmt: v => fmt1(v) + ' ₽',
       delta: dl(cps, prev ? prevCps : null, false),
       sub: `выручка / подписчики · ${period === 'all' ? 'весь период' : period + ' дн'}`, sparkV: sparkCps },
   ];
@@ -402,7 +402,7 @@ function renderFeed() {
   $('#feed').innerHTML = all.map(e => {
     const ev = eventMeta(e.eventType);
     return `<div class="feed-it"><span class="f-ic" style="${hueBox(ev.c)}">${ev.i}</span>
-    <div class="f-tx"><b>${ev.l}</b> · ${escapeHtml(e.advertiser)}<span>${escapeHtml(e.linkLabel || e.telegramRef || '')} · ID ${escapeHtml(e.tgUserId)}${e.amount ? ` · $${fmt1(e.amount)}` : ''}</span></div>
+    <div class="f-tx"><b>${ev.l}</b> · ${escapeHtml(e.advertiser)}<span>${escapeHtml(e.linkLabel || e.telegramRef || '')} · ID ${escapeHtml(e.tgUserId)}${e.amount ? ` · ${fmt1(e.amount)} ₽` : ''}</span></div>
     <span class="f-time">${dStamp(e.ts)}</span></div>`;
   }).join('');
 }
@@ -433,11 +433,11 @@ function ensureChart() {
     interaction: { mode: 'index', intersect: false },
     plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0F1520', borderColor: 'rgba(255,255,255,.12)', borderWidth: 1, padding: 12, cornerRadius: 10,
       titleColor: '#E8EDF4', bodyColor: '#9AA5B8', bodyFont: { family: 'JetBrains Mono', size: 11 }, usePointStyle: true, boxWidth: 7, boxHeight: 7,
-      callbacks: { label: c => ` ${c.dataset.label}: ` + (c.dataset.label === 'Выручка' ? fmtM(c.parsed.y) : c.dataset.label === 'CPS' ? '$' + c.parsed.y : fmtN(c.parsed.y)) } } },
+      callbacks: { label: c => ` ${c.dataset.label}: ` + (c.dataset.label === 'Выручка' ? fmtM(c.parsed.y) : c.dataset.label === 'CPS' ? c.parsed.y + ' ₽' : fmtN(c.parsed.y)) } } },
     scales: {
       x: { grid: { display: false }, ticks: { maxTicksLimit: 9, font: { family: 'JetBrains Mono', size: 10 }, color: '#5A6478' } },
       y: { position: 'left', grid: { color: 'rgba(255,255,255,.05)' }, ticks: { font: { family: 'JetBrains Mono', size: 10 }, color: '#5A6478' } },
-      y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { font: { family: 'JetBrains Mono', size: 10 }, color: 'rgba(61,220,151,.55)', callback: v => '$' + fmtN(v) } },
+      y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { font: { family: 'JetBrains Mono', size: 10 }, color: 'rgba(61,220,151,.55)', callback: v => fmtN(v) + ' ₽' } },
       y2: { display: false },
     },
   } });
@@ -492,7 +492,7 @@ async function renderCampaigns() {
         <td><span class="chip ${ltMeta.cls}">${escapeHtml(ltMeta.l)}</span></td>
         <td class="num">${fmtN(r.joins)}</td><td class="num">${fmtN(r.subs)}</td>
         <td class="num" style="color:var(--green)">${fmtM(r.revenue)}</td>
-        <td class="num">${r.cps !== null ? '$' + fmt1(r.cps) : '—'}</td>
+        <td class="num">${r.cps !== null ? fmt1(r.cps) + ' ₽' : '—'}</td>
         <td class="num ${r.r24 !== null && r.r24 !== undefined ? rCls(r.r24) : ''}">${r.r24 !== null && r.r24 !== undefined ? fmtPct(r.r24) : '—'}</td>
         <td class="trend">${spark(trend, '#57B6FF')}</td></tr>`;
     }).join('');
@@ -515,7 +515,7 @@ async function renderCampaigns() {
       <td><div class="cell-main">${escapeHtml(a.advertiser)}</div><div class="cell-sub">${a.campaignsCount} ${plural(a.campaignsCount, 'кампания', 'кампании', 'кампаний')}</div></td>
       <td class="num">${a.campaignsCount}</td><td class="num">${fmtM(a.totalPrice)}</td><td class="num">${fmtN(a.totalSubs)}</td>
       <td class="num" style="color:var(--green)">${fmtM(a.totalRevenue)}</td>
-      <td class="num">${a.avgCps !== null && a.avgCps !== undefined ? '$' + fmt1(a.avgCps) : '—'}</td>
+      <td class="num">${a.avgCps !== null && a.avgCps !== undefined ? fmt1(a.avgCps) + ' ₽' : '—'}</td>
       <td class="num ${a.roi === null ? '' : a.roi >= 100 ? 'r-good' : a.roi >= 70 ? 'r-mid' : 'r-bad'}">${a.roi === null ? '—' : fmtPct(a.roi)}</td>
       <td class="num ${a.avgRetention24h !== null && a.avgRetention24h !== undefined ? rCls(a.avgRetention24h) : ''}">${a.avgRetention24h !== null && a.avgRetention24h !== undefined ? fmtPct(a.avgRetention24h) : '—'}</td>
       <td class="trend">${spark(a.trend, '#3DDC97')}</td></tr>`).join('');
@@ -552,10 +552,10 @@ $('#exportBtn').addEventListener('click', () => {
   if (!view || !view.rows.length) { toast('Нет данных для экспорта', 'warn'); return; }
   const rows = [];
   if (view.mode === 'links') {
-    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Заходы', 'Подписки', 'Выручка USD', 'CPS USD']);
+    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Заходы', 'Подписки', 'Выручка ₽', 'CPS ₽']);
     view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.joins, r.subs, r.revenue, r.cps !== null ? r.cps.toFixed(2) : '']));
   } else {
-    rows.push(['Рекламодатель', 'Кампаний', 'Закупки USD', 'Подписки', 'Выручка USD', 'Ср. CPS', 'ROI %']);
+    rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. CPS', 'ROI %']);
     view.rows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '']));
   }
   const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
@@ -614,7 +614,7 @@ function renderCampaignModal(camp, hist) {
         <div class="m-stat"><b>${fmtN(totJoins)}</b><span>заходы</span></div>
         <div class="m-stat"><b>${fmtN(totSubs)}</b><span>подписки</span></div>
         <div class="m-stat"><b style="color:var(--green)">${fmtM(totRevenue)}</b><span>выручка</span></div>
-        <div class="m-stat"><b>${totSubs ? '$' + fmt1(camp.price / totSubs) : '—'}</b><span>CPS</span></div>
+        <div class="m-stat"><b>${totSubs ? fmt1(camp.price / totSubs) + ' ₽' : '—'}</b><span>CPS</span></div>
       </div>
       <div class="m-body">
         <section class="m-sec">
@@ -650,7 +650,7 @@ function renderCampaignModal(camp, hist) {
               <button class="btn tiny btn-primary move-btn" hidden>${IC.check} Перевесить</button>
               <div class="newcamp" hidden>
                 <input class="inp nc-adv" placeholder="Рекламодатель">
-                <input class="inp price nc-price mono" placeholder="Цена, $">
+                <input class="inp price nc-price mono" placeholder="Цена, ₽">
                 <button class="btn tiny btn-primary nc-go">Создать и перевесить</button>
               </div>
             </div>
@@ -666,7 +666,7 @@ function renderCampaignModal(camp, hist) {
             <div class="tl-it">
               <span class="tl-ic" style="--c:${ev.c}">${ev.i}</span>
               <div class="tl-tx"><b>${ev.l}</b><span>${escapeHtml(link?.label || 'без названия')} · ID ${escapeHtml(e.tgUserId)}</span></div>
-              <div class="tl-meta">${e.amount ? `<span class="amt">+$${fmt1(e.amount)}</span>` : ''}${dStamp(e.ts)}</div>
+              <div class="tl-meta">${e.amount ? `<span class="amt">+${fmt1(e.amount)} ₽</span>` : ''}${dStamp(e.ts)}</div>
             </div>`;
           }).join('') : '<div style="font-size:12px;color:var(--dim);padding:8px 0">событий нет</div>'}
           </div>
