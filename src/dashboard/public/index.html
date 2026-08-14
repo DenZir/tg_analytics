@@ -222,7 +222,6 @@ th.num{text-align:right}
 .chip{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:6px;letter-spacing:.02em;white-space:nowrap}
 .t-invite{color:#7CC6FF;background:rgba(87,182,255,.12)}
 .t-closed{color:#B7A9FF;background:rgba(155,140,255,.13)}
-.t-deep{color:#FFC97E;background:rgba(255,180,84,.12)}
 .t-proj{color:#8CE8C3;background:rgba(61,220,151,.1)}
 .t-bot{color:#FFA3C0;background:rgba(255,107,150,.1)}
 .chip.neutral{color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--line)}
@@ -242,23 +241,6 @@ th.num{text-align:right}
 .empty h4{font:700 15px var(--body)}
 .empty p{font-size:12.5px;color:var(--muted);max-width:340px}
 .empty p b{color:var(--text)}
-
-/* ============ ПРИВАТКИ ============ */
-.pv-grid{display:grid;gap:14px}
-#pvKpis{grid-template-columns:repeat(3,1fr)}
-.funnel{padding:20px 20px 24px;display:flex;flex-direction:column;gap:4px}
-.f-stage{display:grid;grid-template-columns:110px 1fr 130px;gap:14px;align-items:center}
-.f-lbl{font:600 12px var(--body);color:var(--muted);text-align:right}
-.f-bar{height:44px;border-radius:9px;background:rgba(255,255,255,.035);border:1px solid var(--line);overflow:hidden;position:relative}
-.f-bar i{display:block;height:100%;width:0;border-radius:8px 0 0 8px;transition:width 1.1s var(--ease);position:relative}
-.f-bar i::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(-55deg,transparent 0 10px,rgba(255,255,255,.05) 10px 11px)}
-.in .f-bar i{width:var(--w)}
-.f-val{text-align:right}
-.f-val b{font:600 15px var(--mono)}
-.f-val span{display:block;font-size:10px;color:var(--dim);margin-top:2px}
-.f-conv{display:flex;align-items:center;gap:10px;margin:2px 0 2px 124px;color:var(--dim);font:500 10.5px var(--mono)}
-.f-conv::before{content:'';width:14px;border-top:1px dashed var(--line2)}
-.f-conv b{color:var(--amber)}
 
 /* ============ ПРОЕКТЫ ============ */
 .pr-grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;align-items:start}
@@ -349,7 +331,6 @@ tr.flash td{animation:flash 1.6s ease}
   .ov-grid,.pr-grid{grid-template-columns:1fr}
   .form-card{position:static}
   .kpis{grid-template-columns:repeat(2,1fr)}
-  #pvKpis{grid-template-columns:repeat(2,1fr)}
 }
 
 /* ============ REDUCED MOTION ============ */
@@ -357,7 +338,7 @@ tr.flash td{animation:flash 1.6s ease}
   *,*::before,*::after{animation-duration:.001ms!important;animation-delay:0ms!important;transition-duration:.001ms!important}
   .rv,.screen.active .tbl tbody tr{opacity:1;transform:none}
   .spark-l{stroke-dashoffset:0}
-  .in .t5-bar i,.in .ret-bar i,.in .f-bar i{width:var(--w)}
+  .in .t5-bar i,.in .ret-bar i{width:var(--w)}
   html{scroll-behavior:auto}
 }
 </style>
@@ -377,7 +358,6 @@ tr.flash td{animation:flash 1.6s ease}
   <nav id="nav">
     <button class="nav-it on" data-scr="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="lbl">Обзор</span></button>
     <button class="nav-it" data-scr="campaigns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 17 5v13L3 12.5v-2z"/><path d="M7 13.5V18a2 2 0 0 0 4 0v-3"/><path d="M17 8.5c1.7.6 2.5 1.7 2.5 3s-.8 2.4-2.5 3"/></svg><span class="lbl">Кампании</span><span class="nbadge" id="nb-camp">—</span></button>
-    <button class="nav-it" data-scr="privatka"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16l-6 7v4.5l-4 2.5v-7L4 5z"/></svg><span class="lbl">Приватки</span></button>
     <button class="nav-it" data-scr="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3.5 13 8.5 4.7L20.5 13"/><path d="m3.5 17 8.5 4.7L20.5 17" opacity=".45"/></svg><span class="lbl">Проекты</span><span class="nbadge" id="nb-proj">—</span></button>
   </nav>
   <div class="side-spacer"></div>
@@ -480,23 +460,6 @@ tr.flash td{animation:flash 1.6s ease}
     </div>
     <div class="hint-row">Клик по строке — карточка кампании: теги, ссылки с перевесом, история событий</div>
   </article>
-</section>
-
-<!-- ========== ЭКРАН: ПРИВАТКИ ========== -->
-<section class="screen" id="scr-privatka">
-  <div class="kpis" id="pvKpis"></div>
-  <div class="pv-grid">
-    <article class="card hero rv" style="--i:4">
-      <div class="card-h"><span class="card-idx">01 / воронка</span><div><div class="card-t">Воронка приваток: лид → покупка</div><div class="card-s">Агрегат по всем deep-ссылкам</div></div></div>
-      <div class="funnel" id="funnel"></div>
-    </article>
-    <article class="card table-card rv" style="--i:5">
-      <div class="card-h"><span class="card-idx">02 / deep-links</span><div><div class="card-t">Разбивка по deep-ссылкам</div></div></div>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr>
-        <th>Ссылка</th><th>Бот-приватка</th><th>Кампания</th><th class="num">Лиды</th><th class="num">Покупки</th><th>Конверсия</th><th class="num">Выручка</th><th class="num">Чек / лид</th>
-      </tr></thead><tbody id="pvBody"></tbody></table></div>
-    </article>
-  </div>
 </section>
 
 <!-- ========== ЭКРАН: ПРОЕКТЫ ========== -->

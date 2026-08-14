@@ -91,7 +91,7 @@ const EV = {
   payment:{l:'Оплата',c:'#3DDC97',i:IC.card}, renewal:{l:'Продление',c:'#3DDC97',i:IC.rot},
   churn:{l:'Отписка',c:'#FF6B7A',i:IC.xcirc}, join_request:{l:'Заявка на вход',c:'#FFB454',i:IC.clock}
 };
-const LT = {invite:{l:'Инвайт',cls:'t-invite'}, invite_closed:{l:'Закрытый',cls:'t-closed'}, deeplink:{l:'Диплинк',cls:'t-deep'}};
+const LT = {invite:{l:'Инвайт',cls:'t-invite'}, invite_closed:{l:'Закрытый',cls:'t-closed'}};
 const FUNNEL_ENTRY_TYPES = ['join', 'lead', 'trial_start'];
 
 function eventMeta(type) { return EV[type] || { l: type, c: '#8A94A6', i: IC.zap }; }
@@ -123,7 +123,7 @@ function toast(msg, type = 'ok') {
 /* ================= ХРАНИЛИЩЕ ДАННЫХ ================= */
 const DATA = {
   metrics: null,        // { campaigns, daily }
-  extended: null,       // { campaigns, advertisers, privatka }
+  extended: null,       // { campaigns, advertisers }
   projects: [],
   projectsById: {},
   recentEvents: [],
@@ -175,7 +175,7 @@ function invalidateHistories() {
 }
 
 // Fetches /api/campaigns/:id/history for every known campaign exactly once
-// and caches the Map; reused by the Кампании (links mode), Приватки and
+// and caches the Map; reused by the Кампании (links mode) and
 // Проекты screens instead of re-fetching per screen.
 function getCampaignHistories() {
   if (!DATA.historiesPromise) {
@@ -284,7 +284,7 @@ async function computeLinkRows() {
         revenue: stat.revenue,
         cps: stat.subs ? stat.priceAlloc / stat.subs : null,
         r24: camp.retention24h,
-        url: linkDisplayUrl(stat.link, camp.projectId),
+        url: linkDisplayUrl(stat.link),
         createdAt: hist.campaign?.createdAt || null,
       });
     }
@@ -292,29 +292,10 @@ async function computeLinkRows() {
   return rows;
 }
 
-/* ---- разрешение бота приватки и URL ссылки (см. бага в задании) ---- */
-function resolveBotUsername(projectId) {
-  const proj = DATA.projectsById[projectId];
-  if (!proj) return null;
-  if (proj.type === 'bot_subscription') return proj.botUsername || null;
-  if (proj.linkedProjectId) {
-    const linked = DATA.projectsById[proj.linkedProjectId];
-    if (linked && linked.botUsername) return linked.botUsername;
-  }
-  return null;
-}
-function linkDisplayUrl(link, campaignProjectId) {
+/* ---- URL ссылки для отображения ---- */
+function linkDisplayUrl(link) {
   if (!link) return null;
-  if (link.linkType === 'invite' || link.linkType === 'invite_closed') {
-    // telegramRef is already the full https://t.me/+... invite URL — never prepend anything.
-    return link.telegramRef;
-  }
-  if (link.linkType === 'deeplink') {
-    const username = resolveBotUsername(campaignProjectId);
-    if (!username) return null;
-    const clean = username.startsWith('@') ? username.slice(1) : username;
-    return `https://t.me/${clean}?start=${link.telegramRef}`;
-  }
+  // telegramRef is already the full https://t.me/+... invite URL — never prepend anything.
   return link.telegramRef;
 }
 
@@ -648,7 +629,7 @@ function renderCampaignModal(camp, hist) {
         <section class="m-sec">
           <div class="m-sec-h"><span class="card-idx">02 / ссылки</span><h3>Выданные ссылки и перевес</h3></div>
           ${links.map(l => {
-            const url = linkDisplayUrl(l, camp.projectId);
+            const url = linkDisplayUrl(l);
             const stat = linkStats.find(x => x.link.id === l.id) || { joins: 0 };
             const ltMeta = LT[l.linkType] || { l: l.linkType, cls: 'neutral' };
             return `
@@ -764,65 +745,6 @@ function closeModal() {
   setTimeout(() => { const root = $('#modalRoot'); if (root) root.innerHTML = ''; }, 220);
 }
 
-/* ================= ПРИВАТКИ (Лиды → Покупки, без триалов) ================= */
-async function renderPrivatka() {
-  const histories = await getCampaignHistories();
-  const items = (DATA.extended.privatka || []).map(p => {
-    const hist = histories.get(p.campaignId);
-    const link = hist?.links?.find(l => l.telegramRef === p.telegramRef && l.linkType === 'deeplink');
-    const projectId = hist?.campaign?.projectId;
-    const botUsername = projectId !== undefined ? resolveBotUsername(projectId) : null;
-    const url = link && projectId !== undefined ? linkDisplayUrl(link, projectId) : null;
-    const revenue = p.leadsCount > 0 && p.avgCheckPerLead !== null && p.avgCheckPerLead !== undefined
-      ? p.avgCheckPerLead * p.leadsCount : 0;
-    return { ...p, link, botUsername, url, revenue };
-  });
-
-  const leads = items.reduce((s, x) => s + x.leadsCount, 0);
-  const buyers = items.reduce((s, x) => s + x.purchasedCount, 0);
-  const revenue = items.reduce((s, x) => s + x.revenue, 0);
-  const conv = leads ? buyers / leads * 100 : 0;
-
-  const kpis = [
-    { lbl: 'Лиды всего', icon: IC.zap, c: '#9B8CFF', v: leads, f: fmtN, sub: 'уникальные заявки из deep-link' },
-    { lbl: 'Покупки', icon: IC.card, c: '#3DDC97', v: buyers, f: fmtN, sub: `конверсия ${fmtPct(conv)}` },
-    { lbl: 'Средний чек на лид', icon: IC.dollar, c: '#FFB454', v: leads ? revenue / leads : 0, f: v => '$' + fmt1(v), sub: 'выручка / лиды' },
-  ];
-  $('#pvKpis').innerHTML = kpis.map((k, i) => `
-    <article class="card kpi rv" style="--i:${i}">
-      <div class="kpi-top"><span class="kpi-ic" style="${hueBox(k.c)}">${k.icon}</span><span class="kpi-lbl">${k.lbl}</span></div>
-      <div class="kpi-val" id="pvv-${i}">—</div><div class="kpi-sub">${k.sub}</div>
-    </article>`).join('');
-  kpis.forEach((k, i) => countUp($('#pvv-' + i), k.v, k.f));
-
-  const stages = [['Лиды', leads, 100, '#9B8CFF'], ['Покупки', buyers, leads ? buyers / leads * 100 : 0, '#3DDC97']];
-  $('#funnel').innerHTML = stages.map((s, i) => {
-    const prev = i ? stages[i - 1][1] : 0;
-    const convStep = i ? `<div class="f-conv">↳ конверсия шага: <b>${prev ? fmtPct(s[1] / prev * 100) : '—'}</b></div>` : '';
-    return convStep + `<div class="f-stage"><span class="f-lbl">${s[0]}</span>
-      <div class="f-bar"><i style="--w:${Math.max(s[2], 2)}%;background:linear-gradient(90deg,${s[3]}55,${s[3]})"></i></div>
-      <div class="f-val"><b class="mono">${fmtN(s[1])}</b><span>${fmt1(s[2])}% от лидов</span></div></div>`;
-  }).join('');
-  requestAnimationFrame(() => $('#funnel').closest('.card').classList.add('in'));
-
-  if (!items.length) {
-    $('#pvBody').innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--dim);padding:22px">Deep-ссылок пока нет</td></tr>`;
-    return;
-  }
-  $('#pvBody').innerHTML = items.map((it, i) => {
-    const convL = it.conversionPct !== null && it.conversionPct !== undefined ? it.conversionPct : (it.leadsCount ? it.purchasedCount / it.leadsCount * 100 : 0);
-    return `<tr data-c="${it.campaignId}" style="--i:${i}">
-      <td><div class="cell-main">${escapeHtml(it.link?.label || 'без названия')}</div><div class="cell-sub">${it.url ? escapeHtml(it.url) : escapeHtml(it.telegramRef)}</div></td>
-      <td class="mono" style="font-size:12px">${it.botUsername ? '@' + escapeHtml(it.botUsername.replace(/^@/, '')) : '—'}</td>
-      <td><div class="cell-main" style="font-size:12.5px">${escapeHtml(it.advertiser)}</div><div class="cell-sub">#${it.campaignId}</div></td>
-      <td class="num">${fmtN(it.leadsCount)}</td><td class="num">${fmtN(it.purchasedCount)}</td>
-      <td><div class="convcell"><div class="bar"><i style="width:${Math.min(convL * 3, 100)}%"></i></div><span class="num" style="min-width:44px;text-align:right">${fmtPct(convL)}</span></div></td>
-      <td class="num" style="color:var(--green)">${fmtM(it.revenue)}</td>
-      <td class="num">${it.avgCheckPerLead !== null && it.avgCheckPerLead !== undefined ? '$' + fmt1(it.avgCheckPerLead) : '—'}</td></tr>`;
-  }).join('');
-  $$('#pvBody tr[data-c]').forEach(tr => tr.addEventListener('click', () => openCampaign(+tr.dataset.c)));
-}
-
 /* ================= ПРОЕКТЫ ================= */
 function typeLabel(t) { return t === 'channel' ? 'Канал' : 'Бот-приватка'; }
 function typeChipClass(t) { return t === 'channel' ? 't-proj' : 't-bot'; }
@@ -910,14 +832,12 @@ $('#projForm').addEventListener('submit', async e => {
 const SCREENS = {
   overview: { t: 'Обзор', s: 'Сводка по закупкам, подпискам и выручке · данные из dailyStats и событий', c: { p: 1, s: 0, e: 0 } },
   campaigns: { t: 'Кампании', s: 'Эффективность закупок: режимы «по ссылкам» и «по рекламодателям»', c: { p: 0, s: 1, e: 1 } },
-  privatka: { t: 'Приватки', s: 'Воронка deep-link: лид → покупка · боты-приватки', c: { p: 0, s: 0, e: 0 } },
   projects: { t: 'Проекты', s: 'Реестр каналов и ботов-приваток, связывание проектов', c: { p: 0, s: 0, e: 0 } },
 };
 
 async function renderCurrentScreen() {
   if (state.screen === 'overview') { renderKPIs(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
   else if (state.screen === 'campaigns') await renderCampaigns();
-  else if (state.screen === 'privatka') await renderPrivatka();
   else if (state.screen === 'projects') await renderProjects();
 }
 
@@ -931,7 +851,6 @@ async function go(scr) {
   $('#periodSeg').hidden = !m.c.p; $('#searchWrap').hidden = !m.c.s; $('#exportBtn').hidden = !m.c.e;
   if (scr === 'overview') { renderKPIs(); ensureChart(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
   if (scr === 'campaigns') await renderCampaigns();
-  if (scr === 'privatka') await renderPrivatka();
   if (scr === 'projects') await renderProjects();
 }
 $$('#nav .nav-it').forEach(b => b.addEventListener('click', () => go(b.dataset.scr)));
