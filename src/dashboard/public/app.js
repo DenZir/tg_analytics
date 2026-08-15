@@ -946,7 +946,37 @@ async function renderUtm() {
   renderUtmKpis(links);
   renderUtmSources(sources);
   renderUtmLinksTable(links);
+  populateUtmBotSelect();
 }
+
+// Populate the "Бот приватки" select from registered bot_subscription projects
+// (see Проекты screen) instead of relying on the admin to remember/retype a
+// bot username by hand every time — that's exactly what produced deep-link-less
+// UTM links before this fix. Falls back to a manual text field for bots that
+// aren't registered as a project yet.
+function populateUtmBotSelect() {
+  const sel = $('#u-bot-select');
+  if (!sel) return;
+  const bots = (DATA.projects || []).filter(p => p.type === 'bot_subscription' && p.botUsername);
+  const prevValue = sel.value;
+
+  const opts = [`<option value="">${bots.length ? '— без диплинка —' : '— нет зарегистрированных ботов —'}</option>`];
+  opts.push(...bots.map(p => `<option value="${escapeHtml(p.botUsername)}">${escapeHtml(p.name)} (@${escapeHtml(p.botUsername)})</option>`));
+  opts.push('<option value="__custom">Другой (ввести вручную)…</option>');
+  sel.innerHTML = opts.join('');
+
+  if (prevValue && [...sel.options].some(o => o.value === prevValue)) {
+    sel.value = prevValue;
+  } else if (bots.length === 1) {
+    sel.value = bots[0].botUsername;
+  } else {
+    sel.value = '';
+  }
+  $('#u-bot-custom-wrap').hidden = sel.value !== '__custom';
+}
+$('#u-bot-select').addEventListener('change', () => {
+  $('#u-bot-custom-wrap').hidden = $('#u-bot-select').value !== '__custom';
+});
 
 function showUtmResult(value, kind) {
   const box = $('#utmResult');
@@ -971,7 +1001,8 @@ $('#utmForm').addEventListener('submit', async e => {
   const label = $('#u-label').value.trim();
   const spendRaw = $('#u-spend').value.trim();
   const slug = $('#u-slug').value.trim();
-  let botUsername = $('#u-bot').value.trim();
+  const botSel = $('#u-bot-select').value;
+  let botUsername = botSel === '__custom' ? $('#u-bot').value.trim() : botSel;
   if (botUsername.startsWith('@')) botUsername = botUsername.slice(1);
   if (!utmSource || !utmMedium || !utmCampaign) { toast('Заполните источник, канал и кампанию', 'warn'); return; }
 
@@ -989,9 +1020,13 @@ $('#utmForm').addEventListener('submit', async e => {
   try {
     const created = await fetchJSON('/api/utm/links', { method: 'POST', body: JSON.stringify(body) });
     e.target.reset();
-    if (created.deepLink) showUtmResult(created.deepLink, 'link');
-    else showUtmResult(created.slug, 'slug');
-    toast(`UTM-ссылка «${created.slug}» создана`);
+    if (created.deepLink) {
+      showUtmResult(created.deepLink, 'link');
+      toast(`UTM-ссылка «${created.slug}» создана`);
+    } else {
+      showUtmResult(created.slug, 'slug');
+      toast(`UTM-ссылка «${created.slug}» создана БЕЗ диплинка — бот не выбран`, 'warn');
+    }
     await renderUtm();
   } catch (err) {
     toast(`Не удалось создать UTM-ссылку: ${err.message}`, 'warn');

@@ -28,6 +28,14 @@ export interface CreateUtmLinkInput {
   label?: string;
   spend?: number;
   slug?: string;
+  botUsername?: string;
+}
+
+// A deep link only exists once a bot username is known — either passed in at
+// creation time, or (for links created before botUsername was persisted)
+// never. Kept as one place so create/list/detail all agree on the format.
+export function buildDeepLink(link: { slug: string; botUsername?: string | null }): string | null {
+  return link.botUsername ? `https://t.me/${link.botUsername}?start=${link.slug}` : null;
 }
 
 const SLUG_GENERATION_ATTEMPTS = 3;
@@ -65,6 +73,7 @@ export async function createUtmLink(input: CreateUtmLinkInput) {
       utmContent: input.utmContent,
       label: input.label,
       spend: input.spend,
+      botUsername: input.botUsername,
     })
     .returning();
 
@@ -193,6 +202,7 @@ export async function listUtmLinksWithMetrics() {
     const rows = eventsByLink.get(link.id) || [];
     return {
       ...link,
+      deepLink: buildDeepLink(link),
       ...computeMetrics(rows, link.spend ?? null),
     };
   });
@@ -234,6 +244,7 @@ export async function getUtmLinkDetail(id: number) {
 
   return {
     ...link,
+    deepLink: buildDeepLink(link),
     ...metrics,
     dailySeries,
   };

@@ -31,6 +31,7 @@ import {
   getUtmSourceRollup,
   recordUtmHit,
   recordUtmPurchase,
+  buildDeepLink,
 } from "./services/utm.js";
 import { eq } from "drizzle-orm";
 
@@ -381,14 +382,10 @@ app.post("/api/utm/links", async (req, res) => {
       label: label !== undefined ? String(label) : undefined,
       spend: spend !== undefined ? Number(spend) : undefined,
       slug: slug !== undefined ? String(slug) : undefined,
+      botUsername: botUsername ? String(botUsername) : undefined,
     });
 
-    const response: Record<string, unknown> = { ...link };
-    if (botUsername) {
-      response.deepLink = `https://t.me/${botUsername}?start=${link.slug}`;
-    }
-
-    res.status(201).json(response);
+    res.status(201).json({ ...link, deepLink: buildDeepLink(link) });
   } catch (error: any) {
     if (
       error.message &&

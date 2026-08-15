@@ -97,6 +97,7 @@ export const utmLinks = sqliteTable("utm_links", {
   utmContent: text("utm_content"),
   label: text("label"),
   spend: real("spend"),
+  botUsername: text("bot_username"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

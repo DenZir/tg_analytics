@@ -1,0 +1,1 @@
+ALTER TABLE `utm_links` ADD `bot_username` text;

@@ -43,6 +43,13 @@
       "when": 1786731168072,
       "tag": "0005_panoramic_nomad",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786774627287,
+      "tag": "0006_organic_centennial",
+      "breakpoints": true
     }
   ]
 }

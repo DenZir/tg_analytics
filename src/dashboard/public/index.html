@@ -495,7 +495,8 @@ tr.flash td{animation:flash 1.6s ease}
         <div class="fld"><label>Название</label><input class="inp" id="u-label" placeholder="Человекочитаемое описание"></div>
         <div class="fld"><label>Бюджет ₽</label><input class="inp mono" id="u-spend" type="number" min="0" step="0.01" placeholder="для расчёта CAC/ROI"></div>
         <div class="fld"><label>Свой slug</label><input class="inp mono" id="u-slug" placeholder="автогенерация, если пусто"></div>
-        <div class="fld"><label>Username бота</label><input class="inp mono" id="u-bot" placeholder="@my_bot"></div>
+        <div class="fld"><label>Бот приватки</label><select class="inp mono" id="u-bot-select"></select></div>
+        <div class="fld" id="u-bot-custom-wrap" hidden><label>Username бота вручную</label><input class="inp mono" id="u-bot" placeholder="@my_bot"></div>
         <button class="btn btn-primary" type="submit" style="justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Создать ссылку</button>
         <div class="form-note" id="utmResult" hidden></div>
         <div class="form-note">UTM-метки — независимая система трекинга источников трафика, отдельная от ссылок кампаний.</div>
