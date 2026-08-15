@@ -310,8 +310,8 @@ function renderKPIs() {
   const activeInPrev = prevDates ? countActiveCampaigns(prevDates) : null;
 
   const dl = (curVal, prevVal, goodUp = true) => {
-    if (prevVal === null || prevVal === undefined) return '<span class="delta flat">нет пред. периода</span>';
-    if (!prevVal) return '<span class="delta flat">новый период</span>';
+    if (prevVal === null || prevVal === undefined) return '<span class="delta flat">нет данных</span>';
+    if (!prevVal) return '<span class="delta flat">новое</span>';
     const p = (curVal - prevVal) / prevVal * 100, up = p >= 0, good = goodUp ? up : !up;
     return `<span class="delta ${good ? 'up' : 'dn'}">${up ? '+' : '−'}${fmt1(Math.abs(p))}%</span>`;
   };
@@ -323,7 +323,7 @@ function renderKPIs() {
 
   const cards = [
     { lbl: 'Кампаний', icon: IC.target, c: '#57B6FF', val: totalCampaigns, fmt: fmtN,
-      delta: prevDates ? dl(activeInCur, activeInPrev) : '<span class="delta flat">за весь период</span>',
+      delta: prevDates ? dl(activeInCur, activeInPrev) : '<span class="delta flat">весь период</span>',
       sub: `закупки на ${fmtM(totalPrice)}`, sparkV: sparkSubs },
     { lbl: 'Подписчики', icon: IC.users, c: '#9B8CFF', val: cur.subs, fmt: fmtN,
       delta: dl(cur.subs, prev ? prev.subs : null),
