@@ -159,6 +159,7 @@ export async function getAdvertiserStats() {
     let totalSubs = 0;
     let totalRevenue = 0;
     const retentions24: number[] = [];
+    const retentions48: number[] = [];
 
     for (const c of campList) {
       const cStats = statsList.filter((s) => s.campaignId === c.id);
@@ -169,11 +170,17 @@ export async function getAdvertiserStats() {
       if (ret.retention24h !== null) {
         retentions24.push(ret.retention24h);
       }
+      if (ret.retention48h !== null) {
+        retentions48.push(ret.retention48h);
+      }
     }
 
     const avgCps = totalSubs > 0 ? Number((totalPrice / totalSubs).toFixed(2)) : null;
     const avgRetention24h = retentions24.length > 0
       ? Number((retentions24.reduce((sum, r) => sum + r, 0) / retentions24.length).toFixed(2))
+      : null;
+    const avgRetention48h = retentions48.length > 0
+      ? Number((retentions48.reduce((sum, r) => sum + r, 0) / retentions48.length).toFixed(2))
       : null;
 
     result.push({
@@ -184,6 +191,7 @@ export async function getAdvertiserStats() {
       totalRevenue,
       avgCps,
       avgRetention24h,
+      avgRetention48h,
     });
   }
 
