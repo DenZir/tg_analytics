@@ -42,6 +42,19 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// Serve the mobile build for phone browsers hitting the root URL, so there's
+// no separate address to remember — /index.html and /mobile.html stay
+// reachable directly (unaffected by this check) for anyone who wants to force
+// one or the other.
+const MOBILE_UA = /Android|iPhone|iPod|Windows Phone|BlackBerry|IEMobile|Opera Mini/i;
+app.get("/", (req, res, next) => {
+  if (MOBILE_UA.test(req.headers["user-agent"] || "")) {
+    return res.sendFile(path.join(__dirname, "dashboard/public/mobile.html"));
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, "dashboard/public")));
 
 // API Authentication Middleware
