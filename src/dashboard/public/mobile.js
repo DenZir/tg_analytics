@@ -332,7 +332,7 @@ function renderKPIs() {
     { lbl: 'Выручка', icon: IC.rub, c: '#3DDC97', val: cur.revenue, fmt: fmtM,
       delta: dl(cur.revenue, prev ? prev.revenue : null),
       sub: prev ? `${fmtM(prev.revenue)} за пред. период` : 'за выбранный период', sparkV: sparkRev },
-    { lbl: 'Ср. CPS', icon: IC.cps, c: '#FFB454', val: cps, fmt: v => fmt1(v) + ' ₽',
+    { lbl: 'Доход/подписчик', icon: IC.cps, c: '#FFB454', val: cps, fmt: v => fmt1(v) + ' ₽',
       delta: dl(cps, prev ? prevCps : null, false),
       sub: `выручка / подписчики · ${period === 'all' ? 'весь период' : period + ' дн'}`, sparkV: sparkCps },
   ];
@@ -418,13 +418,13 @@ function ensureChart() {
   chart = new Chart(ctx, { data: { labels: w.labels, datasets: [
     { type: 'bar', label: 'Подписки', data: w.subs, backgroundColor: gA, borderRadius: 3, barPercentage: .55, categoryPercentage: .72, yAxisID: 'y', order: 3 },
     { type: 'line', label: 'Выручка', data: w.rev, borderColor: '#3DDC97', backgroundColor: gG, fill: true, tension: .35, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, yAxisID: 'y1', order: 1 },
-    { type: 'line', label: 'CPS', data: w.cps, borderColor: '#9B8CFF', borderDash: [4, 4], borderWidth: 1.6, tension: .35, pointRadius: 0, yAxisID: 'y2', hidden: true, order: 2 },
+    { type: 'line', label: 'Доход/подписчик', data: w.cps, borderColor: '#9B8CFF', borderDash: [4, 4], borderWidth: 1.6, tension: .35, pointRadius: 0, yAxisID: 'y2', hidden: true, order: 2 },
   ] }, options: {
     responsive: true, maintainAspectRatio: false, animation: RM ? false : { duration: 700, easing: 'easeOutQuart' },
     interaction: { mode: 'index', intersect: false },
     plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0F1520', borderColor: 'rgba(255,255,255,.12)', borderWidth: 1, padding: 10, cornerRadius: 10,
       titleColor: '#E8EDF4', bodyColor: '#9AA5B8', bodyFont: { family: 'JetBrains Mono', size: 10.5 }, usePointStyle: true, boxWidth: 7, boxHeight: 7,
-      callbacks: { label: c => ` ${c.dataset.label}: ` + (c.dataset.label === 'Выручка' ? fmtM(c.parsed.y) : c.dataset.label === 'CPS' ? c.parsed.y + ' ₽' : fmtN(c.parsed.y)) } } },
+      callbacks: { label: c => ` ${c.dataset.label}: ` + (c.dataset.label === 'Выручка' ? fmtM(c.parsed.y) : c.dataset.label === 'Доход/подписчик' ? c.parsed.y + ' ₽' : fmtN(c.parsed.y)) } } },
     scales: {
       x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { family: 'JetBrains Mono', size: 9.5 }, color: '#5A6478' } },
       y: { position: 'left', grid: { color: 'rgba(255,255,255,.05)' }, ticks: { maxTicksLimit: 5, font: { family: 'JetBrains Mono', size: 9.5 }, color: '#5A6478' } },
@@ -576,7 +576,6 @@ function renderCampaignSheet(camp, hist) {
   const events = hist.events || [];
   const tags = hist.tags || [];
   const linkStats = computeLinkStats(links, events);
-  const totJoins = linkStats.reduce((s, x) => s + x.joins, 0);
   const totSubs = linkStats.reduce((s, x) => s + x.subs, 0);
   const totRevenue = linkStats.reduce((s, x) => s + x.revenue, 0);
   const proj = DATA.projectsById[camp.projectId];
@@ -598,11 +597,10 @@ function renderCampaignSheet(camp, hist) {
         </div>
         <button class="x-btn" id="mClose">${IC.x}</button>
       </header>
-      <div class="m-stats">
-        <div class="m-stat"><b>${fmtN(totJoins)}</b><span>заходы</span></div>
+      <div class="m-stats" style="grid-template-columns:repeat(3,1fr)">
         <div class="m-stat"><b>${fmtN(totSubs)}</b><span>подписки</span></div>
         <div class="m-stat"><b style="color:var(--green)">${fmtM(totRevenue)}</b><span>выручка</span></div>
-        <div class="m-stat"><b>${totSubs ? fmt1(camp.price / totSubs) + ' ₽' : '—'}</b><span>CPS</span></div>
+        <div class="m-stat"><b>${totSubs ? fmt1(camp.price / totSubs) + ' ₽' : '—'}</b><span>₽/подписчик</span></div>
       </div>
       <div class="m-body">
         <section class="m-sec">
