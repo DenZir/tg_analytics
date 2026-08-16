@@ -142,6 +142,22 @@ export async function getAdvertiserStats() {
   const campaignsList = await db.select().from(campaigns);
   const statsList = await db.select().from(dailyStats);
 
+  // Unique first-time buyers (payment events) attributed to each campaign via its links.
+  // Used for avgCps ("₽/покупка" = ad spend per privatka purchase) — deliberately NOT the
+  // channel-join count, since a campaign's ad spend buys channel subscribers but the cost
+  // that matters here is cost per paying privatka customer they convert into.
+  const paymentRows = await db
+    .select({ campaignId: links.campaignId, tgUserId: events.tgUserId })
+    .from(events)
+    .innerJoin(links, eq(events.linkId, links.id))
+    .where(eq(events.eventType, EVENT_TYPES.PAYMENT));
+  const buyersByCampaign = new Map<number, Set<string>>();
+  for (const row of paymentRows) {
+    const set = buyersByCampaign.get(row.campaignId) ?? new Set<string>();
+    set.add(row.tgUserId);
+    buyersByCampaign.set(row.campaignId, set);
+  }
+
   // Group campaigns by advertiser
   const advertiserMap = new Map<string, typeof campaignsList>();
   for (const c of campaignsList) {
@@ -157,6 +173,7 @@ export async function getAdvertiserStats() {
     const totalPrice = campList.reduce((sum, c) => sum + (c.price || 0), 0);
 
     let totalSubs = 0;
+    let totalBuyers = 0;
     let totalRevenue = 0;
     const retentions24: number[] = [];
     const retentions48: number[] = [];
@@ -165,6 +182,7 @@ export async function getAdvertiserStats() {
       const cStats = statsList.filter((s) => s.campaignId === c.id);
       totalSubs += cStats.reduce((sum, s) => sum + (s.subs || 0), 0);
       totalRevenue += cStats.reduce((sum, s) => sum + (s.revenue || 0), 0);
+      totalBuyers += buyersByCampaign.get(c.id)?.size ?? 0;
 
       const ret = await getRetentionStats(c.id);
       if (ret.retention24h !== null) {
@@ -175,7 +193,7 @@ export async function getAdvertiserStats() {
       }
     }
 
-    const avgCps = totalSubs > 0 ? Number((totalPrice / totalSubs).toFixed(2)) : null;
+    const avgCps = totalBuyers > 0 ? Number((totalPrice / totalBuyers).toFixed(2)) : null;
     const avgRetention24h = retentions24.length > 0
       ? Number((retentions24.reduce((sum, r) => sum + r, 0) / retentions24.length).toFixed(2))
       : null;

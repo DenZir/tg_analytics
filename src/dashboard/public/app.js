@@ -250,10 +250,11 @@ function computeLinkStats(links, events) {
     const entryEvents = linkEvents.filter(e => FUNNEL_ENTRY_TYPES.includes(e.eventType));
     const joins = entryEvents.length;
     const subs = new Set(entryEvents.map(e => e.tgUserId)).size;
+    const buyers = new Set(linkEvents.filter(e => e.eventType === 'payment').map(e => e.tgUserId)).size;
     const revenue = linkEvents
       .filter(e => e.eventType === 'payment' || e.eventType === 'renewal')
       .reduce((s, e) => s + (e.amount || 0), 0);
-    return { link: l, joins, subs, revenue };
+    return { link: l, joins, subs, buyers, revenue };
   });
 }
 // Best-effort split of a campaign's (contractually per-campaign) price across
@@ -283,8 +284,9 @@ async function computeLinkRows() {
         link: stat.link,
         joins: stat.joins,
         subs: stat.subs,
+        buyers: stat.buyers,
         revenue: stat.revenue,
-        cps: stat.subs ? stat.priceAlloc / stat.subs : null,
+        cps: stat.buyers ? stat.priceAlloc / stat.buyers : null,
         r24: camp.retention24h,
         r48: camp.retention48h,
         url: linkDisplayUrl(stat.link),
@@ -454,8 +456,8 @@ function refreshChart() {
 }
 
 /* ================= КАМПАНИИ ================= */
-function headLinks() { return `<tr><th>Ссылка</th><th>Рекламодатель</th><th>Тип</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">₽/подписчик</th><th class="num">R24ч</th><th class="num">R48ч</th><th>Тренд</th></tr>`; }
-function headAdv() { return `<tr><th>Рекламодатель</th><th class="num">Кампаний</th><th class="num">Закупки</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">Ср. ₽/подписчик</th><th class="num">ROI</th><th class="num">Ср. R24ч</th><th class="num">Ср. R48ч</th><th>Тренд</th></tr>`; }
+function headLinks() { return `<tr><th>Ссылка</th><th>Рекламодатель</th><th>Тип</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">₽/покупка</th><th class="num">R24ч</th><th class="num">R48ч</th><th>Тренд</th></tr>`; }
+function headAdv() { return `<tr><th>Рекламодатель</th><th class="num">Кампаний</th><th class="num">Закупки</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">Ср. ₽/покупка</th><th class="num">ROI</th><th class="num">Ср. R24ч</th><th class="num">Ср. R48ч</th><th>Тренд</th></tr>`; }
 
 function toggleEmpty(show) {
   const empty = $('#campEmpty');
@@ -574,10 +576,10 @@ $('#exportBtn').addEventListener('click', () => {
   if (!view || !view.rows.length) { toast('Нет данных для экспорта', 'warn'); return; }
   const rows = [];
   if (view.mode === 'links') {
-    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', 'R24ч %', 'R48ч %']);
+    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/покупка', 'R24ч %', 'R48ч %']);
     view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
   } else {
-    rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
+    rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/покупка', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
     view.rows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
   }
   const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
@@ -611,6 +613,7 @@ function renderCampaignModal(camp, hist) {
   const tags = hist.tags || [];
   const linkStats = computeLinkStats(links, events);
   const totSubs = linkStats.reduce((s, x) => s + x.subs, 0);
+  const totBuyers = linkStats.reduce((s, x) => s + x.buyers, 0);
   const totRevenue = linkStats.reduce((s, x) => s + x.revenue, 0);
   const proj = DATA.projectsById[camp.projectId];
   const createdAt = hist.campaign?.createdAt ? dDate(hist.campaign.createdAt) : '—';
@@ -634,7 +637,7 @@ function renderCampaignModal(camp, hist) {
       <div class="m-stats" style="grid-template-columns:repeat(3,1fr)">
         <div class="m-stat"><b>${fmtN(totSubs)}</b><span>подписки</span></div>
         <div class="m-stat"><b style="color:var(--green)">${fmtM(totRevenue)}</b><span>выручка</span></div>
-        <div class="m-stat"><b>${totSubs ? fmt1(camp.price / totSubs) + ' ₽' : '—'}</b><span>₽/подписчик</span></div>
+        <div class="m-stat"><b>${totBuyers ? fmt1(camp.price / totBuyers) + ' ₽' : '—'}</b><span>₽/покупка</span></div>
       </div>
       <div class="m-body">
         <section class="m-sec">
