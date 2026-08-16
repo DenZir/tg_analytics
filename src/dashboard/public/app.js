@@ -454,8 +454,8 @@ function refreshChart() {
 }
 
 /* ================= КАМПАНИИ ================= */
-function headLinks() { return `<tr><th>Ссылка</th><th>Рекламодатель</th><th>Тип</th><th class="num">Заходы</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">CPS</th><th class="num">R24ч</th><th class="num">R48ч</th><th>Тренд</th></tr>`; }
-function headAdv() { return `<tr><th>Рекламодатель</th><th class="num">Кампаний</th><th class="num">Закупки</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">Ср. CPS</th><th class="num">ROI</th><th class="num">Ср. R24ч</th><th class="num">Ср. R48ч</th><th>Тренд</th></tr>`; }
+function headLinks() { return `<tr><th>Ссылка</th><th>Рекламодатель</th><th>Тип</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">₽/подписчик</th><th class="num">R24ч</th><th class="num">R48ч</th><th>Тренд</th></tr>`; }
+function headAdv() { return `<tr><th>Рекламодатель</th><th class="num">Кампаний</th><th class="num">Закупки</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">Ср. ₽/подписчик</th><th class="num">ROI</th><th class="num">Ср. R24ч</th><th class="num">Ср. R48ч</th><th>Тренд</th></tr>`; }
 
 function toggleEmpty(show) {
   const empty = $('#campEmpty');
@@ -471,7 +471,7 @@ async function renderCampaigns() {
   if (state.mode === 'links') {
     head.innerHTML = headLinks();
     $('#campCardSub').textContent = 'Каждая выданная рекламодателю ссылка и её вклад';
-    body.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--dim);padding:22px">Загрузка ссылок…</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--dim);padding:22px">Загрузка ссылок…</td></tr>`;
 
     const allRows = await computeLinkRows();
     if (state.mode !== 'links') return; // user switched mode while we were loading
@@ -493,7 +493,7 @@ async function renderCampaigns() {
         <td><div class="cell-main">${escapeHtml(l.label || 'без названия')}</div><div class="cell-sub">${r.url ? escapeHtml(r.url) : 'URL не определён'}</div></td>
         <td><div class="cell-main">${escapeHtml(c.advertiser)}</div><div class="cell-sub">#${c.id}${r.createdAt ? ' · ' + dDate(r.createdAt) : ''}</div></td>
         <td><span class="chip ${ltMeta.cls}">${escapeHtml(ltMeta.l)}</span></td>
-        <td class="num">${fmtN(r.joins)}</td><td class="num">${fmtN(r.subs)}</td>
+        <td class="num">${fmtN(r.subs)}</td>
         <td class="num" style="color:var(--green)">${fmtM(r.revenue)}</td>
         <td class="num">${r.cps !== null ? fmt1(r.cps) + ' ₽' : '—'}</td>
         <td class="num ${r.r24 !== null && r.r24 !== undefined ? rCls(r.r24) : ''}">${r.r24 !== null && r.r24 !== undefined ? fmtPct(r.r24) : '—'}</td>
@@ -574,10 +574,10 @@ $('#exportBtn').addEventListener('click', () => {
   if (!view || !view.rows.length) { toast('Нет данных для экспорта', 'warn'); return; }
   const rows = [];
   if (view.mode === 'links') {
-    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Заходы', 'Подписки', 'Выручка ₽', 'CPS ₽', 'R24ч %', 'R48ч %']);
-    view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.joins, r.subs, r.revenue, r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
+    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', 'R24ч %', 'R48ч %']);
+    view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
   } else {
-    rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. CPS', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
+    rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
     view.rows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
   }
   const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
