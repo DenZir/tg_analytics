@@ -194,6 +194,7 @@ export async function getAdvertiserStats() {
     }
 
     const avgCps = totalBuyers > 0 ? Number((totalPrice / totalBuyers).toFixed(2)) : null;
+    const avgPricePerSub = totalSubs > 0 ? Number((totalPrice / totalSubs).toFixed(2)) : null;
     const avgRetention24h = retentions24.length > 0
       ? Number((retentions24.reduce((sum, r) => sum + r, 0) / retentions24.length).toFixed(2))
       : null;
@@ -208,6 +209,7 @@ export async function getAdvertiserStats() {
       totalSubs,
       totalRevenue,
       avgCps,
+      avgPricePerSub,
       avgRetention24h,
       avgRetention48h,
     });

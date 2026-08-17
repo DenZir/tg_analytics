@@ -278,6 +278,7 @@ async function computeLinkRows() {
         buyers: stat.buyers,
         revenue: stat.revenue,
         cps: stat.buyers ? stat.priceAlloc / stat.buyers : null,
+        pricePerSub: stat.subs ? stat.priceAlloc / stat.subs : null,
         r24: camp.retention24h,
         r48: camp.retention48h,
         url: linkDisplayUrl(stat.link),
@@ -479,6 +480,7 @@ async function renderCampaigns() {
         <hr class="crow-sep">
         <div class="m-grid">
           <div class="m-cell"><span>Подписки</span><b>${fmtN(r.subs)}</b></div>
+          <div class="m-cell"><span>₽/подписчик</span><b>${r.pricePerSub !== null ? fmt1(r.pricePerSub) + ' ₽' : '—'}</b></div>
           <div class="m-cell"><span>₽/покупка</span><b>${r.cps !== null ? fmt1(r.cps) + ' ₽' : '—'}</b></div>
           <div class="m-cell"><span>R24ч</span><b class="${r.r24 !== null && r.r24 !== undefined ? rCls(r.r24) : ''}">${r.r24 !== null && r.r24 !== undefined ? fmtPct(r.r24) : '—'}</b></div>
           <div class="m-cell"><span>R48ч</span><b class="${r.r48 !== null && r.r48 !== undefined ? rCls(r.r48) : ''}">${r.r48 !== null && r.r48 !== undefined ? fmtPct(r.r48) : '—'}</b></div>
@@ -506,6 +508,7 @@ async function renderCampaigns() {
       <div class="m-grid">
         <div class="m-cell"><span>Закупки</span><b>${fmtM(a.totalPrice)}</b></div>
         <div class="m-cell"><span>Подписки</span><b>${fmtN(a.totalSubs)}</b></div>
+        <div class="m-cell"><span>Ср. ₽/подписчик</span><b>${a.avgPricePerSub !== null && a.avgPricePerSub !== undefined ? fmt1(a.avgPricePerSub) + ' ₽' : '—'}</b></div>
         <div class="m-cell"><span>Ср. ₽/покупка</span><b>${a.avgCps !== null && a.avgCps !== undefined ? fmt1(a.avgCps) + ' ₽' : '—'}</b></div>
         <div class="m-cell"><span>Ср. R24ч</span><b class="${a.avgRetention24h !== null && a.avgRetention24h !== undefined ? rCls(a.avgRetention24h) : ''}">${a.avgRetention24h !== null && a.avgRetention24h !== undefined ? fmtPct(a.avgRetention24h) : '—'}</b></div>
         <div class="m-cell"><span>Ср. R48ч</span><b class="${a.avgRetention48h !== null && a.avgRetention48h !== undefined ? rCls(a.avgRetention48h) : ''}">${a.avgRetention48h !== null && a.avgRetention48h !== undefined ? fmtPct(a.avgRetention48h) : '—'}</b></div>
@@ -542,11 +545,11 @@ $('#exportBtn').addEventListener('click', () => {
   if (!view || !view.rows.length) { toast('Нет данных для экспорта', 'warn'); return; }
   const rows = [];
   if (view.mode === 'links') {
-    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/покупка', 'R24ч %', 'R48ч %']);
-    view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
+    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'R24ч %', 'R48ч %']);
+    view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.pricePerSub !== null ? r.pricePerSub.toFixed(2) : '', r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
   } else {
-    rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/покупка', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
-    view.rows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
+    rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
+    view.rows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgPricePerSub ?? '', a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
   }
   const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-' + view.mode + '.csv'; a.click();
@@ -600,9 +603,10 @@ function renderCampaignSheet(camp, hist) {
         </div>
         <button class="x-btn" id="mClose">${IC.x}</button>
       </header>
-      <div class="m-stats" style="grid-template-columns:repeat(3,1fr)">
+      <div class="m-stats">
         <div class="m-stat"><b>${fmtN(totSubs)}</b><span>подписки</span></div>
         <div class="m-stat"><b style="color:var(--green)">${fmtM(totRevenue)}</b><span>выручка</span></div>
+        <div class="m-stat"><b>${totSubs ? fmt1(camp.price / totSubs) + ' ₽' : '—'}</b><span>₽/подписчик</span></div>
         <div class="m-stat"><b>${totBuyers ? fmt1(camp.price / totBuyers) + ' ₽' : '—'}</b><span>₽/покупка</span></div>
       </div>
       <div class="m-body">

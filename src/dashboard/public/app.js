@@ -287,6 +287,7 @@ async function computeLinkRows() {
         buyers: stat.buyers,
         revenue: stat.revenue,
         cps: stat.buyers ? stat.priceAlloc / stat.buyers : null,
+        pricePerSub: stat.subs ? stat.priceAlloc / stat.subs : null,
         r24: camp.retention24h,
         r48: camp.retention48h,
         url: linkDisplayUrl(stat.link),
@@ -456,8 +457,8 @@ function refreshChart() {
 }
 
 /* ================= КАМПАНИИ ================= */
-function headLinks() { return `<tr><th>Ссылка</th><th>Рекламодатель</th><th>Тип</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">₽/покупка</th><th class="num">R24ч</th><th class="num">R48ч</th><th>Тренд</th></tr>`; }
-function headAdv() { return `<tr><th>Рекламодатель</th><th class="num">Кампаний</th><th class="num">Закупки</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">Ср. ₽/покупка</th><th class="num">ROI</th><th class="num">Ср. R24ч</th><th class="num">Ср. R48ч</th><th>Тренд</th></tr>`; }
+function headLinks() { return `<tr><th>Ссылка</th><th>Рекламодатель</th><th>Тип</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">₽/подписчик</th><th class="num">₽/покупка</th><th class="num">R24ч</th><th class="num">R48ч</th><th>Тренд</th></tr>`; }
+function headAdv() { return `<tr><th>Рекламодатель</th><th class="num">Кампаний</th><th class="num">Закупки</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">Ср. ₽/подписчик</th><th class="num">Ср. ₽/покупка</th><th class="num">ROI</th><th class="num">Ср. R24ч</th><th class="num">Ср. R48ч</th><th>Тренд</th></tr>`; }
 
 function toggleEmpty(show) {
   const empty = $('#campEmpty');
@@ -473,7 +474,7 @@ async function renderCampaigns() {
   if (state.mode === 'links') {
     head.innerHTML = headLinks();
     $('#campCardSub').textContent = 'Каждая выданная рекламодателю ссылка и её вклад';
-    body.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--dim);padding:22px">Загрузка ссылок…</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--dim);padding:22px">Загрузка ссылок…</td></tr>`;
 
     const allRows = await computeLinkRows();
     if (state.mode !== 'links') return; // user switched mode while we were loading
@@ -497,6 +498,7 @@ async function renderCampaigns() {
         <td><span class="chip ${ltMeta.cls}">${escapeHtml(ltMeta.l)}</span></td>
         <td class="num">${fmtN(r.subs)}</td>
         <td class="num" style="color:var(--green)">${fmtM(r.revenue)}</td>
+        <td class="num">${r.pricePerSub !== null ? fmt1(r.pricePerSub) + ' ₽' : '—'}</td>
         <td class="num">${r.cps !== null ? fmt1(r.cps) + ' ₽' : '—'}</td>
         <td class="num ${r.r24 !== null && r.r24 !== undefined ? rCls(r.r24) : ''}">${r.r24 !== null && r.r24 !== undefined ? fmtPct(r.r24) : '—'}</td>
         <td class="num ${r.r48 !== null && r.r48 !== undefined ? rCls(r.r48) : ''}">${r.r48 !== null && r.r48 !== undefined ? fmtPct(r.r48) : '—'}</td>
@@ -521,6 +523,7 @@ async function renderCampaigns() {
       <td><div class="cell-main">${escapeHtml(a.advertiser)}</div><div class="cell-sub">${a.campaignsCount} ${plural(a.campaignsCount, 'кампания', 'кампании', 'кампаний')}</div></td>
       <td class="num">${a.campaignsCount}</td><td class="num">${fmtM(a.totalPrice)}</td><td class="num">${fmtN(a.totalSubs)}</td>
       <td class="num" style="color:var(--green)">${fmtM(a.totalRevenue)}</td>
+      <td class="num">${a.avgPricePerSub !== null && a.avgPricePerSub !== undefined ? fmt1(a.avgPricePerSub) + ' ₽' : '—'}</td>
       <td class="num">${a.avgCps !== null && a.avgCps !== undefined ? fmt1(a.avgCps) + ' ₽' : '—'}</td>
       <td class="num ${a.roi === null ? '' : a.roi >= 100 ? 'r-good' : a.roi >= 70 ? 'r-mid' : 'r-bad'}">${a.roi === null ? '—' : fmtPct(a.roi)}</td>
       <td class="num ${a.avgRetention24h !== null && a.avgRetention24h !== undefined ? rCls(a.avgRetention24h) : ''}">${a.avgRetention24h !== null && a.avgRetention24h !== undefined ? fmtPct(a.avgRetention24h) : '—'}</td>
@@ -576,11 +579,11 @@ $('#exportBtn').addEventListener('click', () => {
   if (!view || !view.rows.length) { toast('Нет данных для экспорта', 'warn'); return; }
   const rows = [];
   if (view.mode === 'links') {
-    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/покупка', 'R24ч %', 'R48ч %']);
-    view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
+    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'R24ч %', 'R48ч %']);
+    view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.pricePerSub !== null ? r.pricePerSub.toFixed(2) : '', r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
   } else {
-    rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/покупка', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
-    view.rows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
+    rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
+    view.rows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgPricePerSub ?? '', a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
   }
   const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-' + view.mode + '.csv'; a.click();
@@ -634,9 +637,10 @@ function renderCampaignModal(camp, hist) {
         </div>
         <button class="x-btn" id="mClose">${IC.x}</button>
       </header>
-      <div class="m-stats" style="grid-template-columns:repeat(3,1fr)">
+      <div class="m-stats">
         <div class="m-stat"><b>${fmtN(totSubs)}</b><span>подписки</span></div>
         <div class="m-stat"><b style="color:var(--green)">${fmtM(totRevenue)}</b><span>выручка</span></div>
+        <div class="m-stat"><b>${totSubs ? fmt1(camp.price / totSubs) + ' ₽' : '—'}</b><span>₽/подписчик</span></div>
         <div class="m-stat"><b>${totBuyers ? fmt1(camp.price / totBuyers) + ' ₽' : '—'}</b><span>₽/покупка</span></div>
       </div>
       <div class="m-body">
