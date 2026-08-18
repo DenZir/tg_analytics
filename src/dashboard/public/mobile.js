@@ -65,6 +65,16 @@ function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
+// Approximate geo breakdown chip, built from camp.geo (top buckets by pct,
+// e.g. [{flag:'🇷🇺',pct:62}, ...] -> "🇷🇺 62% · 🇺🇦 20% · 🌐 18%"). Omitted
+// entirely when there's no geo data yet.
+function geoChipRow(geo) {
+  if (!geo || !geo.length) return '';
+  const top = [...geo].sort((a, b) => b.pct - a.pct).slice(0, 4);
+  const text = top.map(g => `${g.flag} ${g.pct}%`).join(' · ');
+  return `<span class="chip neutral mono">${escapeHtml(text)}</span>`;
+}
+
 /* иконки */
 const ic = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const IC = {
@@ -599,6 +609,7 @@ function renderCampaignSheet(camp, hist) {
           <div class="m-chips">
             <span class="chip ${proj?.type === 'channel' ? 't-proj' : 't-bot'}">${escapeHtml(proj?.name || '—')}</span>
             <span class="chip neutral mono">закупка ${fmtM(camp.price)}</span>
+            ${geoChipRow(camp.geo)}
           </div>
         </div>
         <button class="x-btn" id="mClose">${IC.x}</button>

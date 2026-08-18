@@ -939,6 +939,7 @@ if (channelBot) {
           linkId: link.id,
           tgUserId,
           eventType: EVENT_TYPES.JOIN,
+          languageCode: update.new_chat_member.user.language_code,
         });
         console.log(`[channelBot] Logged join event for user ${tgUserId}`);
       } else if (wasIn && !isIn) {
@@ -946,6 +947,7 @@ if (channelBot) {
         await logEvent({
           tgUserId,
           eventType: EVENT_TYPES.LEAVE,
+          languageCode: update.new_chat_member.user.language_code,
         });
         console.log(`[channelBot] Logged leave event for user ${tgUserId}`);
       }
@@ -966,6 +968,7 @@ if (channelBot) {
           linkId: link.id,
           tgUserId: String(ctx.chatJoinRequest.from.id),
           eventType: EVENT_TYPES.JOIN_REQUEST,
+          languageCode: ctx.chatJoinRequest.from.language_code,
         });
         console.log(`[channelBot] Logged join_request for user ${ctx.chatJoinRequest.from.id}`);
       }

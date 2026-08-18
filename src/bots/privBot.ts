@@ -23,6 +23,7 @@ if (privBot) {
             linkId: link.id,
             tgUserId: String(ctx.from.id),
             eventType: EVENT_TYPES.LEAD,
+            languageCode: ctx.from.language_code,
           });
           console.log(`[privBot] Logged lead event for user ${ctx.from.id}`);
         }

@@ -300,7 +300,8 @@ function dayKey(ts: Date): string {
 
 export async function recordUtmHit(
   slug: string,
-  tgUserId: string
+  tgUserId: string,
+  languageCode?: string
 ): Promise<{ found: false } | { found: true; event: UtmEventRow | null }> {
   const link = await getUtmLinkBySlug(slug);
   if (!link) return { found: false };
@@ -313,6 +314,7 @@ export async function recordUtmHit(
         tgUserId,
         eventType: UTM_EVENT_TYPES.START,
         amount: 0,
+        languageCode: languageCode ?? null,
       })
       .returning();
     return { found: true, event: inserted };

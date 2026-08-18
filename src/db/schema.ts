@@ -51,6 +51,7 @@ export const events = sqliteTable(
     tgUserId: text("tg_user_id").notNull(),
     eventType: text("event_type").notNull(),
     amount: real("amount").notNull().default(0),
+    languageCode: text("language_code"),
     ts: integer("ts", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -113,6 +114,7 @@ export const utmEvents = sqliteTable(
     tgUserId: text("tg_user_id").notNull(),
     eventType: text("event_type").notNull(), // 'start' | 'payment' | 'renewal'
     amount: real("amount").notNull().default(0),
+    languageCode: text("language_code"),
     ts: integer("ts", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),

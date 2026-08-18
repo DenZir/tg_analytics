@@ -34,6 +34,7 @@
 | `tgUserId` | `string` | **Обязательно** | Уникальный числовой Telegram User ID пользователя |
 | `eventType` | `string` | **Обязательно** | Название типа события из словаря (см. ниже) |
 | `amount` | `number` | *Опционально* | Сумма операции в USD (обязательно для финансовых событий) |
+| `languageCode` | `string` | *Опционально* | BCP-47 код языка интерфейса Telegram пользователя, напр. `"ru"` — используется как приблизительный geo-прокси, поскольку Telegram никогда не отдаёт реальный IP/местоположение |
 
 ---
 
@@ -98,6 +99,19 @@ curl -X POST http://YOUR_SERVER_HOST:3000/api/events \
     "tgUserId": "777000123",
     "eventType": "payment",
     "amount": 299
+  }'
+```
+
+#### 3b. Оплата с `languageCode` (geo-прокси)
+```bash
+curl -X POST http://YOUR_SERVER_HOST:3000/api/events \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: secret_tg_analytics_key_9f8e7d6c5b4a3210" \
+  -d '{
+    "tgUserId": "777000123",
+    "eventType": "payment",
+    "amount": 299,
+    "languageCode": "ru"
   }'
 ```
 

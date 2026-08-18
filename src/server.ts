@@ -33,6 +33,7 @@ import {
   recordUtmPurchase,
   buildDeepLink,
 } from "./services/utm.js";
+import { getCampaignGeoBreakdown } from "./services/geo.js";
 import { eq } from "drizzle-orm";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -254,7 +255,7 @@ app.get("/api/attribution", async (req, res) => {
 // POST /api/events
 app.post("/api/events", async (req, res) => {
   try {
-    const { linkId, tgUserId, eventType, amount } = req.body;
+    const { linkId, tgUserId, eventType, amount, languageCode } = req.body;
     if (!tgUserId || !eventType) {
       return res.status(400).json({ error: "Missing required fields (tgUserId, eventType)" });
     }
@@ -264,6 +265,7 @@ app.post("/api/events", async (req, res) => {
       tgUserId: String(tgUserId),
       eventType: String(eventType),
       amount: amount ? Number(amount) : 0,
+      languageCode: languageCode ? String(languageCode) : undefined,
     });
 
     res.status(201).json({ success: true, event });
@@ -343,11 +345,13 @@ app.get("/api/metrics/extended", async (_req, res) => {
       baseMetrics.campaigns.map(async (c) => {
         const ret = await getRetentionStats(c.id);
         const purchaseConversion = await getPurchaseConversion(c.id);
+        const geo = await getCampaignGeoBreakdown(c.id);
         return {
           ...c,
           retention24h: ret.retention24h,
           retention48h: ret.retention48h,
           purchaseConversion,
+          geo,
         };
       })
     );
@@ -447,12 +451,16 @@ app.get("/api/utm/sources", async (_req, res) => {
 // POST /api/utm/hit
 app.post("/api/utm/hit", async (req, res) => {
   try {
-    const { slug, tgUserId } = req.body;
+    const { slug, tgUserId, languageCode } = req.body;
     if (!slug || !tgUserId) {
       return res.status(400).json({ error: "Missing required fields (slug, tgUserId)" });
     }
 
-    const result = await recordUtmHit(String(slug), String(tgUserId));
+    const result = await recordUtmHit(
+      String(slug),
+      String(tgUserId),
+      languageCode ? String(languageCode) : undefined
+    );
     if (!result.found) {
       return res.status(404).json({ error: "Unknown UTM slug" });
     }

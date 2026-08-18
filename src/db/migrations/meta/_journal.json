@@ -50,6 +50,13 @@
       "when": 1786774627287,
       "tag": "0006_organic_centennial",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787078103970,
+      "tag": "0007_silly_electro",
+      "breakpoints": true
     }
   ]
 }
