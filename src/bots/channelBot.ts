@@ -1,4 +1,5 @@
 import { Telegraf, Markup, Scenes, session } from "telegraf";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import {
   createLinkForCampaign,
   getLinkByRef,
@@ -18,8 +19,12 @@ import { getMetrics } from "../services/metrics.js";
 import { EVENT_TYPES } from "../db/eventTypes.js";
 
 const token = process.env.CHANNEL_BOT_TOKEN;
+const proxyUrl = process.env.TELEGRAM_PROXY_URL;
+const agent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
 
-export const channelBot = token ? new Telegraf<any>(token) : null;
+export const channelBot = token
+  ? new Telegraf<any>(token, agent ? { telegram: { agent } } : undefined)
+  : null;
 
 function escapeHtml(str: string): string {
   return String(str)

@@ -1,11 +1,16 @@
 import { Telegraf } from "telegraf";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { getLinkByRef } from "../services/campaigns.js";
 import { logEvent } from "../services/events.js";
 import { EVENT_TYPES } from "../db/eventTypes.js";
 
 const token = process.env.PRIV_BOT_TOKEN;
+const proxyUrl = process.env.TELEGRAM_PROXY_URL;
+const agent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
 
-export const privBot = token ? new Telegraf(token) : null;
+export const privBot = token
+  ? new Telegraf(token, agent ? { telegram: { agent } } : undefined)
+  : null;
 
 if (privBot) {
   privBot.start(async (ctx) => {
