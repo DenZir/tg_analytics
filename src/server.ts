@@ -2,6 +2,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { db } from "./db/index.js";
 import { links } from "./db/schema.js";
 import {
@@ -124,10 +125,21 @@ app.use(express.static(path.join(__dirname, "dashboard/public")));
 // API Authentication Middleware — accepts EITHER the shared X-API-Key header
 // (used by server-to-server callers, e.g. the private/private-test bots) OR
 // a valid dash_session cookie (used by the browser dashboard).
+// Constant-time string comparison — hashing both sides to a fixed-length
+// digest first avoids timingSafeEqual's own length-mismatch throw, and means
+// comparison time never varies with how much of the input happens to match.
+function constantTimeEqual(a: string, b: string): boolean {
+  const digestA = createHash("sha256").update(a).digest();
+  const digestB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(digestA, digestB);
+}
+
 app.use("/api", async (req, res, next) => {
   const apiKey = req.headers["x-api-key"];
   const expectedSecret = process.env.API_SECRET;
-  if (expectedSecret && apiKey === expectedSecret) return next();
+  if (expectedSecret && typeof apiKey === "string" && constantTimeEqual(apiKey, expectedSecret)) {
+    return next();
+  }
 
   if (await hasValidDashSession(req)) return next();
 
