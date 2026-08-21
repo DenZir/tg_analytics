@@ -3,7 +3,7 @@ import { db } from "../db/index.js";
 import { dashboardSessions } from "../db/schema.js";
 import { eq, gt, and } from "drizzle-orm";
 
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const SESSION_TTL_MS = 5 * 60 * 60 * 1000; // 5 hours
 
 function generateToken(): string {
   return randomBytes(32).toString("hex");
@@ -42,7 +42,7 @@ export async function redeemAndRotateToken(token: string): Promise<string | null
   const newToken = generateToken();
   await db
     .update(dashboardSessions)
-    .set({ token: newToken })
+    .set({ token: newToken, expiresAt: new Date(Date.now() + SESSION_TTL_MS) })
     .where(eq(dashboardSessions.id, session.id));
 
   return newToken;

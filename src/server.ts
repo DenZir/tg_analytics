@@ -47,12 +47,20 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(cookieParser());
 
+const CHANNEL_BOT_USERNAME = process.env.CHANNEL_BOT_USERNAME || "";
+const BOT_DEEP_LINK = CHANNEL_BOT_USERNAME ? `https://t.me/${CHANNEL_BOT_USERNAME}` : null;
+
 const LOGIN_REQUIRED_HTML = `<!DOCTYPE html>
 <html lang="ru">
 <head><meta charset="utf-8"><title>TG Analytics — вход</title></head>
 <body style="font-family: sans-serif; text-align: center; padding: 60px 20px;">
   <h2>Требуется авторизация</h2>
   <p>Чтобы открыть дашборд, зайдите в Telegram-бота и нажмите «🔐 Авторизация в дашборд» в главном меню.</p>
+  ${
+    BOT_DEEP_LINK
+      ? `<p><a href="${BOT_DEEP_LINK}" style="display:inline-block;padding:12px 24px;background:#2AABEE;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Открыть бота</a></p>`
+      : ""
+  }
 </body>
 </html>`;
 
@@ -82,7 +90,7 @@ app.get("/auth/callback", async (req, res) => {
   res.cookie("dash_session", newToken, {
     httpOnly: true,
     sameSite: "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days, matches createLoginToken's expiresAt window
+    maxAge: 5 * 60 * 60 * 1000, // 5 hours, matches dashboardAuth's SESSION_TTL_MS
     // secure: true intentionally omitted for now — this runs behind a plain-HTTP-to-the-app
     // Cloudflare tunnel during development; revisit once served consistently over a stable HTTPS domain.
   });
