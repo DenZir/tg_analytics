@@ -104,6 +104,18 @@ export const utmLinks = sqliteTable("utm_links", {
     .default(sql`(unixepoch())`),
 });
 
+// --- Dashboard admin login sessions (Telegram-based auth) ---
+
+export const dashboardSessions = sqliteTable("dashboard_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  token: text("token").notNull().unique(),
+  tgUserId: text("tg_user_id").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+});
+
 export const utmEvents = sqliteTable(
   "utm_events",
   {

@@ -1,26 +1,14 @@
 'use strict';
 /* ================= АУТЕНТИФИКАЦИЯ ================= */
-let currentApiKey = null;
-
-function getApiKey() {
-  if (!currentApiKey) {
-    currentApiKey = prompt("Enter API Secret (X-API-Key):");
-  }
-  return currentApiKey;
-}
-
-function getHeaders() {
-  return {
-    "Content-Type": "application/json",
-    "X-API-Key": getApiKey(),
-  };
-}
+// Auth is now a same-origin session cookie (dash_session), set via the
+// Telegram bot's "🔐 Авторизация в дашборд" login link — no client-side
+// secret to manage. The browser attaches the cookie automatically.
 
 async function apiFetch(url, opts = {}) {
-  const headers = { ...getHeaders(), ...(opts.headers || {}) };
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
   const res = await fetch(url, { ...opts, headers });
   if (res.status === 401) {
-    currentApiKey = null;
+    window.location.href = "/";
   }
   return res;
 }

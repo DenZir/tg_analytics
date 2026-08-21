@@ -1,4 +1,5 @@
 import express from "express";
+import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import { db } from "./db/index.js";
@@ -35,6 +36,7 @@ import {
 } from "./services/utm.js";
 import { getCampaignGeoBreakdown } from "./services/geo.js";
 import { eq } from "drizzle-orm";
+import { redeemAndRotateToken, getSessionTgUserId } from "./services/dashboardAuth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,30 +45,85 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(cookieParser());
+
+const LOGIN_REQUIRED_HTML = `<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>TG Analytics — вход</title></head>
+<body style="font-family: sans-serif; text-align: center; padding: 60px 20px;">
+  <h2>Требуется авторизация</h2>
+  <p>Чтобы открыть дашборд, зайдите в Telegram-бота и нажмите «🔐 Авторизация в дашборд» в главном меню.</p>
+</body>
+</html>`;
+
+async function hasValidDashSession(req: express.Request): Promise<boolean> {
+  const sessionToken = req.cookies?.dash_session;
+  if (!sessionToken) return false;
+  const tgUserId = await getSessionTgUserId(sessionToken);
+  return !!tgUserId;
+}
+
+// GET /auth/callback?token=... — redeems a one-time login token minted by
+// the bot's "🔐 Авторизация в дашборд" button, sets a persistent session
+// cookie, and rotates the token so the original link can't be replayed.
+app.get("/auth/callback", async (req, res) => {
+  const token = String(req.query.token || "");
+  if (!token) return res.status(400).send("Missing token");
+
+  const newToken = await redeemAndRotateToken(token);
+  if (!newToken) {
+    return res
+      .status(401)
+      .send(
+        "Ссылка недействительна или устарела. Вернитесь в бота и запросите новую через «🔐 Авторизация в дашборд»."
+      );
+  }
+
+  res.cookie("dash_session", newToken, {
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days, matches createLoginToken's expiresAt window
+    // secure: true intentionally omitted for now — this runs behind a plain-HTTP-to-the-app
+    // Cloudflare tunnel during development; revisit once served consistently over a stable HTTPS domain.
+  });
+  res.redirect("/");
+});
 
 // Serve the mobile build for phone browsers hitting the root URL, so there's
 // no separate address to remember — /index.html and /mobile.html stay
 // reachable directly (unaffected by this check) for anyone who wants to force
 // one or the other.
 const MOBILE_UA = /Android|iPhone|iPod|Windows Phone|BlackBerry|IEMobile|Opera Mini/i;
-app.get("/", (req, res, next) => {
+app.get("/", async (req, res, next) => {
+  if (!(await hasValidDashSession(req))) {
+    return res.status(401).send(LOGIN_REQUIRED_HTML);
+  }
   if (MOBILE_UA.test(req.headers["user-agent"] || "")) {
     return res.sendFile(path.join(__dirname, "dashboard/public/mobile.html"));
   }
   next();
 });
 
-app.use(express.static(path.join(__dirname, "dashboard/public")));
-
-// API Authentication Middleware
-app.use("/api", (req, res, next) => {
-  const apiKey = req.headers["x-api-key"];
-  const expectedSecret = process.env.API_SECRET;
-
-  if (expectedSecret && apiKey !== expectedSecret) {
-    return res.status(401).json({ error: "Unauthorized" });
+app.get(["/index.html", "/mobile.html"], async (req, res, next) => {
+  if (!(await hasValidDashSession(req))) {
+    return res.status(401).send(LOGIN_REQUIRED_HTML);
   }
   next();
+});
+
+app.use(express.static(path.join(__dirname, "dashboard/public")));
+
+// API Authentication Middleware — accepts EITHER the shared X-API-Key header
+// (used by server-to-server callers, e.g. the private/private-test bots) OR
+// a valid dash_session cookie (used by the browser dashboard).
+app.use("/api", async (req, res, next) => {
+  const apiKey = req.headers["x-api-key"];
+  const expectedSecret = process.env.API_SECRET;
+  if (expectedSecret && apiKey === expectedSecret) return next();
+
+  if (await hasValidDashSession(req)) return next();
+
+  return res.status(401).json({ error: "Unauthorized" });
 });
 
 // --- Projects API ---

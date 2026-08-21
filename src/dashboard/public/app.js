@@ -1,28 +1,16 @@
 'use strict';
 /* ================= АУТЕНТИФИКАЦИЯ ================= */
-let currentApiKey = null;
+// Auth is now a same-origin session cookie (dash_session), set via the
+// Telegram bot's "🔐 Авторизация в дашборд" login link — no client-side
+// secret to manage. The browser attaches the cookie automatically.
 
-function getApiKey() {
-  if (!currentApiKey) {
-    currentApiKey = prompt("Enter API Secret (X-API-Key):");
-  }
-  return currentApiKey;
-}
-
-function getHeaders() {
-  return {
-    "Content-Type": "application/json",
-    "X-API-Key": getApiKey(),
-  };
-}
-
-// Generic fetch wrapper: attaches auth headers to every request and resets
-// currentApiKey on a 401 so the *next* action re-prompts for the key.
+// Generic fetch wrapper: bounces to the login page if the session is
+// missing/expired (server responds 401).
 async function apiFetch(url, opts = {}) {
-  const headers = { ...getHeaders(), ...(opts.headers || {}) };
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
   const res = await fetch(url, { ...opts, headers });
   if (res.status === 401) {
-    currentApiKey = null;
+    window.location.href = "/";
   }
   return res;
 }

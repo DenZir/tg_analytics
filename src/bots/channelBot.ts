@@ -17,6 +17,8 @@ import {
 import { logEvent } from "../services/events.js";
 import { getMetrics } from "../services/metrics.js";
 import { EVENT_TYPES } from "../db/eventTypes.js";
+import { getAdminIds, isAdmin } from "../config/admins.js";
+import { createLoginToken } from "../services/dashboardAuth.js";
 
 const token = process.env.CHANNEL_BOT_TOKEN;
 const proxyUrl = process.env.TELEGRAM_PROXY_URL;
@@ -98,6 +100,9 @@ function getMainMenuKeyboard() {
     [
       Markup.button.callback("⚙️ Настройки", "menu_settings"),
       dashButton,
+    ],
+    [
+      Markup.button.callback("🔐 Авторизация в дашборд", "menu_dash_login"),
     ],
   ]);
 }
@@ -360,11 +365,10 @@ async function renderChannelCard(ctx: any, channelId: number) {
 }
 
 if (channelBot) {
-  // Middleware: restrict private chat access to ADMIN_CHAT_ID
+  // Middleware: restrict private chat access to the admin allowlist
   channelBot.use(async (ctx: any, next: any) => {
     if (ctx.chat?.type === "private" && ctx.from) {
-      const adminId = process.env.ADMIN_CHAT_ID;
-      if (adminId && String(ctx.from.id) !== String(adminId)) {
+      if (!isAdmin(ctx.from.id)) {
         await ctx.reply("Not authorized");
         return;
       }
@@ -478,8 +482,7 @@ if (channelBot) {
 
   // Command /menu & /newlink
   channelBot.command(["menu", "newlink"], async (ctx: any) => {
-    const adminId = process.env.ADMIN_CHAT_ID;
-    if (adminId && String(ctx.from?.id) !== String(adminId)) {
+    if (!isAdmin(ctx.from?.id)) {
       return ctx.reply("Not authorized");
     }
     return sendMainMenu(ctx);
@@ -487,8 +490,7 @@ if (channelBot) {
 
   // Command /stats
   channelBot.command("stats", async (ctx: any) => {
-    const adminId = process.env.ADMIN_CHAT_ID;
-    if (adminId && String(ctx.from?.id) !== String(adminId)) {
+    if (!isAdmin(ctx.from?.id)) {
       return ctx.reply("Not authorized");
     }
 
@@ -581,15 +583,27 @@ if (channelBot) {
 
       if (data === "menu_settings") {
         await ctx.answerCbQuery();
-        const adminId = process.env.ADMIN_CHAT_ID || "не задан";
+        const adminIdsText = getAdminIds().join(", ") || "не задан";
         const msg =
           `⚙️ <b>Настройки системы:</b>\n\n` +
-          `• <b>Admin Chat ID</b>: <code>${adminId}</code>\n` +
+          `• <b>Admin Telegram ID(s)</b>: <code>${adminIdsText}</code>\n` +
           `• <b>API Secret</b>: <code>${process.env.API_SECRET || "не задан"}</code>\n` +
           `• <b>Channel Bot Token</b>: <code>задан</code>\n` +
           `• <b>Privat Bot Token</b>: <code>${process.env.PRIV_BOT_TOKEN ? "задан" : "не задан"}</code>`;
         const backKb = Markup.inlineKeyboard([[Markup.button.callback("⬅️ В главное меню", "menu_main")]]);
         return ctx.editMessageText(msg, { parse_mode: "HTML", ...backKb });
+      }
+
+      if (data === "menu_dash_login") {
+        await ctx.answerCbQuery();
+        if (!isAdmin(ctx.from?.id)) {
+          return ctx.reply("Not authorized");
+        }
+        const token = await createLoginToken(String(ctx.from.id));
+        const dashUrl = (process.env.DASHBOARD_URL || "http://localhost:3000").replace(/\/$/, "");
+        return ctx.reply(
+          `🔐 Ссылка для входа в дашборд (одноразовая, действует 30 дней после первого использования):\n${dashUrl}/auth/callback?token=${token}`
+        );
       }
 
       if (data === "menu_main" || data === "card_cancel") {
@@ -987,24 +1001,30 @@ if (channelBot) {
     try {
       const newStatus = ctx.myChatMember.new_chat_member.status;
       const chat = ctx.myChatMember.chat;
-      const adminId = process.env.ADMIN_CHAT_ID;
+      const adminIds = getAdminIds();
 
-      if (newStatus === "administrator" && chat.type !== "private" && adminId) {
+      if (newStatus === "administrator" && chat.type !== "private" && adminIds.length > 0) {
         const title = "title" in chat ? chat.title : "Un-named Channel";
         const safeTitle = escapeHtml(title);
         const callbackData = `reg_chan:${chat.id}:${title.slice(0, 30)}`;
 
-        await channelBot.telegram.sendMessage(
-          adminId,
-          `Обнаружен новый канал <b>${safeTitle}</b> (id: <code>${chat.id}</code>). Зарегистрировать для отслеживания?`,
-          {
-            parse_mode: "HTML",
-            ...Markup.inlineKeyboard([
-              Markup.button.callback("➕ Зарегистрировать", callbackData),
-            ]),
+        for (const adminId of adminIds) {
+          try {
+            await channelBot.telegram.sendMessage(
+              adminId,
+              `Обнаружен новый канал <b>${safeTitle}</b> (id: <code>${chat.id}</code>). Зарегистрировать для отслеживания?`,
+              {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([
+                  Markup.button.callback("➕ Зарегистрировать", callbackData),
+                ]),
+              }
+            );
+            console.log(`[channelBot] Sent channel detection alert for ${title} (${chat.id}) to admin ${adminId}`);
+          } catch (err) {
+            console.error(`[channelBot] Failed to send channel detection alert to admin ${adminId}:`, err);
           }
-        );
-        console.log(`[channelBot] Sent channel detection alert for ${title} (${chat.id}) to admin ${adminId}`);
+        }
       }
     } catch (error) {
       console.error("[channelBot] Error handling my_chat_member update:", error);
