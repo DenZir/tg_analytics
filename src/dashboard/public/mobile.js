@@ -1057,7 +1057,7 @@ async function renderPrivatkas() {
 }
 
 /* ================= ПРОЕКТЫ ================= */
-function typeLabel(t) { return t === 'channel' ? 'Канал' : 'Бот-приватка'; }
+function typeLabel(t) { return t === 'channel' ? 'Канал' : 'Бот-подписка'; }
 function typeChipClass(t) { return t === 'channel' ? 't-proj' : 't-bot'; }
 function identOf(p) { return p.type === 'channel' ? (p.telegramChatId || '—') : (p.botUsername || '—'); }
 

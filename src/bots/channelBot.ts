@@ -480,8 +480,10 @@ if (channelBot) {
     return next();
   });
 
-  // Command /menu & /newlink
-  channelBot.command(["menu", "newlink"], async (ctx: any) => {
+  // Command /start & /menu & /newlink — /start is the entry point most people
+  // try first with any bot, so it's treated as an alias for /menu rather than
+  // being left unhandled (this bot has no consumer-facing welcome flow).
+  channelBot.command(["start", "menu", "newlink"], async (ctx: any) => {
     if (!isAdmin(ctx.from?.id)) {
       return ctx.reply("Not authorized");
     }
@@ -602,7 +604,10 @@ if (channelBot) {
         const token = await createLoginToken(String(ctx.from.id));
         const dashUrl = (process.env.DASHBOARD_URL || "http://localhost:3000").replace(/\/$/, "");
         return ctx.reply(
-          `🔐 Ссылка для входа в дашборд (одноразовая, действует 30 дней после первого использования):\n${dashUrl}/auth/callback?token=${token}`
+          "🔐 Ссылка для входа в дашборд одноразовая — нажмите кнопку ниже, чтобы авторизоваться:",
+          Markup.inlineKeyboard([
+            Markup.button.url("🌐 Войти в дашборд", `${dashUrl}/auth/callback?token=${token}`),
+          ])
         );
       }
 
