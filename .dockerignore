@@ -1,0 +1,17 @@
+node_modules
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+.env
+.env.example
+.env.local
+.git
+.claude
+.deploy_keys
+*.log
+logs
+repomix-output.xml
+*.png
+*.jpg
+*.jpeg

@@ -18,3 +18,5 @@ repomix-output.xml
 .DS_Store
 *.log
 logs/
+.deploy_keys/
+docker-compose.override.yml

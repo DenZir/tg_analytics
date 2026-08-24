@@ -1,0 +1,33 @@
+services:
+  analytics:
+    build: .
+    container_name: tg-analytics
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Loopback-only — a reverse proxy on the host (Caddy or similar) talks to
+    # this over 127.0.0.1, nothing is reachable from outside this machine.
+    ports:
+      - "127.0.0.1:${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      # Bind-mounts the sqlite file itself so it survives container
+      # recreation. Must match DB_PATH in .env (default ./analytics.dev.db,
+      # relative to /app). Docker turns a missing bind-mount source into a
+      # DIRECTORY, not a file — before the very first `docker compose up`,
+      # run: touch analytics.dev.db
+      - ./analytics.dev.db:/app/analytics.dev.db
+    healthcheck:
+      # No /health route in this app, so this just checks the port accepts
+      # TCP connections rather than expecting a specific HTTP status (the
+      # dashboard's "/" legitimately returns 401 without a session cookie).
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(process.env.PORT || 3000, '127.0.0.1').on('connect', function () { process.exit(0) }).on('error', function () { process.exit(1) })",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
