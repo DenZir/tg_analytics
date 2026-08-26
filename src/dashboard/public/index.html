@@ -292,10 +292,14 @@ dialog#confirmDialog::backdrop{background:rgba(5,8,13,.62);backdrop-filter:blur(
 .m-ov.show{opacity:1}
 .modal{width:min(780px,100%);max-height:88vh;display:flex;flex-direction:column;background:linear-gradient(180deg,#121824,#0D1219);border:1px solid var(--line2);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);transform:translateY(16px) scale(.985);transition:transform .3s var(--ease)}
 .m-ov.show .modal{transform:none}
-.m-head{display:flex;gap:14px;padding:20px 22px 16px;border-bottom:1px solid var(--line)}
+/* align-items:center — default stretch made any .btn dropped in here (no
+   explicit height, unlike the fixed 32x32 .x-btn) balloon to match the
+   multi-line title block's height. */
+.m-head{display:flex;align-items:center;gap:14px;padding:20px 22px 16px;border-bottom:1px solid var(--line)}
 .m-eyebrow{font:600 9.5px var(--mono);letter-spacing:.2em;color:var(--accent);text-transform:uppercase;margin-bottom:6px}
 .m-head h2{font:700 20px var(--body);letter-spacing:-.01em}
 .m-chips{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}
+.m-head .btn{flex:none;margin-left:auto}
 .x-btn{margin-left:auto;flex:none;width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--muted);display:grid;place-items:center;transition:all .18s}
 .x-btn:hover{color:var(--text);border-color:var(--line2);transform:rotate(90deg)}
 .x-btn svg{width:14px;height:14px}
