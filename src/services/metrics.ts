@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { dailyStats, campaigns, campaignTags, links, events, projects } from "../db/schema.js";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 
 export async function getPurchaseConversion(campaignId: number) {
@@ -216,6 +216,147 @@ export async function getAdvertiserStats() {
   }
 
   return result;
+}
+
+export interface AdvertisersPageParams {
+  page: number;
+  pageSize: number;
+  q?: string;
+}
+
+export interface AdvertiserPageRow {
+  advertiser: string;
+  campaignsCount: number;
+  totalPrice: number;
+  totalSubs: number;
+  totalRevenue: number;
+  avgCps: number | null;
+  avgPricePerSub: number | null;
+  avgRetention24h: number | null;
+  avgRetention48h: number | null;
+}
+
+// Paginated version of getAdvertiserStats(): groups+sorts by revenue in SQL
+// and limits the retention/buyer lookups to the campaigns that belong to the
+// advertisers on the requested page, instead of walking every campaign in
+// the project on every load.
+export async function getAdvertisersPage(
+  params: AdvertisersPageParams
+): Promise<{ rows: AdvertiserPageRow[]; total: number }> {
+  const { page, pageSize } = params;
+  const q = params.q?.trim();
+  const offset = (page - 1) * pageSize;
+
+  const searchCond = q
+    ? sql`lower_unicode(${campaigns.advertiser}) LIKE lower_unicode(${`%${q}%`})`
+    : undefined;
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(distinct ${campaigns.advertiser})` })
+    .from(campaigns)
+    .where(searchCond);
+
+  if (Number(total) === 0) return { rows: [], total: 0 };
+
+  const campaignAgg = db
+    .select({
+      campaignId: dailyStats.campaignId,
+      subs: sql<number>`sum(${dailyStats.subs})`.as("subs"),
+      revenue: sql<number>`sum(${dailyStats.revenue})`.as("revenue"),
+    })
+    .from(dailyStats)
+    .groupBy(dailyStats.campaignId)
+    .as("campaign_agg");
+
+  const grouped = await db
+    .select({
+      advertiser: campaigns.advertiser,
+      campaignsCount: sql<number>`count(*)`,
+      totalPrice: sql<number>`coalesce(sum(${campaigns.price}), 0)`,
+      totalSubs: sql<number>`coalesce(sum(${campaignAgg.subs}), 0)`,
+      totalRevenue: sql<number>`coalesce(sum(${campaignAgg.revenue}), 0)`,
+    })
+    .from(campaigns)
+    .leftJoin(campaignAgg, eq(campaignAgg.campaignId, campaigns.id))
+    .where(searchCond)
+    .groupBy(campaigns.advertiser)
+    .orderBy(sql`coalesce(sum(${campaignAgg.revenue}), 0) desc`)
+    .limit(pageSize)
+    .offset(offset);
+
+  if (grouped.length === 0) return { rows: [], total: Number(total) || 0 };
+
+  const advertiserNames = grouped.map((g) => g.advertiser);
+
+  const advertiserCampaigns = await db
+    .select({ id: campaigns.id, advertiser: campaigns.advertiser })
+    .from(campaigns)
+    .where(inArray(campaigns.advertiser, advertiserNames));
+
+  const campaignIdsByAdvertiser = new Map<string, number[]>();
+  for (const c of advertiserCampaigns) {
+    const arr = campaignIdsByAdvertiser.get(c.advertiser) || [];
+    arr.push(c.id);
+    campaignIdsByAdvertiser.set(c.advertiser, arr);
+  }
+  const allCampaignIds = advertiserCampaigns.map((c) => c.id);
+
+  const paymentRows = allCampaignIds.length
+    ? await db
+        .select({ campaignId: links.campaignId, tgUserId: events.tgUserId })
+        .from(events)
+        .innerJoin(links, eq(events.linkId, links.id))
+        .where(and(inArray(links.campaignId, allCampaignIds), eq(events.eventType, EVENT_TYPES.PAYMENT)))
+    : [];
+  const buyersByCampaign = new Map<number, Set<string>>();
+  for (const row of paymentRows) {
+    const set = buyersByCampaign.get(row.campaignId) ?? new Set<string>();
+    set.add(row.tgUserId);
+    buyersByCampaign.set(row.campaignId, set);
+  }
+
+  const retentionByCampaign = new Map<number, { retention24h: number | null; retention48h: number | null }>();
+  await Promise.all(
+    allCampaignIds.map(async (id) => {
+      retentionByCampaign.set(id, await getRetentionStats(id));
+    })
+  );
+
+  const rows: AdvertiserPageRow[] = grouped.map((g) => {
+    const campIds = campaignIdsByAdvertiser.get(g.advertiser) || [];
+    let totalBuyers = 0;
+    const retentions24: number[] = [];
+    const retentions48: number[] = [];
+    for (const id of campIds) {
+      totalBuyers += buyersByCampaign.get(id)?.size ?? 0;
+      const ret = retentionByCampaign.get(id);
+      if (ret?.retention24h !== null && ret?.retention24h !== undefined) retentions24.push(ret.retention24h);
+      if (ret?.retention48h !== null && ret?.retention48h !== undefined) retentions48.push(ret.retention48h);
+    }
+    const totalPrice = Number(g.totalPrice) || 0;
+    const totalSubs = Number(g.totalSubs) || 0;
+    const totalRevenue = Number(g.totalRevenue) || 0;
+
+    return {
+      advertiser: g.advertiser,
+      campaignsCount: Number(g.campaignsCount) || 0,
+      totalPrice,
+      totalSubs,
+      totalRevenue,
+      avgCps: totalBuyers > 0 ? Number((totalPrice / totalBuyers).toFixed(2)) : null,
+      avgPricePerSub: totalSubs > 0 ? Number((totalPrice / totalSubs).toFixed(2)) : null,
+      avgRetention24h:
+        retentions24.length > 0
+          ? Number((retentions24.reduce((s, r) => s + r, 0) / retentions24.length).toFixed(2))
+          : null,
+      avgRetention48h:
+        retentions48.length > 0
+          ? Number((retentions48.reduce((s, r) => s + r, 0) / retentions48.length).toFixed(2))
+          : null,
+    };
+  });
+
+  return { rows, total: Number(total) || 0 };
 }
 
 export async function getMetrics() {

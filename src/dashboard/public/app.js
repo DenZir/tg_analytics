@@ -323,7 +323,8 @@ function linkDisplayUrl(link) {
 }
 
 /* ================= СОСТОЯНИЕ UI ================= */
-const state = { screen: 'overview', period: 30, mode: 'links', q: '' };
+const state = { screen: 'overview', period: 30, mode: 'links', q: '', campPage: 1, campTotalPages: 1 };
+const CAMP_PAGE_SIZE = 25;
 let chart = null;
 
 /* ================= ОБЗОР ================= */
@@ -484,26 +485,71 @@ function toggleEmpty(show) {
   $('#campBody').style.display = show ? 'none' : '';
 }
 
+// Fetches one page of the campaigns tab from the server — the DB query
+// itself is paginated (LIMIT/OFFSET), and retention/conversion/link stats
+// are computed only for that page's campaigns, so loading stays fast no
+// matter how many campaigns the project has accumulated.
+async function fetchCampaignsPage(mode, page) {
+  const params = new URLSearchParams({ mode, page: String(page), pageSize: String(CAMP_PAGE_SIZE) });
+  if (state.q.trim()) params.set('q', state.q.trim());
+  return fetchJSON(`/api/campaigns/page?${params}`);
+}
+
+function renderPager(total, page, totalPages) {
+  const pager = $('#campPager');
+  if (!pager) return;
+  if (total === 0) { pager.hidden = true; return; }
+  pager.hidden = false;
+  $('#campPagerInfo').textContent = `Стр. ${page} из ${totalPages}`;
+  $('#campPagerPrev').disabled = page <= 1;
+  $('#campPagerNext').disabled = page >= totalPages;
+}
+
+let campRenderToken = 0;
+
 async function renderCampaigns() {
-  const q = state.q.trim().toLowerCase();
   const head = $('#campHead'), body = $('#campBody');
+  const token = ++campRenderToken;
 
   if (state.mode === 'links') {
     head.innerHTML = headLinks();
     $('#campCardSub').textContent = 'Каждая выданная рекламодателю ссылка и её вклад';
     body.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--dim);padding:22px">Загрузка ссылок…</td></tr>`;
 
-    const allRows = await computeLinkRows();
-    if (state.mode !== 'links') return; // user switched mode while we were loading
-    const trendDates = last21Dates();
-    const rows = allRows.filter(r => !q
-      || r.campaign.advertiser.toLowerCase().includes(q)
-      || (r.link.label || '').toLowerCase().includes(q)
-      || (r.link.telegramRef || '').toLowerCase().includes(q)
-      || String(r.campaign.id).includes(q));
+    let data;
+    try {
+      data = await fetchCampaignsPage('links', state.campPage);
+    } catch (err) {
+      if (token !== campRenderToken) return;
+      body.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--dim);padding:22px">Не удалось загрузить кампании: ${escapeHtml(err.message)}</td></tr>`;
+      return;
+    }
+    if (token !== campRenderToken) return; // user switched mode/page/search while we were loading
 
-    $('#campCount').textContent = `${allRows.length} ссылок · ${DATA.extended.campaigns.length} кампаний`;
+    state.campTotalPages = data.totalPages;
+    const trendDates = last21Dates();
+    const rows = [];
+    for (const c of data.campaigns) {
+      for (const l of c.links) {
+        rows.push({
+          campaign: c,
+          link: l,
+          subs: l.subs,
+          revenue: l.revenue,
+          cps: l.cps,
+          pricePerSub: l.pricePerSub,
+          r24: c.retention24h,
+          r48: c.retention48h,
+          url: l.telegramRef,
+          createdAt: c.createdAt,
+          creative: c.creative,
+        });
+      }
+    }
+
+    $('#campCount').textContent = `${rows.length} ссылок на странице · ${data.total} ${plural(data.total, 'кампания', 'кампании', 'кампаний')} всего`;
     state.campaignsView = { mode: 'links', rows };
+    renderPager(data.total, data.page, data.totalPages);
 
     body.innerHTML = rows.map((r, i) => {
       const c = r.campaign, l = r.link;
@@ -527,15 +573,28 @@ async function renderCampaigns() {
   } else {
     head.innerHTML = headAdv();
     $('#campCardSub').textContent = 'Свёрнутые показатели по имени рекламодателя';
+    body.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--dim);padding:22px">Загрузка рекламодателей…</td></tr>`;
+
+    let data;
+    try {
+      data = await fetchCampaignsPage('advertisers', state.campPage);
+    } catch (err) {
+      if (token !== campRenderToken) return;
+      body.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--dim);padding:22px">Не удалось загрузить рекламодателей: ${escapeHtml(err.message)}</td></tr>`;
+      return;
+    }
+    if (token !== campRenderToken) return;
+
+    state.campTotalPages = data.totalPages;
     const trendDates = last21Dates();
-    const allRows = DATA.extended.advertisers.map(a => {
+    const rows = data.advertisers.map(a => {
       const roi = a.totalPrice ? (a.totalRevenue / a.totalPrice * 100) : null;
       const trend = trendDates.map(d => (DATA.byAdvertiserDate.get(a.advertiser + '|' + d) || { revenue: 0 }).revenue);
       return { ...a, roi, trend };
     });
-    const rows = allRows.filter(a => !q || a.advertiser.toLowerCase().includes(q)).sort((a, b) => b.totalRevenue - a.totalRevenue);
-    $('#campCount').textContent = `${allRows.length} рекламодателей`;
+    $('#campCount').textContent = `${data.total} ${plural(data.total, 'рекламодатель', 'рекламодателя', 'рекламодателей')}`;
     state.campaignsView = { mode: 'adv', rows };
+    renderPager(data.total, data.page, data.totalPages);
 
     body.innerHTML = rows.map((a, i) => `<tr data-adv="${escapeHtml(a.advertiser)}" style="--i:${i}">
       <td><div class="cell-main">${escapeHtml(a.advertiser)}</div><div class="cell-sub">${a.campaignsCount} ${plural(a.campaignsCount, 'кампания', 'кампании', 'кампаний')}</div></td>
@@ -565,10 +624,18 @@ function segInit(seg, cb) {
   place(seg.querySelector('.on'));
   addEventListener('resize', () => place(seg.querySelector('.on')));
 }
-segInit($('#modeSeg'), b => { state.mode = b.dataset.m; renderCampaigns(); });
+segInit($('#modeSeg'), b => { state.mode = b.dataset.m; state.campPage = 1; renderCampaigns(); });
 segInit($('#periodSeg'), b => { state.period = b.dataset.p === 'all' ? 'all' : +b.dataset.p; renderKPIs(); refreshChart(); });
-$('#campSearch').addEventListener('input', e => { state.q = e.target.value; renderCampaigns(); });
-$('#resetSearch').addEventListener('click', () => { state.q = ''; $('#campSearch').value = ''; renderCampaigns(); });
+let campSearchDebounce = null;
+$('#campSearch').addEventListener('input', e => {
+  state.q = e.target.value;
+  state.campPage = 1;
+  clearTimeout(campSearchDebounce);
+  campSearchDebounce = setTimeout(() => renderCampaigns(), 300);
+});
+$('#resetSearch').addEventListener('click', () => { state.q = ''; state.campPage = 1; $('#campSearch').value = ''; renderCampaigns(); });
+$('#campPagerPrev')?.addEventListener('click', () => { if (state.campPage > 1) { state.campPage--; renderCampaigns(); } });
+$('#campPagerNext')?.addEventListener('click', () => { if (state.campPage < state.campTotalPages) { state.campPage++; renderCampaigns(); } });
 addEventListener('keydown', e => {
   if (e.key === '/' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); $('#campSearch')?.focus(); }
   if (e.key === 'Escape') closeModal();

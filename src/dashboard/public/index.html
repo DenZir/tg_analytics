@@ -499,7 +499,14 @@ dialog#confirmDialog::backdrop{background:rgba(5,8,13,.62);backdrop-filter:blur(
         <button class="btn tiny" id="resetSearch">Сбросить поиск</button>
       </div>
     </div>
-    <div class="hint-row">Клик по строке — карточка кампании: теги, ссылки с перевесом, история событий</div>
+    <div class="hint-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <span>Клик по строке — карточка кампании: теги, ссылки с перевесом, история событий</span>
+      <div id="campPager" hidden style="display:flex;align-items:center;gap:10px">
+        <button class="btn tiny" id="campPagerPrev" type="button">← Назад</button>
+        <span class="chip neutral mono" id="campPagerInfo"></span>
+        <button class="btn tiny" id="campPagerNext" type="button">Вперёд →</button>
+      </div>
+    </div>
   </article>
 </section>
 

@@ -293,7 +293,8 @@ function linkDisplayUrl(link) {
 }
 
 /* ================= СОСТОЯНИЕ UI ================= */
-const state = { screen: 'overview', period: 30, mode: 'links', q: '' };
+const state = { screen: 'overview', period: 30, mode: 'links', q: '', campPage: 1, campTotalPages: 1 };
+const CAMP_PAGE_SIZE = 25;
 let chart = null;
 
 /* ================= ОБЗОР ================= */
@@ -450,23 +451,64 @@ function toggleEmpty(show) {
   $('#campCards').style.display = show ? 'none' : '';
 }
 
+async function fetchCampaignsPage(mode, page) {
+  const params = new URLSearchParams({ mode, page: String(page), pageSize: String(CAMP_PAGE_SIZE) });
+  if (state.q.trim()) params.set('q', state.q.trim());
+  return fetchJSON(`/api/campaigns/page?${params}`);
+}
+
+function renderPager(total, page, totalPages) {
+  const pager = $('#campPager');
+  if (!pager) return;
+  if (total === 0) { pager.hidden = true; return; }
+  pager.hidden = false;
+  $('#campPagerInfo').textContent = `Стр. ${page} из ${totalPages}`;
+  $('#campPagerPrev').disabled = page <= 1;
+  $('#campPagerNext').disabled = page >= totalPages;
+}
+
+let campRenderToken = 0;
+
 async function renderCampaigns() {
-  const q = state.q.trim().toLowerCase();
   const wrap = $('#campCards');
   wrap.innerHTML = `<div style="padding:20px 4px;color:var(--dim);font-size:12px;text-align:center">Загрузка…</div>`;
+  const token = ++campRenderToken;
 
   if (state.mode === 'links') {
-    const allRows = await computeLinkRows();
-    if (state.mode !== 'links') return;
-    const trendDates = last21Dates();
-    const rows = allRows.filter(r => !q
-      || r.campaign.advertiser.toLowerCase().includes(q)
-      || (r.link.label || '').toLowerCase().includes(q)
-      || (r.link.telegramRef || '').toLowerCase().includes(q)
-      || String(r.campaign.id).includes(q));
+    let data;
+    try {
+      data = await fetchCampaignsPage('links', state.campPage);
+    } catch (err) {
+      if (token !== campRenderToken) return;
+      wrap.innerHTML = `<div style="padding:20px 4px;color:var(--dim);font-size:12px;text-align:center">Не удалось загрузить кампании: ${escapeHtml(err.message)}</div>`;
+      return;
+    }
+    if (token !== campRenderToken) return;
 
-    $('#campCount').textContent = `${allRows.length} ссылок · ${DATA.extended.campaigns.length} кампаний`;
+    state.campTotalPages = data.totalPages;
+    const trendDates = last21Dates();
+    const rows = [];
+    for (const c of data.campaigns) {
+      for (const l of c.links) {
+        rows.push({
+          campaign: c,
+          link: l,
+          subs: l.subs,
+          revenue: l.revenue,
+          cps: l.cps,
+          pricePerSub: l.pricePerSub,
+          r24: c.retention24h,
+          r48: c.retention48h,
+          url: l.telegramRef,
+          createdAt: c.createdAt,
+          creative: c.creative,
+        });
+      }
+    }
+
+    $('#campCount').textContent = `${rows.length} ссылок на странице · ${data.total} ${plural(data.total, 'кампания', 'кампании', 'кампаний')} всего`;
     state.campaignsView = { mode: 'links', rows };
+    renderPager(data.total, data.page, data.totalPages);
 
     wrap.innerHTML = rows.map((r, i) => {
       const c = r.campaign, l = r.link;
@@ -489,15 +531,26 @@ async function renderCampaigns() {
     toggleEmpty(rows.length === 0);
     wrap.querySelectorAll('.crow').forEach(el => el.addEventListener('click', () => openCampaign(+el.dataset.c)));
   } else {
+    let data;
+    try {
+      data = await fetchCampaignsPage('advertisers', state.campPage);
+    } catch (err) {
+      if (token !== campRenderToken) return;
+      wrap.innerHTML = `<div style="padding:20px 4px;color:var(--dim);font-size:12px;text-align:center">Не удалось загрузить рекламодателей: ${escapeHtml(err.message)}</div>`;
+      return;
+    }
+    if (token !== campRenderToken) return;
+
+    state.campTotalPages = data.totalPages;
     const trendDates = last21Dates();
-    const allRows = DATA.extended.advertisers.map(a => {
+    const rows = data.advertisers.map(a => {
       const roi = a.totalPrice ? (a.totalRevenue / a.totalPrice * 100) : null;
       const trend = trendDates.map(d => (DATA.byAdvertiserDate.get(a.advertiser + '|' + d) || { revenue: 0 }).revenue);
       return { ...a, roi, trend };
     });
-    const rows = allRows.filter(a => !q || a.advertiser.toLowerCase().includes(q)).sort((a, b) => b.totalRevenue - a.totalRevenue);
-    $('#campCount').textContent = `${allRows.length} рекламодателей`;
+    $('#campCount').textContent = `${data.total} ${plural(data.total, 'рекламодатель', 'рекламодателя', 'рекламодателей')}`;
     state.campaignsView = { mode: 'adv', rows };
+    renderPager(data.total, data.page, data.totalPages);
 
     wrap.innerHTML = rows.map((a, i) => `<article class="card crow" data-adv="${escapeHtml(a.advertiser)}" style="--i:${i}">
       <div class="crow-top"><span class="crow-name">${escapeHtml(a.advertiser)}</span><span class="crow-rev">${fmtM(a.totalRevenue)}</span></div>
@@ -530,13 +583,21 @@ function segInit(seg, cb) {
   place(seg.querySelector('.on'));
   addEventListener('resize', () => place(seg.querySelector('.on')));
 }
-segInit($('#modeSeg'), b => { state.mode = b.dataset.m; renderCampaigns(); });
+segInit($('#modeSeg'), b => { state.mode = b.dataset.m; state.campPage = 1; renderCampaigns(); });
 $$('#periodChips .pchip').forEach(b => b.addEventListener('click', () => {
   $$('#periodChips .pchip').forEach(x => x.classList.remove('on')); b.classList.add('on');
   state.period = b.dataset.p === 'all' ? 'all' : +b.dataset.p; renderKPIs(); refreshChart();
 }));
-$('#campSearch').addEventListener('input', e => { state.q = e.target.value; renderCampaigns(); });
-$('#resetSearch').addEventListener('click', () => { state.q = ''; $('#campSearch').value = ''; renderCampaigns(); });
+let campSearchDebounce = null;
+$('#campSearch').addEventListener('input', e => {
+  state.q = e.target.value;
+  state.campPage = 1;
+  clearTimeout(campSearchDebounce);
+  campSearchDebounce = setTimeout(() => renderCampaigns(), 300);
+});
+$('#resetSearch').addEventListener('click', () => { state.q = ''; state.campPage = 1; $('#campSearch').value = ''; renderCampaigns(); });
+$('#campPagerPrev')?.addEventListener('click', () => { if (state.campPage > 1) { state.campPage--; renderCampaigns(); } });
+$('#campPagerNext')?.addEventListener('click', () => { if (state.campPage < state.campTotalPages) { state.campPage++; renderCampaigns(); } });
 
 $('#exportBtn').addEventListener('click', () => {
   const view = state.campaignsView;

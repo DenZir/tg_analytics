@@ -417,6 +417,11 @@ tr.flash,.flash{animation:flash 1.6s ease}
   </div>
   <div class="rv" style="--i:3"><span class="count-chip" id="campCount"></span></div>
   <div class="cards-list" id="campCards"></div>
+  <div id="campPager" hidden style="display:flex;align-items:center;justify-content:center;gap:10px;margin:14px 0">
+    <button class="btn tiny" id="campPagerPrev" type="button">← Назад</button>
+    <span class="count-chip" id="campPagerInfo"></span>
+    <button class="btn tiny" id="campPagerNext" type="button">Вперёд →</button>
+  </div>
   <div class="empty" id="campEmpty">
     <div class="e-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2M8.5 11h5"/></svg></div>
     <h4>Ничего не найдено</h4>

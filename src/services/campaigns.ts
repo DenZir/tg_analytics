@@ -1,7 +1,9 @@
 import { db } from "../db/index.js";
 import { campaigns, campaignTags, links, projects, events, dailyStats } from "../db/schema.js";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { aggregate } from "../jobs/dailyAggregate.js";
+import { getRetentionStats } from "./metrics.js";
+import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 
 export interface CreateCampaignInput {
   projectId: number;
@@ -488,4 +490,174 @@ export async function getCampaignFullHistory(campaignId: number) {
     links: campaignLinks,
     events: campaignEvents,
   };
+}
+
+export interface CampaignsPageParams {
+  page: number;
+  pageSize: number;
+  q?: string;
+}
+
+export interface CampaignsPageLinkRow {
+  id: number;
+  telegramRef: string;
+  linkType: string;
+  label: string | null;
+  joins: number;
+  subs: number;
+  buyers: number;
+  revenue: number;
+  cps: number | null;
+  pricePerSub: number | null;
+}
+
+export interface CampaignsPageRow {
+  id: number;
+  projectId: number;
+  advertiser: string;
+  price: number;
+  creative: string | null;
+  createdAt: Date;
+  retention24h: number | null;
+  retention48h: number | null;
+  links: CampaignsPageLinkRow[];
+}
+
+// Paginated version of the "по ссылкам" campaigns table: fetches one page of
+// campaigns (newest first) plus only the links/events/retention needed for
+// those campaigns, instead of the N+1 pattern of computing extended metrics
+// for every campaign in the project up front.
+export async function getCampaignsPage(
+  params: CampaignsPageParams
+): Promise<{ rows: CampaignsPageRow[]; total: number }> {
+  const { page, pageSize } = params;
+  const q = params.q?.trim();
+  const offset = (page - 1) * pageSize;
+
+  let whereClause;
+  if (q) {
+    const needle = `%${q}%`;
+    const matches = await db
+      .selectDistinct({ id: campaigns.id })
+      .from(campaigns)
+      .leftJoin(links, eq(links.campaignId, campaigns.id))
+      .where(
+        sql`lower_unicode(${campaigns.advertiser}) LIKE lower_unicode(${needle})
+          OR CAST(${campaigns.id} AS TEXT) LIKE ${needle}
+          OR lower_unicode(coalesce(${links.label}, '')) LIKE lower_unicode(${needle})
+          OR lower_unicode(coalesce(${links.telegramRef}, '')) LIKE lower_unicode(${needle})`
+      );
+    const matchingIds = matches.map((m) => m.id);
+    if (matchingIds.length === 0) return { rows: [], total: 0 };
+    whereClause = inArray(campaigns.id, matchingIds);
+  }
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(campaigns)
+    .where(whereClause);
+
+  const pageCampaigns = await db
+    .select()
+    .from(campaigns)
+    .where(whereClause)
+    .orderBy(desc(campaigns.createdAt), desc(campaigns.id))
+    .limit(pageSize)
+    .offset(offset);
+
+  if (pageCampaigns.length === 0) return { rows: [], total: Number(total) || 0 };
+
+  const campaignIds = pageCampaigns.map((c) => c.id);
+
+  const [pageLinks, pageTags, retentions] = await Promise.all([
+    db.select().from(links).where(inArray(links.campaignId, campaignIds)),
+    db
+      .select()
+      .from(campaignTags)
+      .where(and(inArray(campaignTags.campaignId, campaignIds), eq(campaignTags.tagKey, "creative"))),
+    Promise.all(campaignIds.map((id) => getRetentionStats(id))),
+  ]);
+
+  const linkIds = pageLinks.map((l) => l.id);
+  const pageEvents = linkIds.length
+    ? await db.select().from(events).where(inArray(events.linkId, linkIds))
+    : [];
+
+  const retentionByCampaign = new Map(campaignIds.map((id, i) => [id, retentions[i]]));
+  const creativeByCampaign = new Map(pageTags.map((t) => [t.campaignId, t.tagValue]));
+
+  const linksByCampaign = new Map<number, typeof pageLinks>();
+  for (const l of pageLinks) {
+    const arr = linksByCampaign.get(l.campaignId) || [];
+    arr.push(l);
+    linksByCampaign.set(l.campaignId, arr);
+  }
+  const eventsByLink = new Map<number, typeof pageEvents>();
+  for (const e of pageEvents) {
+    const arr = eventsByLink.get(e.linkId) || [];
+    arr.push(e);
+    eventsByLink.set(e.linkId, arr);
+  }
+
+  const rows: CampaignsPageRow[] = pageCampaigns.map((camp) => {
+    const campLinks = linksByCampaign.get(camp.id) || [];
+    const linkStats = campLinks.map((l) => {
+      const linkEvents = eventsByLink.get(l.id) || [];
+      const entryEvents = linkEvents.filter((e) =>
+        (FUNNEL_ENTRY_TYPES as readonly string[]).includes(e.eventType)
+      );
+      const joins = entryEvents.length;
+      const subs = new Set(entryEvents.map((e) => e.tgUserId)).size;
+      const buyers = new Set(
+        linkEvents.filter((e) => e.eventType === EVENT_TYPES.PAYMENT).map((e) => e.tgUserId)
+      ).size;
+      const revenue = linkEvents
+        .filter((e) => e.eventType === EVENT_TYPES.PAYMENT || e.eventType === EVENT_TYPES.RENEWAL)
+        .reduce((s, e) => s + (e.amount || 0), 0);
+      return { link: l, joins, subs, buyers, revenue };
+    });
+
+    // Same proportional price-split as the per-campaign history view: a
+    // campaign's price is allocated across its own links by revenue share
+    // (falling back to joins share), which is why links always stay grouped
+    // with the rest of their campaign's links on the same page.
+    const totalRevenue = linkStats.reduce((s, x) => s + x.revenue, 0);
+    const totalJoins = linkStats.reduce((s, x) => s + x.joins, 0);
+
+    const linkRows: CampaignsPageLinkRow[] = linkStats.map((x) => {
+      let share: number;
+      if (totalRevenue > 0) share = x.revenue / totalRevenue;
+      else if (totalJoins > 0) share = x.joins / totalJoins;
+      else share = linkStats.length ? 1 / linkStats.length : 0;
+      const priceAlloc = camp.price * share;
+      return {
+        id: x.link.id,
+        telegramRef: x.link.telegramRef,
+        linkType: x.link.linkType,
+        label: x.link.label,
+        joins: x.joins,
+        subs: x.subs,
+        buyers: x.buyers,
+        revenue: x.revenue,
+        cps: x.buyers ? priceAlloc / x.buyers : null,
+        pricePerSub: x.subs ? priceAlloc / x.subs : null,
+      };
+    });
+
+    const ret = retentionByCampaign.get(camp.id) || { retention24h: null, retention48h: null };
+
+    return {
+      id: camp.id,
+      projectId: camp.projectId,
+      advertiser: camp.advertiser,
+      price: camp.price,
+      creative: creativeByCampaign.get(camp.id) || null,
+      createdAt: camp.createdAt,
+      retention24h: ret.retention24h,
+      retention48h: ret.retention48h,
+      links: linkRows,
+    };
+  });
+
+  return { rows, total: Number(total) || 0 };
 }

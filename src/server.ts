@@ -18,6 +18,7 @@ import {
   getCampaignFullHistory,
   getAttributionForUser,
   reassignLinkCampaign,
+  getCampaignsPage,
 } from "./services/campaigns.js";
 import { logEvent, getRecentEvents } from "./services/events.js";
 import {
@@ -25,6 +26,7 @@ import {
   getRetentionStats,
   getPurchaseConversion,
   getAdvertiserStats,
+  getAdvertisersPage,
   getPrivatkaFinance,
 } from "./services/metrics.js";
 import {
@@ -454,6 +456,29 @@ app.get("/api/metrics/extended", async (_req, res) => {
       campaigns: extendedCampaigns,
       advertisers,
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/campaigns/page?mode=links|advertisers&page=&pageSize=&q=
+// Paginated data source for the "Кампании" dashboard tab — computes
+// retention/conversion/link stats only for the requested page's campaigns
+// instead of every campaign in the project (see /api/metrics/extended).
+app.get("/api/campaigns/page", async (req, res) => {
+  try {
+    const mode = req.query.mode === "advertisers" ? "advertisers" : "links";
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));
+    const q = typeof req.query.q === "string" ? req.query.q : undefined;
+
+    if (mode === "advertisers") {
+      const { rows, total } = await getAdvertisersPage({ page, pageSize, q });
+      res.json({ mode, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), advertisers: rows });
+    } else {
+      const { rows, total } = await getCampaignsPage({ page, pageSize, q });
+      res.json({ mode, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), campaigns: rows });
+    }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
