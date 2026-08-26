@@ -96,7 +96,7 @@ main{min-width:0;display:flex;flex-direction:column}
 .seg button.on{color:var(--text)}
 
 /* Поиск */
-.search{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:10px;padding:0 11px;height:36px;width:270px;transition:border-color .2s,box-shadow .2s}
+.search{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:10px;padding:0 11px;height:36px;width:clamp(180px, 16vw, 300px);transition:border-color .2s,box-shadow .2s}
 .search:focus-within{border-color:rgba(87,182,255,.6);box-shadow:0 0 0 3px rgba(87,182,255,.13)}
 .search svg{width:15px;height:15px;color:var(--dim);flex:none}
 .search input{flex:1;min-width:0;background:none;border:0;outline:none;color:var(--text);font:500 12.5px var(--body)}
@@ -116,7 +116,7 @@ main{min-width:0;display:flex;flex-direction:column}
 @keyframes rot{to{transform:rotate(360deg)}}
 
 /* ============ КОНТЕНТ / ЭКРАНЫ ============ */
-.content{padding:22px 28px 48px;max-width:1480px;width:100%;margin:0 auto}
+.content{padding:22px 28px 48px;max-width:clamp(1480px, 94vw, 1900px);width:100%;margin:0 auto;container-type:inline-size}
 .screen{display:none}
 .screen.active{display:block}
 .rv{opacity:0;transform:translateY(14px)}
@@ -203,7 +203,9 @@ main{min-width:0;display:flex;flex-direction:column}
 .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
 .toolbar .sp{flex:1}
 .table-card{overflow:hidden}
-.tbl-wrap{overflow-x:auto;padding:4px 6px 6px}
+/* изолирует реflow таблицы (поиск/фильтр) от всей страницы */
+.tbl-wrap{overflow-x:auto;padding:4px 6px 6px;content-visibility:auto;contain-intrinsic-size:auto 500px}
+@supports not (content-visibility: auto) { .tbl-wrap { contain: layout style paint; } }
 .tbl{width:100%;border-collapse:collapse;font-size:13px}
 .tbl th{font:600 10px var(--body);letter-spacing:.09em;text-transform:uppercase;color:var(--dim);text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
 .tbl td{padding:10.5px 12px;border-bottom:1px solid rgba(255,255,255,.045);vertical-align:middle}
@@ -257,10 +259,10 @@ th.num{text-align:right}
 .pf-arppu span{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
 .pf-trend{flex:1;min-width:160px;max-width:320px}
 .pf-trend svg{width:100%;height:34px;display:block}
-@media (max-width:1000px){.pf-grid{grid-template-columns:repeat(2,1fr)}}
+@container (max-width:880px){.pf-grid{grid-template-columns:repeat(2,1fr)}}
 
 /* ============ ПРОЕКТЫ ============ */
-.pr-grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;align-items:start}
+.pr-grid{display:grid;grid-template-columns:clamp(300px, 22vw, 380px) minmax(0,1fr);gap:14px;align-items:start}
 .form-card{position:sticky;top:84px}
 .form-body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:12px}
 .fld label{display:block;font:600 10.5px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
@@ -288,7 +290,9 @@ tr.flash td{animation:flash 1.6s ease}
 .m-stat:last-child{border-right:0}
 .m-stat b{display:block;font:600 17px var(--mono)}
 .m-stat span{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em}
-.m-body{overflow-y:auto;padding:6px 22px 22px}
+/* изолирует реflow модалки (теги/ссылки/таймлайн) от всей страницы */
+.m-body{overflow-y:auto;padding:6px 22px 22px;content-visibility:auto;contain-intrinsic-size:auto 400px}
+@supports not (content-visibility: auto) { .m-body { contain: layout style paint; } }
 .m-sec{margin-top:18px}
 .m-sec-h{display:flex;align-items:center;gap:10px;margin-bottom:11px}
 .m-sec-h .card-idx{padding:0}
@@ -337,7 +341,7 @@ tr.flash td{animation:flash 1.6s ease}
 .t-info .t-ic{background:rgba(87,182,255,.14);color:var(--accent)}
 
 /* ============ АДАПТИВ ============ */
-@media (max-width:1360px){.content{padding:18px 20px 40px}.topbar{padding:12px 20px}.search{width:210px}}
+@media (max-width:1360px){.content{padding:18px 20px 40px}.topbar{padding:12px 20px}}
 @media (max-width:1200px){
   .app{grid-template-columns:66px 1fr}
   .brand-t,.nav-cap,.nav-it .lbl,.nbadge,.syscard,.admin-chip div{display:none}
@@ -345,9 +349,11 @@ tr.flash td{animation:flash 1.6s ease}
   .brand{justify-content:center;padding-bottom:12px}
   .nav-it{justify-content:center;padding:11px}
   .admin-chip{justify-content:center;padding:8px}
+}
+@container (max-width:1080px){
+  .kpis{grid-template-columns:repeat(2,1fr)}
   .ov-grid,.pr-grid{grid-template-columns:1fr}
   .form-card{position:static}
-  .kpis{grid-template-columns:repeat(2,1fr)}
 }
 
 /* ============ REDUCED MOTION ============ */
