@@ -110,6 +110,8 @@ main{min-width:0;display:flex;flex-direction:column}
 .btn:active{transform:translateY(0)}
 .btn-primary{background:linear-gradient(180deg,#5FB9FF,#3795E6);border-color:rgba(120,195,255,.5);color:#04141F;box-shadow:0 4px 16px rgba(63,155,233,.3),inset 0 1px 0 rgba(255,255,255,.35)}
 .btn-primary:hover{background:linear-gradient(180deg,#74C4FF,#48A2EF);box-shadow:0 6px 20px rgba(63,155,233,.42)}
+.btn-danger{background:linear-gradient(180deg,#FF8A96,#E8495C);border-color:rgba(255,140,150,.5);color:#2A0508;box-shadow:0 4px 16px rgba(232,73,92,.3),inset 0 1px 0 rgba(255,255,255,.25)}
+.btn-danger:hover{background:linear-gradient(180deg,#FF9BA5,#F2586A);box-shadow:0 6px 20px rgba(232,73,92,.42)}
 .btn.tiny{padding:5.5px 10px;font-size:11.5px;border-radius:8px}
 .btn.ic{padding:8.5px;width:36px;justify-content:center}
 .btn.spin svg{animation:rot .7s var(--ease)}
@@ -275,6 +277,15 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .form-note{font-size:11px;color:var(--dim);line-height:1.5;border-top:1px dashed var(--line);padding-top:11px}
 tr.flash td{animation:flash 1.6s ease}
 @keyframes flash{0%,60%{background:rgba(87,182,255,.12)}}
+
+/* ============ ДИАЛОГ ПОДТВЕРЖДЕНИЯ ============ */
+/* нативный <dialog> — сам даёт focus-trap и Escape-закрытие без лишнего JS */
+dialog#confirmDialog{border:1px solid var(--line2);border-radius:16px;background:linear-gradient(180deg,#121824,#0D1219);color:var(--text);padding:0;width:min(420px,92vw);box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06)}
+dialog#confirmDialog::backdrop{background:rgba(5,8,13,.62);backdrop-filter:blur(7px)}
+.confirm-body{padding:22px}
+.confirm-title{font:700 15.5px var(--body);letter-spacing:-.01em;margin-bottom:8px}
+.confirm-text{font-size:12.5px;color:var(--muted);line-height:1.55}
+.confirm-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--line)}
 
 /* ============ МОДАЛКА ============ */
 .m-ov{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px;background:rgba(5,8,13,.62);backdrop-filter:blur(7px);opacity:0;transition:opacity .25s}
@@ -572,6 +583,19 @@ tr.flash td{animation:flash 1.6s ease}
 
 <div id="modalRoot"></div>
 <div class="toast-root" id="toastRoot"></div>
+
+<dialog id="confirmDialog">
+  <form method="dialog">
+    <div class="confirm-body">
+      <div class="confirm-title" id="confirmTitle"></div>
+      <div class="confirm-text" id="confirmText"></div>
+    </div>
+    <div class="confirm-actions">
+      <button class="btn tiny" value="cancel" type="submit">Отмена</button>
+      <button class="btn tiny btn-danger" id="confirmOk" value="ok" type="submit">Удалить</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="app.js"></script>
 </body>

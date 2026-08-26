@@ -118,6 +118,23 @@ function toast(msg, type = 'ok') {
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, 3400);
 }
 
+// Native <dialog> confirmation — the <form method="dialog"> buttons close it and
+// set dialog.returnValue to their `value` on their own, no manual close-wiring
+// needed. Escape/backdrop dismiss leaves returnValue empty, which resolves false.
+function confirmDialog({ title, text, okLabel = 'Удалить', danger = true }) {
+  const dlg = $('#confirmDialog');
+  $('#confirmTitle').textContent = title;
+  $('#confirmText').textContent = text;
+  const okBtn = $('#confirmOk');
+  okBtn.textContent = okLabel;
+  okBtn.classList.toggle('btn-danger', danger);
+  okBtn.classList.toggle('btn-primary', !danger);
+  return new Promise(resolve => {
+    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'ok'), { once: true });
+    dlg.showModal();
+  });
+}
+
 /* ================= ХРАНИЛИЩЕ ДАННЫХ ================= */
 const DATA = {
   metrics: null,        // { campaigns, daily }
@@ -276,6 +293,7 @@ async function computeLinkRows() {
     const hist = histories.get(camp.id);
     if (!hist) continue;
     const linkStats = allocatePrice(computeLinkStats(hist.links, hist.events), camp.price);
+    const creative = hist.tags?.find(t => t.tagKey === 'creative')?.tagValue || null;
     for (const stat of linkStats) {
       rows.push({
         campaign: camp,
@@ -290,6 +308,7 @@ async function computeLinkRows() {
         r48: camp.retention48h,
         url: linkDisplayUrl(stat.link),
         createdAt: hist.campaign?.createdAt || null,
+        creative,
       });
     }
   }
@@ -455,7 +474,7 @@ function refreshChart() {
 }
 
 /* ================= КАМПАНИИ ================= */
-function headLinks() { return `<tr><th>Ссылка</th><th>Рекламодатель</th><th>Тип</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">₽/подписчик</th><th class="num">₽/покупка</th><th class="num">R24ч</th><th class="num">R48ч</th><th>Тренд</th></tr>`; }
+function headLinks() { return `<tr><th>Ссылка</th><th>Рекламодатель</th><th>Тип</th><th>Креатив</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">₽/подписчик</th><th class="num">₽/покупка</th><th class="num">R24ч</th><th class="num">R48ч</th><th>Тренд</th></tr>`; }
 function headAdv() { return `<tr><th>Рекламодатель</th><th class="num">Кампаний</th><th class="num">Закупки</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">Ср. ₽/подписчик</th><th class="num">Ср. ₽/покупка</th><th class="num">ROI</th><th class="num">Ср. R24ч</th><th class="num">Ср. R48ч</th><th>Тренд</th></tr>`; }
 
 function toggleEmpty(show) {
@@ -472,7 +491,7 @@ async function renderCampaigns() {
   if (state.mode === 'links') {
     head.innerHTML = headLinks();
     $('#campCardSub').textContent = 'Каждая выданная рекламодателю ссылка и её вклад';
-    body.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--dim);padding:22px">Загрузка ссылок…</td></tr>`;
+    body.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--dim);padding:22px">Загрузка ссылок…</td></tr>`;
 
     const allRows = await computeLinkRows();
     if (state.mode !== 'links') return; // user switched mode while we were loading
@@ -494,6 +513,7 @@ async function renderCampaigns() {
         <td><div class="cell-main">${escapeHtml(l.label || 'без названия')}</div><div class="cell-sub">${r.url ? escapeHtml(r.url) : 'URL не определён'}</div></td>
         <td><div class="cell-main">${escapeHtml(c.advertiser)}</div><div class="cell-sub">#${c.id}${r.createdAt ? ' · ' + dDate(r.createdAt) : ''}</div></td>
         <td><span class="chip ${ltMeta.cls}">${escapeHtml(ltMeta.l)}</span></td>
+        <td>${r.creative ? escapeHtml(r.creative) : '<span style="color:var(--dim)">—</span>'}</td>
         <td class="num">${fmtN(r.subs)}</td>
         <td class="num" style="color:var(--green)">${fmtM(r.revenue)}</td>
         <td class="num">${r.pricePerSub !== null ? fmt1(r.pricePerSub) + ' ₽' : '—'}</td>
@@ -577,8 +597,8 @@ $('#exportBtn').addEventListener('click', () => {
   if (!view || !view.rows.length) { toast('Нет данных для экспорта', 'warn'); return; }
   const rows = [];
   if (view.mode === 'links') {
-    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'R24ч %', 'R48ч %']);
-    view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.pricePerSub !== null ? r.pricePerSub.toFixed(2) : '', r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
+    rows.push(['Ссылка', 'URL', 'Тип', 'Креатив', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'R24ч %', 'R48ч %']);
+    view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.creative || '', r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.pricePerSub !== null ? r.pricePerSub.toFixed(2) : '', r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
   } else {
     rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
     view.rows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgPricePerSub ?? '', a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
@@ -634,6 +654,7 @@ function renderCampaignModal(camp, hist) {
             ${geoChipRow(camp.geo)}
           </div>
         </div>
+        <button class="btn tiny btn-danger" id="mDelete" type="button" title="Удалить кампанию">${IC.x} Удалить</button>
         <button class="x-btn" id="mClose">${IC.x}</button>
       </header>
       <div class="m-stats">
@@ -705,6 +726,23 @@ function renderCampaignModal(camp, hist) {
   requestAnimationFrame(() => ov.classList.add('show'));
   ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
   $('#mClose').addEventListener('click', closeModal);
+
+  $('#mDelete').addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Удалить кампанию?',
+      text: `«${camp.advertiser}» (#${camp.id}) будет удалена вместе со всеми её ссылками (${links.length}), тегами (${tags.length}) и событиями (${events.length}). Это необратимо.`,
+    });
+    if (!ok) return;
+    try {
+      await fetchJSON(`/api/campaigns/${camp.id}`, { method: 'DELETE' });
+      toast(`Кампания «${camp.advertiser}» удалена`, 'warn');
+      closeModal();
+      await afterMutation();
+      await renderCurrentScreen();
+    } catch (err) {
+      toast(`Не удалось удалить кампанию: ${err.message}`, 'warn');
+    }
+  });
 
   ov.querySelectorAll('#tagWrap button').forEach(b => b.addEventListener('click', async () => {
     const key = b.dataset.k;

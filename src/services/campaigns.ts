@@ -425,6 +425,40 @@ export async function deleteCampaignTag(campaignId: number, tagKey: string) {
   return { success: true };
 }
 
+// Cascades a single campaign delete across its links/tags/stats/events —
+// mirrors deleteProjectCascade above, just scoped to one campaign instead of
+// every campaign under a project. There's no DB-level ON DELETE CASCADE (SQLite
+// FK enforcement isn't even turned on here), so this has to be done by hand.
+export async function deleteCampaignCascade(campaignId: number) {
+  const campaign = await db.query.campaigns.findFirst({
+    where: eq(campaigns.id, campaignId),
+  });
+  if (!campaign) return null;
+
+  const campaignLinks = await db.select().from(links).where(eq(links.campaignId, campaignId));
+  const linkIds = campaignLinks.map((l) => l.id);
+
+  let deletedEventsCount = 0;
+  if (linkIds.length > 0) {
+    const delEvs = await db.delete(events).where(inArray(events.linkId, linkIds)).returning();
+    deletedEventsCount = delEvs.length;
+  }
+
+  const delLinks = await db.delete(links).where(eq(links.campaignId, campaignId)).returning();
+  const delTags = await db.delete(campaignTags).where(eq(campaignTags.campaignId, campaignId)).returning();
+  const delStats = await db.delete(dailyStats).where(eq(dailyStats.campaignId, campaignId)).returning();
+
+  const [deletedCampaign] = await db.delete(campaigns).where(eq(campaigns.id, campaignId)).returning();
+
+  return {
+    deletedCampaign,
+    deletedLinksCount: delLinks.length,
+    deletedTagsCount: delTags.length,
+    deletedStatsCount: delStats.length,
+    deletedEventsCount,
+  };
+}
+
 export async function getCampaignFullHistory(campaignId: number) {
   const campaign = await db.query.campaigns.findFirst({
     where: eq(campaigns.id, campaignId),

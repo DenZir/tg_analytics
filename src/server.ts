@@ -14,6 +14,7 @@ import {
   getCampaignTags,
   upsertCampaignTag,
   deleteCampaignTag,
+  deleteCampaignCascade,
   getCampaignFullHistory,
   getAttributionForUser,
   reassignLinkCampaign,
@@ -287,6 +288,20 @@ app.get("/api/campaigns/:id/history", async (req, res) => {
       return res.status(404).json({ error: "Campaign not found" });
     }
     res.json(history);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/campaigns/:id — cascades to its links/tags/stats/events
+app.delete("/api/campaigns/:id", async (req, res) => {
+  try {
+    const campaignId = Number(req.params.id);
+    const result = await deleteCampaignCascade(campaignId);
+    if (!result) {
+      return res.status(404).json({ error: "Campaign not found" });
+    }
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
