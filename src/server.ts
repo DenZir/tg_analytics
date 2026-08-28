@@ -3,7 +3,7 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { db } from "./db/index.js";
+import { db, sqlite } from "./db/index.js";
 import { links } from "./db/schema.js";
 import {
   createCampaign,
@@ -42,6 +42,7 @@ import {
 import { getCampaignGeoBreakdown } from "./services/geo.js";
 import { eq } from "drizzle-orm";
 import { redeemAndRotateToken, getSessionTgUserId } from "./services/dashboardAuth.js";
+import { channelBot } from "./bots/channelBot.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +52,40 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(cookieParser());
+
+// GET /health — actively verifies sqlite is reachable and, if the channel bot
+// is configured, that it can still reach the Telegram API. Intentionally NOT
+// behind the /api auth middleware or the dashboard session check below, so
+// Docker's healthcheck (and any external uptime monitor) can hit it directly.
+app.get("/health", async (_req, res) => {
+  const checks: Record<string, string> = {};
+  let healthy = true;
+
+  try {
+    sqlite.prepare("SELECT 1").get();
+    checks.db = "ok";
+  } catch (error: any) {
+    checks.db = `error: ${error.message}`;
+    healthy = false;
+  }
+
+  if (channelBot) {
+    try {
+      await Promise.race([
+        channelBot.telegram.getMe(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+      ]);
+      checks.channelBot = "ok";
+    } catch (error: any) {
+      checks.channelBot = `error: ${error.message}`;
+      healthy = false;
+    }
+  } else {
+    checks.channelBot = "not_configured";
+  }
+
+  res.status(healthy ? 200 : 503).json({ status: healthy ? "ok" : "degraded", checks });
+});
 
 const CHANNEL_BOT_USERNAME = process.env.CHANNEL_BOT_USERNAME || "";
 const BOT_DEEP_LINK = CHANNEL_BOT_USERNAME ? `https://t.me/${CHANNEL_BOT_USERNAME}` : null;

@@ -21,15 +21,17 @@ services:
       # src/jobs/backup.ts. Must match BACKUP_DIR in .env (default ./backups).
       - ./backups:/app/backups
     healthcheck:
-      # No /health route in this app, so this just checks the port accepts
-      # TCP connections rather than expecting a specific HTTP status (the
-      # dashboard's "/" legitimately returns 401 without a session cookie).
+      # Hits GET /health, which checks sqlite connectivity and (if configured)
+      # that the channel bot can still reach the Telegram API — replaces the
+      # old bare-TCP check, which stayed "green" even while the bot's polling
+      # loop was silently dead. No curl/wget in this base image, so the check
+      # is a small inline Node script, same style as the check it replaces.
       test:
         [
           "CMD",
           "node",
           "-e",
-          "require('net').connect(process.env.PORT || 3000, '127.0.0.1').on('connect', function () { process.exit(0) }).on('error', function () { process.exit(1) })",
+          "require('http').get({ host: '127.0.0.1', port: process.env.PORT || 3000, path: '/health', timeout: 4000 }, (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))",
         ]
       interval: 30s
       timeout: 5s
