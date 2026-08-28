@@ -657,6 +657,7 @@ function exportPrivatkasCsv() {
   toast('CSV выгружен: ' + rows.length + ' строк', 'info');
 }
 
+$('#trashBtn').addEventListener('click', openTrash);
 $('#exportBtn').addEventListener('click', () => {
   if (state.screen === 'privatkas') { exportPrivatkasCsv(); return; }
   if (state.screen === 'utm') { exportUtmCsv(); return; }
@@ -796,13 +797,14 @@ function renderCampaignModal(camp, hist) {
 
   $('#mDelete').addEventListener('click', async () => {
     const ok = await confirmDialog({
-      title: 'Удалить кампанию?',
-      text: `«${camp.advertiser}» (#${camp.id}) будет удалена вместе со всеми её ссылками (${links.length}), тегами (${tags.length}) и событиями (${events.length}). Это необратимо.`,
+      title: 'Переместить в корзину?',
+      text: `«${camp.advertiser}» (#${camp.id}) вместе со всеми её ссылками (${links.length}), тегами (${tags.length}) и событиями (${events.length}) будет перемещена в корзину. В течение 30 дней её можно восстановить; после — она будет удалена безвозвратно.`,
+      okLabel: 'В корзину',
     });
     if (!ok) return;
     try {
       await fetchJSON(`/api/campaigns/${camp.id}`, { method: 'DELETE' });
-      toast(`Кампания «${camp.advertiser}» удалена`, 'warn');
+      toast(`Кампания «${camp.advertiser}» перемещена в корзину`, 'warn');
       closeModal();
       await afterMutation();
       await renderCurrentScreen();
@@ -874,6 +876,83 @@ function closeModal() {
   const ov = $('#mOv'); if (!ov) return;
   ov.classList.remove('show');
   setTimeout(() => { const root = $('#modalRoot'); if (root) root.innerHTML = ''; }, 220);
+}
+
+/* ================= КОРЗИНА ================= */
+function daysUntilPurge(deletedAt) {
+  const purgeAt = new Date(deletedAt).getTime() + 30 * 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.ceil((purgeAt - Date.now()) / (24 * 60 * 60 * 1000)));
+}
+
+async function openTrash() {
+  let rows;
+  try {
+    rows = await fetchJSON('/api/campaigns/trash');
+  } catch (err) {
+    toast(`Не удалось загрузить корзину: ${err.message}`, 'warn');
+    return;
+  }
+  renderTrashModal(rows);
+}
+
+function renderTrashModal(rows) {
+  $('#modalRoot').innerHTML = `
+  <div class="m-ov" id="mOv">
+    <article class="modal" role="dialog" aria-modal="true">
+      <header class="m-head">
+        <div>
+          <div class="m-eyebrow">${rows.length} ${plural(rows.length, 'кампания', 'кампании', 'кампаний')}</div>
+          <h2>🗑 Корзина</h2>
+        </div>
+        <button class="x-btn" id="mClose">${IC.x}</button>
+      </header>
+      <div class="m-body">
+        <section class="m-sec">
+          ${rows.length ? rows.map(c => `
+            <div class="lk-row" data-c="${c.id}">
+              <div class="lk-top">
+                <span class="lk-txt"><b>${escapeHtml(c.advertiser)}</b><span class="lk-url">#${c.id} · удалена ${dDate(c.deletedAt)} · автоудаление через ${daysUntilPurge(c.deletedAt)} ${plural(daysUntilPurge(c.deletedAt), 'день', 'дня', 'дней')}</span></span>
+                <button class="btn tiny btn-primary trash-restore" data-id="${c.id}">${IC.check} Восстановить</button>
+                <button class="btn tiny btn-danger trash-purge" data-id="${c.id}">${IC.x} Удалить навсегда</button>
+              </div>
+            </div>`).join('') : '<div style="font-size:12px;color:var(--dim)">Корзина пуста</div>'}
+        </section>
+      </div>
+    </article>
+  </div>`;
+
+  const ov = $('#mOv');
+  requestAnimationFrame(() => ov.classList.add('show'));
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
+  $('#mClose').addEventListener('click', closeModal);
+
+  ov.querySelectorAll('.trash-restore').forEach(b => b.addEventListener('click', async () => {
+    try {
+      await fetchJSON(`/api/campaigns/${b.dataset.id}/restore`, { method: 'POST' });
+      toast('Кампания восстановлена из корзины');
+      await afterMutation();
+      await renderCurrentScreen();
+      await openTrash();
+    } catch (err) {
+      toast(`Не удалось восстановить кампанию: ${err.message}`, 'warn');
+    }
+  }));
+
+  ov.querySelectorAll('.trash-purge').forEach(b => b.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Удалить навсегда?',
+      text: 'Кампания и все её ссылки, теги и события будут удалены безвозвратно, до истечения 30-дневного срока хранения в корзине. Это нельзя отменить.',
+      okLabel: 'Удалить навсегда',
+    });
+    if (!ok) return;
+    try {
+      await fetchJSON(`/api/campaigns/${b.dataset.id}/purge`, { method: 'DELETE' });
+      toast('Кампания удалена навсегда', 'warn');
+      await openTrash();
+    } catch (err) {
+      toast(`Не удалось удалить кампанию: ${err.message}`, 'warn');
+    }
+  }));
 }
 
 /* ================= ПРОЕКТЫ ================= */

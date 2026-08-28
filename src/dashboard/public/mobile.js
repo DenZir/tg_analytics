@@ -599,6 +599,7 @@ $('#resetSearch').addEventListener('click', () => { state.q = ''; state.campPage
 $('#campPagerPrev')?.addEventListener('click', () => { if (state.campPage > 1) { state.campPage--; renderCampaigns(); } });
 $('#campPagerNext')?.addEventListener('click', () => { if (state.campPage < state.campTotalPages) { state.campPage++; renderCampaigns(); } });
 
+$('#trashBtn').addEventListener('click', openTrash);
 $('#exportBtn').addEventListener('click', () => {
   const view = state.campaignsView;
   if (!view || !view.rows.length) { toast('Нет данных для экспорта', 'warn'); return; }
@@ -800,6 +801,84 @@ function closeModal() {
   document.body.style.overflow = '';
   setTimeout(() => { const root = $('#modalRoot'); if (root) root.innerHTML = ''; }, 280);
 }
+
+/* ================= КОРЗИНА ================= */
+function daysUntilPurge(deletedAt) {
+  const purgeAt = new Date(deletedAt).getTime() + 30 * 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.ceil((purgeAt - Date.now()) / (24 * 60 * 60 * 1000)));
+}
+
+async function openTrash() {
+  let rows;
+  try {
+    rows = await fetchJSON('/api/campaigns/trash');
+  } catch (err) {
+    toast(`Не удалось загрузить корзину: ${err.message}`, 'warn');
+    return;
+  }
+  renderTrashSheet(rows);
+}
+
+function renderTrashSheet(rows) {
+  $('#modalRoot').innerHTML = `
+  <div class="m-ov" id="mOv">
+    <article class="sheet" role="dialog" aria-modal="true">
+      <div class="grab"></div>
+      <header class="m-head">
+        <div style="min-width:0">
+          <div class="m-eyebrow">${rows.length} ${plural(rows.length, 'кампания', 'кампании', 'кампаний')}</div>
+          <h2>🗑 Корзина</h2>
+        </div>
+        <button class="x-btn" id="mClose">${IC.x}</button>
+      </header>
+      <div class="m-body">
+        <section class="m-sec">
+          ${rows.length ? rows.map(c => `
+            <div class="lk-row" data-c="${c.id}">
+              <div class="lk-top">
+                <div class="lk-txt" style="min-width:0;flex:1"><b>${escapeHtml(c.advertiser)}</b><span class="lk-url">#${c.id} · удалена ${dDate(c.deletedAt)} · автоудаление через ${daysUntilPurge(c.deletedAt)} ${plural(daysUntilPurge(c.deletedAt), 'день', 'дня', 'дней')}</span></div>
+              </div>
+              <div class="lk-actions">
+                <button class="btn tiny btn-primary trash-restore" data-id="${c.id}">${IC.check} Восстановить</button>
+                <button class="btn tiny btn-danger trash-purge" data-id="${c.id}">${IC.x} Удалить навсегда</button>
+              </div>
+            </div>`).join('') : '<div style="font-size:12px;color:var(--dim)">Корзина пуста</div>'}
+        </section>
+      </div>
+    </article>
+  </div>`;
+
+  const ov = $('#mOv');
+  requestAnimationFrame(() => ov.classList.add('show'));
+  document.body.style.overflow = 'hidden';
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
+  $('#mClose').addEventListener('click', closeModal);
+
+  ov.querySelectorAll('.trash-restore').forEach(b => b.addEventListener('click', async () => {
+    try {
+      await fetchJSON(`/api/campaigns/${b.dataset.id}/restore`, { method: 'POST' });
+      toast('Кампания восстановлена из корзины');
+      await afterMutation();
+      await renderCurrentScreen();
+      await openTrash();
+    } catch (err) {
+      toast(`Не удалось восстановить кампанию: ${err.message}`, 'warn');
+    }
+  }));
+
+  ov.querySelectorAll('.trash-purge').forEach(b => b.addEventListener('click', async () => {
+    const ok = window.confirm('Удалить навсегда?\n\nКампания и все её ссылки, теги и события будут удалены безвозвратно. Это нельзя отменить.');
+    if (!ok) return;
+    try {
+      await fetchJSON(`/api/campaigns/${b.dataset.id}/purge`, { method: 'DELETE' });
+      toast('Кампания удалена навсегда', 'warn');
+      await openTrash();
+    } catch (err) {
+      toast(`Не удалось удалить кампанию: ${err.message}`, 'warn');
+    }
+  }));
+}
+
 addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 /* ================= UTM-МЕТКИ ================= */
