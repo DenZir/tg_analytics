@@ -1,9 +1,10 @@
 import { db } from "../db/index.js";
 import { campaigns, campaignTags, links, projects, events, dailyStats } from "../db/schema.js";
-import { eq, and, inArray, desc, sql } from "drizzle-orm";
+import { eq, and, inArray, desc, sql, isNull, isNotNull } from "drizzle-orm";
 import { aggregate } from "../jobs/dailyAggregate.js";
 import { getRetentionStats } from "./metrics.js";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
+import { logAdminAction } from "./auditLog.js";
 
 export interface CreateCampaignInput {
   projectId: number;
@@ -461,6 +462,75 @@ export async function deleteCampaignCascade(campaignId: number) {
   };
 }
 
+// Soft-deletes a campaign into the trash. It disappears from all normal
+// listings/stats immediately but can be restored via restoreCampaign() until
+// it's purged (see purgeCampaignCascade below / src/jobs/purgeTrash.ts).
+export async function softDeleteCampaign(campaignId: number, adminId: string) {
+  const campaign = await db.query.campaigns.findFirst({
+    where: eq(campaigns.id, campaignId),
+  });
+  if (!campaign) return null;
+  if (campaign.deletedAt) return campaign; // already in the trash, no-op
+
+  const [updated] = await db
+    .update(campaigns)
+    .set({ deletedAt: new Date() })
+    .where(eq(campaigns.id, campaignId))
+    .returning();
+
+  await logAdminAction(adminId, "campaign_trash", "campaign", campaignId, campaign.advertiser);
+  return updated;
+}
+
+// Restores a campaign out of the trash, provided it hasn't been purged yet.
+export async function restoreCampaign(campaignId: number, adminId: string) {
+  const campaign = await db.query.campaigns.findFirst({
+    where: eq(campaigns.id, campaignId),
+  });
+  if (!campaign || !campaign.deletedAt) return null;
+
+  const [updated] = await db
+    .update(campaigns)
+    .set({ deletedAt: null })
+    .where(eq(campaigns.id, campaignId))
+    .returning();
+
+  await logAdminAction(adminId, "campaign_restore", "campaign", campaignId, campaign.advertiser);
+  return updated;
+}
+
+// Lists campaigns currently in the trash, most recently trashed first.
+export async function getTrashedCampaigns() {
+  return db
+    .select()
+    .from(campaigns)
+    .where(isNotNull(campaigns.deletedAt))
+    .orderBy(desc(campaigns.deletedAt));
+}
+
+// Permanently deletes a campaign that is ALREADY in the trash, cascading to
+// its links/tags/stats/events (reuses the existing deleteCampaignCascade
+// hard-delete). Refuses to purge a campaign that hasn't been trashed first,
+// so this can't be used as a bypass around the trash confirmation step.
+// adminId is the human admin's tg id for a manual "empty this now" action,
+// or the literal string "system" when called by the automatic daily purge
+// job in src/jobs/purgeTrash.ts.
+export async function purgeCampaignCascade(campaignId: number, adminId: string) {
+  const campaign = await db.query.campaigns.findFirst({
+    where: eq(campaigns.id, campaignId),
+  });
+  if (!campaign) return null;
+  if (!campaign.deletedAt) {
+    throw new Error("Campaign must be in the trash before it can be purged");
+  }
+
+  const result = await deleteCampaignCascade(campaignId);
+  if (result) {
+    await logAdminAction(adminId, "campaign_purge", "campaign", campaignId, campaign.advertiser);
+  }
+  return result;
+}
+
 export async function getCampaignFullHistory(campaignId: number) {
   const campaign = await db.query.campaigns.findFirst({
     where: eq(campaigns.id, campaignId),
@@ -534,7 +604,7 @@ export async function getCampaignsPage(
   const q = params.q?.trim();
   const offset = (page - 1) * pageSize;
 
-  let whereClause;
+  let whereClause = isNull(campaigns.deletedAt);
   if (q) {
     const needle = `%${q}%`;
     const matches = await db
@@ -542,14 +612,17 @@ export async function getCampaignsPage(
       .from(campaigns)
       .leftJoin(links, eq(links.campaignId, campaigns.id))
       .where(
-        sql`lower_unicode(${campaigns.advertiser}) LIKE lower_unicode(${needle})
+        and(
+          isNull(campaigns.deletedAt),
+          sql`lower_unicode(${campaigns.advertiser}) LIKE lower_unicode(${needle})
           OR CAST(${campaigns.id} AS TEXT) LIKE ${needle}
           OR lower_unicode(coalesce(${links.label}, '')) LIKE lower_unicode(${needle})
           OR lower_unicode(coalesce(${links.telegramRef}, '')) LIKE lower_unicode(${needle})`
+        )
       );
     const matchingIds = matches.map((m) => m.id);
     if (matchingIds.length === 0) return { rows: [], total: 0 };
-    whereClause = inArray(campaigns.id, matchingIds);
+    whereClause = and(isNull(campaigns.deletedAt), inArray(campaigns.id, matchingIds))!;
   }
 
   const [{ total }] = await db

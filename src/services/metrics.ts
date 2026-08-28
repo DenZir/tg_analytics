@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { dailyStats, campaigns, campaignTags, links, events, projects } from "../db/schema.js";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, sql, isNull } from "drizzle-orm";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 
 export async function getPurchaseConversion(campaignId: number) {
@@ -139,7 +139,7 @@ export async function getRetentionStats(campaignId: number) {
 }
 
 export async function getAdvertiserStats() {
-  const campaignsList = await db.select().from(campaigns);
+  const campaignsList = await db.select().from(campaigns).where(isNull(campaigns.deletedAt));
   const statsList = await db.select().from(dailyStats);
 
   // Unique first-time buyers (payment events) attributed to each campaign via its links.
@@ -251,8 +251,8 @@ export async function getAdvertisersPage(
   const offset = (page - 1) * pageSize;
 
   const searchCond = q
-    ? sql`lower_unicode(${campaigns.advertiser}) LIKE lower_unicode(${`%${q}%`})`
-    : undefined;
+    ? and(isNull(campaigns.deletedAt), sql`lower_unicode(${campaigns.advertiser}) LIKE lower_unicode(${`%${q}%`})`)
+    : isNull(campaigns.deletedAt);
 
   const [{ total }] = await db
     .select({ total: sql<number>`count(distinct ${campaigns.advertiser})` })
@@ -294,7 +294,7 @@ export async function getAdvertisersPage(
   const advertiserCampaigns = await db
     .select({ id: campaigns.id, advertiser: campaigns.advertiser })
     .from(campaigns)
-    .where(inArray(campaigns.advertiser, advertiserNames));
+    .where(and(inArray(campaigns.advertiser, advertiserNames), isNull(campaigns.deletedAt)));
 
   const campaignIdsByAdvertiser = new Map<string, number[]>();
   for (const c of advertiserCampaigns) {
@@ -367,7 +367,7 @@ export async function getAdvertisersPage(
 
 export async function getMetrics() {
   const statsList = await db.select().from(dailyStats);
-  const campaignsList = await db.select().from(campaigns);
+  const campaignsList = await db.select().from(campaigns).where(isNull(campaigns.deletedAt));
   const tagsList = await db.select().from(campaignTags);
 
   const daily = statsList.map((stat) => {

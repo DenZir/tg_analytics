@@ -20,6 +20,11 @@ export const campaigns = sqliteTable("campaigns", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
+  // Soft-delete: null means active. Set when an admin moves the campaign to
+  // the trash; the campaign (and its links/tags/stats/events) is only
+  // actually removed once purgeCampaignCascade() runs, either manually or
+  // via the daily auto-purge job once TRASH_RETENTION_DAYS has elapsed.
+  deletedAt: integer("deleted_at", { mode: "timestamp" }),
 });
 
 export const campaignTags = sqliteTable("campaign_tags", {
@@ -141,4 +146,22 @@ export const utmEvents = sqliteTable(
     index("utm_events_user_ts_idx").on(table.tgUserId, table.ts),
     index("utm_events_link_idx").on(table.utmLinkId),
   ]
+);
+
+// --- Audit trail for admin actions (e.g. campaign trash/restore/purge) ---
+
+export const adminActions = sqliteTable(
+  "admin_actions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    adminId: text("admin_id").notNull(),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: integer("target_id").notNull(),
+    details: text("details"),
+    ts: integer("ts", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index("admin_actions_target_idx").on(table.targetType, table.targetId)]
 );

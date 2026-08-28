@@ -14,11 +14,14 @@ import {
   getCampaignTags,
   upsertCampaignTag,
   deleteCampaignTag,
-  deleteCampaignCascade,
   getCampaignFullHistory,
   getAttributionForUser,
   reassignLinkCampaign,
   getCampaignsPage,
+  softDeleteCampaign,
+  restoreCampaign,
+  getTrashedCampaigns,
+  purgeCampaignCascade,
 } from "./services/campaigns.js";
 import { logEvent, getRecentEvents } from "./services/events.js";
 import { EVENT_TYPES } from "./db/eventTypes.js";
@@ -109,6 +112,19 @@ async function hasValidDashSession(req: express.Request): Promise<boolean> {
   if (!sessionToken) return false;
   const tgUserId = await getSessionTgUserId(sessionToken);
   return !!tgUserId;
+}
+
+// Resolves an identity string for the audit log. A dashboard session cookie
+// gives us the actual admin's tg user id; a caller authenticated via the
+// shared X-API-Key header has no individual identity, so it's logged under
+// a fixed "api-key" sentinel instead.
+async function getRequestAdminId(req: express.Request): Promise<string> {
+  const sessionToken = req.cookies?.dash_session;
+  if (sessionToken) {
+    const tgUserId = await getSessionTgUserId(sessionToken);
+    if (tgUserId) return tgUserId;
+  }
+  return "api-key";
 }
 
 // GET /auth/callback?token=... — redeems a one-time login token minted by
@@ -331,17 +347,62 @@ app.get("/api/campaigns/:id/history", async (req, res) => {
   }
 });
 
-// DELETE /api/campaigns/:id — cascades to its links/tags/stats/events
+// DELETE /api/campaigns/:id — moves the campaign to the trash (soft delete).
+// Restorable via POST /api/campaigns/:id/restore until it's purged (either
+// manually via DELETE /api/campaigns/:id/purge, or automatically after
+// TRASH_RETENTION_DAYS by src/jobs/purgeTrash.ts).
 app.delete("/api/campaigns/:id", async (req, res) => {
   try {
     const campaignId = Number(req.params.id);
-    const result = await deleteCampaignCascade(campaignId);
+    const adminId = await getRequestAdminId(req);
+    const result = await softDeleteCampaign(campaignId, adminId);
     if (!result) {
       return res.status(404).json({ error: "Campaign not found" });
     }
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/campaigns/trash — lists campaigns currently in the trash
+app.get("/api/campaigns/trash", async (_req, res) => {
+  try {
+    const rows = await getTrashedCampaigns();
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/campaigns/:id/restore — restores a campaign out of the trash
+app.post("/api/campaigns/:id/restore", async (req, res) => {
+  try {
+    const campaignId = Number(req.params.id);
+    const adminId = await getRequestAdminId(req);
+    const result = await restoreCampaign(campaignId, adminId);
+    if (!result) {
+      return res.status(404).json({ error: "Campaign not found or not in the trash" });
+    }
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/campaigns/:id/purge — permanently deletes a campaign that is
+// already in the trash, before its automatic expiry
+app.delete("/api/campaigns/:id/purge", async (req, res) => {
+  try {
+    const campaignId = Number(req.params.id);
+    const adminId = await getRequestAdminId(req);
+    const result = await purgeCampaignCascade(campaignId, adminId);
+    if (!result) {
+      return res.status(404).json({ error: "Campaign not found" });
+    }
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
 });
 
