@@ -187,6 +187,41 @@ function computeMetrics(rows: UtmEventRow[], spend: number | null) {
   };
 }
 
+// Maps each tgUserId to the utm link of their very FIRST 'start' event, then
+// sums ALL their lifetime payment+renewal amounts regardless of which link
+// those later events are attributed to via last-touch (recordUtmPurchase
+// resolves to whichever 'start' was most recent, same drift problem as the
+// campaigns/channel model — see the parallel getCohortLtvByCampaign in
+// services/metrics.ts). Unlike the purchases/revenue in computeMetrics(),
+// this number never moves to a different link just because the user later
+// started via a different one.
+function computeCohortLtv(allEvents: UtmEventRow[]): Map<number, { acquiredUsers: number; cohortRevenue: number }> {
+  const firstStartByUser = new Map<string, { utmLinkId: number; ts: number }>();
+  for (const e of allEvents) {
+    if (e.eventType !== UTM_EVENT_TYPES.START) continue;
+    const tsMs = e.ts.getTime();
+    const existing = firstStartByUser.get(e.tgUserId);
+    if (!existing || tsMs < existing.ts) {
+      firstStartByUser.set(e.tgUserId, { utmLinkId: e.utmLinkId, ts: tsMs });
+    }
+  }
+
+  const revenueByUser = new Map<string, number>();
+  for (const e of allEvents) {
+    if (e.eventType !== UTM_EVENT_TYPES.PAYMENT && e.eventType !== UTM_EVENT_TYPES.RENEWAL) continue;
+    revenueByUser.set(e.tgUserId, (revenueByUser.get(e.tgUserId) || 0) + e.amount);
+  }
+
+  const byLink = new Map<number, { acquiredUsers: number; cohortRevenue: number }>();
+  for (const [tgUserId, touch] of firstStartByUser.entries()) {
+    const agg = byLink.get(touch.utmLinkId) || { acquiredUsers: 0, cohortRevenue: 0 };
+    agg.acquiredUsers += 1;
+    agg.cohortRevenue += revenueByUser.get(tgUserId) || 0;
+    byLink.set(touch.utmLinkId, agg);
+  }
+  return byLink;
+}
+
 export async function listUtmLinksWithMetrics() {
   const linksList = await db.select().from(utmLinks);
   const allEvents = await db.select().from(utmEvents);
@@ -197,13 +232,18 @@ export async function listUtmLinksWithMetrics() {
     list.push(e);
     eventsByLink.set(e.utmLinkId, list);
   }
+  const cohortByLink = computeCohortLtv(allEvents);
 
   return linksList.map((link) => {
     const rows = eventsByLink.get(link.id) || [];
+    const cohort = cohortByLink.get(link.id);
+    const cohortAcquiredUsers = cohort?.acquiredUsers ?? 0;
     return {
       ...link,
       deepLink: buildDeepLink(link),
       ...computeMetrics(rows, link.spend ?? null),
+      cohortAcquiredUsers,
+      avgCohortLtv: cohort && cohortAcquiredUsers > 0 ? Number((cohort.cohortRevenue / cohortAcquiredUsers).toFixed(2)) : null,
     };
   });
 }
@@ -267,17 +307,25 @@ export async function getUtmSourceRollup() {
     list.push(link);
     linksBySource.set(link.utmSource, list);
   }
+  const cohortByLink = computeCohortLtv(allEvents);
 
   const result = [];
   for (const [utmSource, sourceLinks] of linksBySource.entries()) {
     const rows: UtmEventRow[] = [];
     let totalSpend = 0;
     let hasSpend = false;
+    let cohortAcquiredUsers = 0;
+    let cohortRevenue = 0;
     for (const link of sourceLinks) {
       rows.push(...(eventsByLink.get(link.id) || []));
       if (link.spend !== null && link.spend !== undefined) {
         hasSpend = true;
         totalSpend += link.spend;
+      }
+      const cohort = cohortByLink.get(link.id);
+      if (cohort) {
+        cohortAcquiredUsers += cohort.acquiredUsers;
+        cohortRevenue += cohort.cohortRevenue;
       }
     }
     const metrics = computeMetrics(rows, hasSpend ? totalSpend : null);
@@ -285,6 +333,8 @@ export async function getUtmSourceRollup() {
       utmSource,
       linksCount: sourceLinks.length,
       ...metrics,
+      cohortAcquiredUsers,
+      avgCohortLtv: cohortAcquiredUsers > 0 ? Number((cohortRevenue / cohortAcquiredUsers).toFixed(2)) : null,
     });
   }
 

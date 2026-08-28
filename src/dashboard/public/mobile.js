@@ -261,6 +261,7 @@ async function renderCampaigns() {
         <div class="m-cell"><span>Подписки</span><b>${fmtN(a.totalSubs)}</b></div>
         <div class="m-cell"><span>Ср. ₽/подписчик</span><b>${a.avgPricePerSub !== null && a.avgPricePerSub !== undefined ? fmt1(a.avgPricePerSub) + ' ₽' : '—'}</b></div>
         <div class="m-cell"><span>Ср. ₽/покупка</span><b>${a.avgCps !== null && a.avgCps !== undefined ? fmt1(a.avgCps) + ' ₽' : '—'}</b></div>
+        <div class="m-cell"><span>LTV когорты</span><b>${a.avgCohortLtv !== null && a.avgCohortLtv !== undefined ? fmt1(a.avgCohortLtv) + ' ₽' : '—'}</b></div>
         <div class="m-cell"><span>Ср. R24ч</span><b class="${a.avgRetention24h !== null && a.avgRetention24h !== undefined ? rCls(a.avgRetention24h) : ''}">${a.avgRetention24h !== null && a.avgRetention24h !== undefined ? fmtPct(a.avgRetention24h) : '—'}</b></div>
         <div class="m-cell"><span>Ср. R48ч</span><b class="${a.avgRetention48h !== null && a.avgRetention48h !== undefined ? rCls(a.avgRetention48h) : ''}">${a.avgRetention48h !== null && a.avgRetention48h !== undefined ? fmtPct(a.avgRetention48h) : '—'}</b></div>
       </div>
@@ -305,8 +306,8 @@ $('#exportBtn').addEventListener('click', async () => {
       rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'R24ч %', 'R48ч %']);
       allRows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.pricePerSub !== null ? r.pricePerSub.toFixed(2) : '', r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
     } else {
-      rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
-      allRows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgPricePerSub ?? '', a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
+      rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'LTV когорты ₽', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
+      allRows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgPricePerSub ?? '', a.avgCps ?? '', a.avgCohortLtv ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
     }
     const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-' + view.mode + '.csv'; a.click();
@@ -609,6 +610,7 @@ function renderUtmSources(sources) {
       <div class="m-cell"><span>Уникальные</span><b>${fmtN(s.uniqueStarts)}</b></div>
       <div class="m-cell"><span>Покупки</span><b>${fmtN(s.purchases)}</b></div>
       <div class="m-cell"><span>CAC</span><b>${s.cac !== null && s.cac !== undefined ? fmt1(s.cac) + ' ₽' : '—'}</b></div>
+      <div class="m-cell"><span>LTV когорты</span><b>${s.avgCohortLtv !== null && s.avgCohortLtv !== undefined ? fmt1(s.avgCohortLtv) + ' ₽' : '—'}</b></div>
     </div>
     <div class="convcell"><div class="bar"><i style="width:${Math.min(s.conversionPct || 0, 100)}%"></i></div><b>${s.conversionPct !== null && s.conversionPct !== undefined ? fmtPct(s.conversionPct) : '—'}</b></div>
   </article>`).join('');

@@ -178,7 +178,7 @@ function refreshChart() {
 
 /* ================= КАМПАНИИ ================= */
 function headLinks() { return `<tr><th>Ссылка</th><th>Рекламодатель</th><th>Тип</th><th>Креатив</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">₽/подписчик</th><th class="num">₽/покупка</th><th class="num">R24ч</th><th class="num">R48ч</th><th>Тренд</th></tr>`; }
-function headAdv() { return `<tr><th>Рекламодатель</th><th class="num">Кампаний</th><th class="num">Закупки</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">Ср. ₽/подписчик</th><th class="num">Ср. ₽/покупка</th><th class="num">ROI</th><th class="num">Ср. R24ч</th><th class="num">Ср. R48ч</th><th>Тренд</th></tr>`; }
+function headAdv() { return `<tr><th>Рекламодатель</th><th class="num">Кампаний</th><th class="num">Закупки</th><th class="num">Подписки</th><th class="num">Выручка</th><th class="num">Ср. ₽/подписчик</th><th class="num">Ср. ₽/покупка</th><th class="num" title="Сколько в итоге заплатили за всё время люди, привлечённые кампаниями этого рекламодателя — считается от первого касания, не переезжает на другую кампанию при повторных заходах">LTV когорты</th><th class="num">ROI</th><th class="num">Ср. R24ч</th><th class="num">Ср. R48ч</th><th>Тренд</th></tr>`; }
 
 function toggleEmpty(show) {
   const empty = $('#campEmpty');
@@ -255,14 +255,14 @@ async function renderCampaigns() {
   } else {
     head.innerHTML = headAdv();
     $('#campCardSub').textContent = 'Свёрнутые показатели по имени рекламодателя';
-    body.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--dim);padding:22px">Загрузка рекламодателей…</td></tr>`;
+    body.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--dim);padding:22px">Загрузка рекламодателей…</td></tr>`;
 
     let data;
     try {
       data = await fetchCampaignsPage('advertisers', state.campPage);
     } catch (err) {
       if (token !== campRenderToken) return;
-      body.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--dim);padding:22px">Не удалось загрузить рекламодателей: ${escapeHtml(err.message)}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--dim);padding:22px">Не удалось загрузить рекламодателей: ${escapeHtml(err.message)}</td></tr>`;
       return;
     }
     if (token !== campRenderToken) return;
@@ -284,6 +284,7 @@ async function renderCampaigns() {
       <td class="num" style="color:var(--green)">${fmtM(a.totalRevenue)}</td>
       <td class="num">${a.avgPricePerSub !== null && a.avgPricePerSub !== undefined ? fmt1(a.avgPricePerSub) + ' ₽' : '—'}</td>
       <td class="num">${a.avgCps !== null && a.avgCps !== undefined ? fmt1(a.avgCps) + ' ₽' : '—'}</td>
+      <td class="num">${a.avgCohortLtv !== null && a.avgCohortLtv !== undefined ? fmt1(a.avgCohortLtv) + ' ₽' : '—'}</td>
       <td class="num ${a.roi === null ? '' : a.roi >= 100 ? 'r-good' : a.roi >= 70 ? 'r-mid' : 'r-bad'}">${a.roi === null ? '—' : fmtPct(a.roi)}</td>
       <td class="num ${a.avgRetention24h !== null && a.avgRetention24h !== undefined ? rCls(a.avgRetention24h) : ''}">${a.avgRetention24h !== null && a.avgRetention24h !== undefined ? fmtPct(a.avgRetention24h) : '—'}</td>
       <td class="num ${a.avgRetention48h !== null && a.avgRetention48h !== undefined ? rCls(a.avgRetention48h) : ''}">${a.avgRetention48h !== null && a.avgRetention48h !== undefined ? fmtPct(a.avgRetention48h) : '—'}</td>
@@ -347,8 +348,8 @@ $('#exportBtn').addEventListener('click', async () => {
       rows.push(['Ссылка', 'URL', 'Тип', 'Креатив', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'R24ч %', 'R48ч %']);
       allRows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.creative || '', r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.pricePerSub !== null ? r.pricePerSub.toFixed(2) : '', r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
     } else {
-      rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
-      allRows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgPricePerSub ?? '', a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
+      rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'LTV когорты ₽', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
+      allRows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgPricePerSub ?? '', a.avgCps ?? '', a.avgCohortLtv ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
     }
     const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-' + view.mode + '.csv'; a.click();
@@ -738,7 +739,7 @@ function renderUtmKpis(links) {
 
 function renderUtmSources(sources) {
   if (!sources.length) {
-    $('#utmSourcesBody').innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--dim);padding:22px">Источников пока нет</td></tr>`;
+    $('#utmSourcesBody').innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--dim);padding:22px">Источников пока нет</td></tr>`;
     return;
   }
   const sorted = [...sources].sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
@@ -751,6 +752,7 @@ function renderUtmSources(sources) {
     <td>${convCell(s.conversionPct)}</td>
     <td class="num" style="color:var(--green)">${fmtM(s.revenue)}</td>
     <td class="num">${s.cac !== null && s.cac !== undefined ? fmt1(s.cac) + ' ₽' : '—'}</td>
+    <td class="num">${s.avgCohortLtv !== null && s.avgCohortLtv !== undefined ? fmt1(s.avgCohortLtv) + ' ₽' : '—'}</td>
     <td class="num ${roiCls(s.roi)}">${s.roi !== null && s.roi !== undefined ? fmtPct(s.roi) : '—'}</td>
     <td class="num">${s.renewalRatePct !== null && s.renewalRatePct !== undefined ? fmtPct(s.renewalRatePct) : '—'}</td>
   </tr>`).join('');
@@ -967,8 +969,8 @@ function exportUtmCsv() {
   const list = DATA.utmLinks;
   if (!list || !list.length) { toast('Нет данных для экспорта', 'warn'); return; }
   const rows = [];
-  rows.push(['Slug', 'Источник', 'Канал', 'Кампания', 'Контент', 'Название', 'Заходы', 'Уникальные', 'Покупки', 'Выручка ₽', 'Конверсия %', 'CAC', 'ROI %', 'Продления %', 'Медиана до покупки, ч']);
-  list.forEach(l => rows.push([l.slug, l.utmSource, l.utmMedium, l.utmCampaign, l.utmContent || '', l.label || '', l.starts, l.uniqueStarts, l.purchases, l.revenue, l.conversionPct ?? '', l.cac ?? '', l.roi ?? '', l.renewalRatePct ?? '', l.medianTimeToPurchaseHours ?? '']));
+  rows.push(['Slug', 'Источник', 'Канал', 'Кампания', 'Контент', 'Название', 'Заходы', 'Уникальные', 'Покупки', 'Выручка ₽', 'Конверсия %', 'CAC', 'LTV когорты ₽', 'ROI %', 'Продления %', 'Медиана до покупки, ч']);
+  list.forEach(l => rows.push([l.slug, l.utmSource, l.utmMedium, l.utmCampaign, l.utmContent || '', l.label || '', l.starts, l.uniqueStarts, l.purchases, l.revenue, l.conversionPct ?? '', l.cac ?? '', l.avgCohortLtv ?? '', l.roi ?? '', l.renewalRatePct ?? '', l.medianTimeToPurchaseHours ?? '']));
   const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-utm.csv'; a.click();
   toast('CSV выгружен: ' + rows.length + ' строк', 'info');

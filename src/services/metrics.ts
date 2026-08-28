@@ -3,6 +3,49 @@ import { dailyStats, campaigns, campaignTags, links, events, projects } from "..
 import { eq, and, inArray, sql, isNull } from "drizzle-orm";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 
+// Maps each tgUserId to the campaign of their very FIRST funnel-entry event
+// (join/lead/trial_start), then sums ALL their lifetime payment+renewal
+// amounts regardless of which link those specific later events are
+// attributed to via last-touch. Unlike totalRevenue elsewhere in this file,
+// this number never moves to a different campaign just because the user
+// later clicked a different ad — it answers "how much did the people THIS
+// campaign originally acquired end up paying, in total, ever."
+async function getCohortLtvByCampaign(): Promise<Map<number, { acquiredUsers: number; cohortRevenue: number }>> {
+  const entryRows = await db
+    .select({ tgUserId: events.tgUserId, campaignId: links.campaignId, ts: events.ts })
+    .from(events)
+    .innerJoin(links, eq(events.linkId, links.id))
+    .where(inArray(events.eventType, FUNNEL_ENTRY_TYPES as unknown as string[]));
+
+  const firstTouchByUser = new Map<string, { campaignId: number; ts: number }>();
+  for (const row of entryRows) {
+    const tsMs = row.ts.getTime();
+    const existing = firstTouchByUser.get(row.tgUserId);
+    if (!existing || tsMs < existing.ts) {
+      firstTouchByUser.set(row.tgUserId, { campaignId: row.campaignId, ts: tsMs });
+    }
+  }
+
+  const paymentRows = await db
+    .select({ tgUserId: events.tgUserId, amount: events.amount })
+    .from(events)
+    .where(inArray(events.eventType, [EVENT_TYPES.PAYMENT, EVENT_TYPES.RENEWAL]));
+
+  const revenueByUser = new Map<string, number>();
+  for (const row of paymentRows) {
+    revenueByUser.set(row.tgUserId, (revenueByUser.get(row.tgUserId) || 0) + (row.amount || 0));
+  }
+
+  const byCampaign = new Map<number, { acquiredUsers: number; cohortRevenue: number }>();
+  for (const [tgUserId, touch] of firstTouchByUser.entries()) {
+    const agg = byCampaign.get(touch.campaignId) || { acquiredUsers: 0, cohortRevenue: 0 };
+    agg.acquiredUsers += 1;
+    agg.cohortRevenue += revenueByUser.get(tgUserId) || 0;
+    byCampaign.set(touch.campaignId, agg);
+  }
+  return byCampaign;
+}
+
 export async function getPurchaseConversion(campaignId: number) {
   const campaignLinks = await db
     .select()
@@ -158,6 +201,8 @@ export async function getAdvertiserStats() {
     buyersByCampaign.set(row.campaignId, set);
   }
 
+  const cohortByCampaign = await getCohortLtvByCampaign();
+
   // Group campaigns by advertiser
   const advertiserMap = new Map<string, typeof campaignsList>();
   for (const c of campaignsList) {
@@ -177,6 +222,8 @@ export async function getAdvertiserStats() {
     const uniqueBuyers = new Set<string>();
     const retentions24: number[] = [];
     const retentions48: number[] = [];
+    let cohortAcquiredUsers = 0;
+    let cohortRevenue = 0;
 
     for (const c of campList) {
       const cStats = statsList.filter((s) => s.campaignId === c.id);
@@ -184,6 +231,11 @@ export async function getAdvertiserStats() {
       totalRevenue += cStats.reduce((sum, s) => sum + (s.revenue || 0), 0);
       for (const buyer of buyersByCampaign.get(c.id) ?? []) {
         uniqueBuyers.add(buyer);
+      }
+      const cohort = cohortByCampaign.get(c.id);
+      if (cohort) {
+        cohortAcquiredUsers += cohort.acquiredUsers;
+        cohortRevenue += cohort.cohortRevenue;
       }
 
       const ret = await getRetentionStats(c.id);
@@ -204,6 +256,7 @@ export async function getAdvertiserStats() {
     const avgRetention48h = retentions48.length > 0
       ? Number((retentions48.reduce((sum, r) => sum + r, 0) / retentions48.length).toFixed(2))
       : null;
+    const avgCohortLtv = cohortAcquiredUsers > 0 ? Number((cohortRevenue / cohortAcquiredUsers).toFixed(2)) : null;
 
     result.push({
       advertiser,
@@ -215,6 +268,8 @@ export async function getAdvertiserStats() {
       avgPricePerSub,
       avgRetention24h,
       avgRetention48h,
+      cohortAcquiredUsers,
+      avgCohortLtv,
     });
   }
 
@@ -237,6 +292,8 @@ export interface AdvertiserPageRow {
   avgPricePerSub: number | null;
   avgRetention24h: number | null;
   avgRetention48h: number | null;
+  cohortAcquiredUsers: number;
+  avgCohortLtv: number | null;
 }
 
 // Paginated version of getAdvertiserStats(): groups+sorts by revenue in SQL
@@ -325,11 +382,15 @@ export async function getAdvertisersPage(
     })
   );
 
+  const cohortByCampaign = await getCohortLtvByCampaign();
+
   const rows: AdvertiserPageRow[] = grouped.map((g) => {
     const campIds = campaignIdsByAdvertiser.get(g.advertiser) || [];
     const uniqueBuyers = new Set<string>();
     const retentions24: number[] = [];
     const retentions48: number[] = [];
+    let cohortAcquiredUsers = 0;
+    let cohortRevenue = 0;
     for (const id of campIds) {
       for (const buyer of buyersByCampaign.get(id) ?? []) {
         uniqueBuyers.add(buyer);
@@ -337,6 +398,11 @@ export async function getAdvertisersPage(
       const ret = retentionByCampaign.get(id);
       if (ret?.retention24h !== null && ret?.retention24h !== undefined) retentions24.push(ret.retention24h);
       if (ret?.retention48h !== null && ret?.retention48h !== undefined) retentions48.push(ret.retention48h);
+      const cohort = cohortByCampaign.get(id);
+      if (cohort) {
+        cohortAcquiredUsers += cohort.acquiredUsers;
+        cohortRevenue += cohort.cohortRevenue;
+      }
     }
     const totalBuyers = uniqueBuyers.size;
     const totalPrice = Number(g.totalPrice) || 0;
@@ -359,6 +425,8 @@ export async function getAdvertisersPage(
         retentions48.length > 0
           ? Number((retentions48.reduce((s, r) => s + r, 0) / retentions48.length).toFixed(2))
           : null,
+      cohortAcquiredUsers,
+      avgCohortLtv: cohortAcquiredUsers > 0 ? Number((cohortRevenue / cohortAcquiredUsers).toFixed(2)) : null,
     };
   });
 
