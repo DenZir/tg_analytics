@@ -337,25 +337,30 @@ export async function recordUtmPurchase(
   amount: number,
   eventType: "payment" | "renewal"
 ) {
-  const lastStart = await db
-    .select()
-    .from(utmEvents)
-    .where(and(eq(utmEvents.tgUserId, tgUserId), eq(utmEvents.eventType, UTM_EVENT_TYPES.START)))
-    .orderBy(desc(utmEvents.ts), desc(utmEvents.id))
-    .limit(1);
+  return db.transaction((tx) => {
+    const lastStart = tx
+      .select()
+      .from(utmEvents)
+      .where(and(eq(utmEvents.tgUserId, tgUserId), eq(utmEvents.eventType, UTM_EVENT_TYPES.START)))
+      .orderBy(desc(utmEvents.ts), desc(utmEvents.id))
+      .limit(1)
+      .all();
 
-  if (lastStart.length === 0) {
-    return { attributed: false as const };
-  }
+    if (lastStart.length === 0) {
+      return { attributed: false as const };
+    }
 
-  const utmLinkId = lastStart[0].utmLinkId;
+    const utmLinkId = lastStart[0].utmLinkId;
 
-  await db.insert(utmEvents).values({
-    utmLinkId,
-    tgUserId,
-    eventType,
-    amount,
+    tx.insert(utmEvents)
+      .values({
+        utmLinkId,
+        tgUserId,
+        eventType,
+        amount,
+      })
+      .run();
+
+    return { attributed: true as const, utmLinkId };
   });
-
-  return { attributed: true as const, utmLinkId };
 }

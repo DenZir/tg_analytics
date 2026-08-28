@@ -13,37 +13,41 @@ export interface LogEventInput {
 }
 
 export async function logEvent(input: LogEventInput) {
-  let resolvedLinkId = input.linkId;
-
-  if (!resolvedLinkId) {
-    const lastTouch = await db
-      .select({ linkId: events.linkId })
-      .from(events)
-      .where(eq(events.tgUserId, input.tgUserId))
-      .orderBy(desc(events.ts), desc(events.id))
-      .limit(1);
-
-    if (lastTouch.length > 0 && lastTouch[0].linkId) {
-      resolvedLinkId = lastTouch[0].linkId;
-    } else {
-      throw new Error(
-        `Cannot attribute event: no prior touch found for tgUserId ${input.tgUserId}. First event for a new user must include linkId.`
-      );
-    }
-  }
-
   try {
-    const [insertedEvent] = await db
-      .insert(events)
-      .values({
-        linkId: resolvedLinkId,
-        tgUserId: input.tgUserId,
-        eventType: input.eventType,
-        amount: input.amount ?? 0,
-        languageCode: input.languageCode ?? null,
-        ts: input.ts ?? new Date(),
-      })
-      .returning();
+    const insertedEvent = db.transaction((tx) => {
+      let resolvedLinkId = input.linkId;
+
+      if (!resolvedLinkId) {
+        const lastTouch = tx
+          .select({ linkId: events.linkId })
+          .from(events)
+          .where(eq(events.tgUserId, input.tgUserId))
+          .orderBy(desc(events.ts), desc(events.id))
+          .limit(1)
+          .all();
+
+        if (lastTouch.length > 0 && lastTouch[0].linkId) {
+          resolvedLinkId = lastTouch[0].linkId;
+        } else {
+          throw new Error(
+            `Cannot attribute event: no prior touch found for tgUserId ${input.tgUserId}. First event for a new user must include linkId.`
+          );
+        }
+      }
+
+      return tx
+        .insert(events)
+        .values({
+          linkId: resolvedLinkId,
+          tgUserId: input.tgUserId,
+          eventType: input.eventType,
+          amount: input.amount ?? 0,
+          languageCode: input.languageCode ?? null,
+          ts: input.ts ?? new Date(),
+        })
+        .returning()
+        .get();
+    });
 
     aggregate().catch((err) => {
       console.error("[events] Failed to refresh daily aggregates:", err);
