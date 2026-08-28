@@ -21,6 +21,7 @@ import {
   getCampaignsPage,
 } from "./services/campaigns.js";
 import { logEvent, getRecentEvents } from "./services/events.js";
+import { EVENT_TYPES } from "./db/eventTypes.js";
 import {
   getMetrics,
   getRetentionStats,
@@ -352,6 +353,12 @@ app.post("/api/events", async (req, res) => {
     const { linkId, tgUserId, eventType, amount, languageCode } = req.body;
     if (!tgUserId || !eventType) {
       return res.status(400).json({ error: "Missing required fields (tgUserId, eventType)" });
+    }
+    const validEventTypes = Object.values(EVENT_TYPES) as string[];
+    if (!validEventTypes.includes(String(eventType))) {
+      return res.status(400).json({
+        error: `Invalid eventType "${eventType}". Must be one of: ${validEventTypes.join(", ")}`,
+      });
     }
 
     const event = await logEvent({

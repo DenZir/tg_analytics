@@ -30,9 +30,11 @@ export async function aggregate() {
 
       const subsCount = Number(row.subs) || 0;
       const totalRevenue = Number(row.revenue) || 0;
-      const campaignPrice = Number(row.price) || 0;
-      const cps = subsCount > 0 ? campaignPrice / subsCount : 0;
 
+      // cps is intentionally stored as null: campaign price divided by a single
+      // day's subscriber count is not additive across days and isn't a valid
+      // trend metric. Cost-per-buyer is computed correctly (cumulative, unique
+      // buyers unioned across campaigns) in services/metrics.ts instead.
       await db
         .insert(dailyStats)
         .values({
@@ -40,7 +42,7 @@ export async function aggregate() {
           date: row.date,
           subs: subsCount,
           revenue: totalRevenue,
-          cps: cps,
+          cps: null,
         })
         .onConflictDoUpdate({
           target: [dailyStats.campaignId, dailyStats.date],

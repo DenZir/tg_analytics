@@ -365,6 +365,10 @@ async function renderChannelCard(ctx: any, channelId: number) {
 }
 
 if (channelBot) {
+  channelBot.catch((err: any, ctx: any) => {
+    console.error(`[channelBot] Unhandled error for update type "${ctx.updateType}":`, err);
+  });
+
   // Middleware: restrict private chat access to the admin allowlist
   channelBot.use(async (ctx: any, next: any) => {
     if (ctx.chat?.type === "private" && ctx.from) {
@@ -589,7 +593,7 @@ if (channelBot) {
         const msg =
           `⚙️ <b>Настройки системы:</b>\n\n` +
           `• <b>Admin Telegram ID(s)</b>: <code>${adminIdsText}</code>\n` +
-          `• <b>API Secret</b>: <code>${process.env.API_SECRET || "не задан"}</code>\n` +
+          `• <b>API Secret</b>: <code>${process.env.API_SECRET ? "задан" : "не задан"}</code>\n` +
           `• <b>Channel Bot Token</b>: <code>задан</code>\n` +
           `• <b>Privat Bot Token</b>: <code>${process.env.PRIV_BOT_TOKEN ? "задан" : "не задан"}</code>`;
         const backKb = Markup.inlineKeyboard([[Markup.button.callback("⬅️ В главное меню", "menu_main")]]);

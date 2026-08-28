@@ -173,8 +173,8 @@ export async function getAdvertiserStats() {
     const totalPrice = campList.reduce((sum, c) => sum + (c.price || 0), 0);
 
     let totalSubs = 0;
-    let totalBuyers = 0;
     let totalRevenue = 0;
+    const uniqueBuyers = new Set<string>();
     const retentions24: number[] = [];
     const retentions48: number[] = [];
 
@@ -182,7 +182,9 @@ export async function getAdvertiserStats() {
       const cStats = statsList.filter((s) => s.campaignId === c.id);
       totalSubs += cStats.reduce((sum, s) => sum + (s.subs || 0), 0);
       totalRevenue += cStats.reduce((sum, s) => sum + (s.revenue || 0), 0);
-      totalBuyers += buyersByCampaign.get(c.id)?.size ?? 0;
+      for (const buyer of buyersByCampaign.get(c.id) ?? []) {
+        uniqueBuyers.add(buyer);
+      }
 
       const ret = await getRetentionStats(c.id);
       if (ret.retention24h !== null) {
@@ -193,6 +195,7 @@ export async function getAdvertiserStats() {
       }
     }
 
+    const totalBuyers = uniqueBuyers.size;
     const avgCps = totalBuyers > 0 ? Number((totalPrice / totalBuyers).toFixed(2)) : null;
     const avgPricePerSub = totalSubs > 0 ? Number((totalPrice / totalSubs).toFixed(2)) : null;
     const avgRetention24h = retentions24.length > 0
@@ -324,15 +327,18 @@ export async function getAdvertisersPage(
 
   const rows: AdvertiserPageRow[] = grouped.map((g) => {
     const campIds = campaignIdsByAdvertiser.get(g.advertiser) || [];
-    let totalBuyers = 0;
+    const uniqueBuyers = new Set<string>();
     const retentions24: number[] = [];
     const retentions48: number[] = [];
     for (const id of campIds) {
-      totalBuyers += buyersByCampaign.get(id)?.size ?? 0;
+      for (const buyer of buyersByCampaign.get(id) ?? []) {
+        uniqueBuyers.add(buyer);
+      }
       const ret = retentionByCampaign.get(id);
       if (ret?.retention24h !== null && ret?.retention24h !== undefined) retentions24.push(ret.retention24h);
       if (ret?.retention48h !== null && ret?.retention48h !== undefined) retentions48.push(ret.retention48h);
     }
+    const totalBuyers = uniqueBuyers.size;
     const totalPrice = Number(g.totalPrice) || 0;
     const totalSubs = Number(g.totalSubs) || 0;
     const totalRevenue = Number(g.totalRevenue) || 0;
