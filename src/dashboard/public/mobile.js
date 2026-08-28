@@ -600,20 +600,56 @@ $('#campPagerPrev')?.addEventListener('click', () => { if (state.campPage > 1) {
 $('#campPagerNext')?.addEventListener('click', () => { if (state.campPage < state.campTotalPages) { state.campPage++; renderCampaigns(); } });
 
 $('#trashBtn').addEventListener('click', openTrash);
-$('#exportBtn').addEventListener('click', () => {
+async function fetchAllCampaignRowsForExport(mode) {
+  const EXPORT_PAGE_SIZE = 100;
+  const out = [];
+  let page = 1, totalPages = 1;
+  do {
+    const params = new URLSearchParams({ mode, page: String(page), pageSize: String(EXPORT_PAGE_SIZE) });
+    if (state.q.trim()) params.set('q', state.q.trim());
+    const data = await fetchJSON(`/api/campaigns/page?${params}`);
+    totalPages = data.totalPages;
+    if (mode === 'links') {
+      for (const c of data.campaigns) {
+        for (const l of c.links) {
+          out.push({ campaign: c, link: l, subs: l.subs, revenue: l.revenue, cps: l.cps, pricePerSub: l.pricePerSub, r24: c.retention24h, r48: c.retention48h, url: l.telegramRef });
+        }
+      }
+    } else {
+      for (const a of data.advertisers) {
+        out.push({ ...a, roi: a.totalPrice ? (a.totalRevenue / a.totalPrice * 100) : null });
+      }
+    }
+    page++;
+  } while (page <= totalPages);
+  return out;
+}
+
+$('#exportBtn').addEventListener('click', async () => {
   const view = state.campaignsView;
-  if (!view || !view.rows.length) { toast('Нет данных для экспорта', 'warn'); return; }
-  const rows = [];
-  if (view.mode === 'links') {
-    rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'R24ч %', 'R48ч %']);
-    view.rows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.pricePerSub !== null ? r.pricePerSub.toFixed(2) : '', r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
-  } else {
-    rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
-    view.rows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgPricePerSub ?? '', a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
+  if (!view) { toast('Нет данных для экспорта', 'warn'); return; }
+  const apiMode = view.mode === 'links' ? 'links' : 'advertisers';
+  const btn = $('#exportBtn');
+  btn.disabled = true;
+  try {
+    const allRows = await fetchAllCampaignRowsForExport(apiMode);
+    if (!allRows.length) { toast('Нет данных для экспорта', 'warn'); return; }
+    const rows = [];
+    if (view.mode === 'links') {
+      rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'R24ч %', 'R48ч %']);
+      allRows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.pricePerSub !== null ? r.pricePerSub.toFixed(2) : '', r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
+    } else {
+      rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
+      allRows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgPricePerSub ?? '', a.avgCps ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
+    }
+    const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-' + view.mode + '.csv'; a.click();
+    toast('CSV выгружен: ' + rows.length + ' строк', 'info');
+  } catch (err) {
+    toast(`Не удалось выгрузить CSV: ${err.message}`, 'warn');
+  } finally {
+    btn.disabled = false;
   }
-  const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-' + view.mode + '.csv'; a.click();
-  toast('CSV выгружен: ' + rows.length + ' строк', 'info');
 });
 
 /* ================= BOTTOM SHEET: КАМПАНИЯ ================= */
