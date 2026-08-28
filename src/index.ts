@@ -1,5 +1,6 @@
 import { startServer } from "./server.js";
 import "./jobs/dailyAggregate.js";
+import "./jobs/backup.js";
 import { startChannelBot } from "./bots/channelBot.js";
 
 startServer();

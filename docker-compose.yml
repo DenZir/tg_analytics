@@ -16,6 +16,10 @@ services:
       # DIRECTORY, not a file — before the very first `docker compose up`,
       # run: touch analytics.dev.db
       - ./analytics.dev.db:/app/analytics.dev.db
+      # Directory mount (unlike the file above, Docker auto-creates a missing
+      # host directory here) — persists the scheduled backups written by
+      # src/jobs/backup.ts. Must match BACKUP_DIR in .env (default ./backups).
+      - ./backups:/app/backups
     healthcheck:
       # No /health route in this app, so this just checks the port accepts
       # TCP connections rather than expecting a specific HTTP status (the

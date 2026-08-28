@@ -4,7 +4,7 @@ import * as schema from "./schema";
 import "dotenv/config";
 
 const dbPath = process.env.DB_PATH || "./analytics.dev.db";
-const sqlite = new Database(dbPath);
+export const sqlite = new Database(dbPath);
 
 // SQLite's built-in LOWER()/LIKE only case-fold ASCII, so a search for
 // "реклама" would miss "Реклама" — register a JS-backed LOWER so
