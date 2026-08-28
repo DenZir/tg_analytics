@@ -1,121 +1,21 @@
 'use strict';
-/* ================= АУТЕНТИФИКАЦИЯ ================= */
-// Auth is now a same-origin session cookie (dash_session), set via the
-// Telegram bot's "🔐 Авторизация в дашборд" login link — no client-side
-// secret to manage. The browser attaches the cookie automatically.
+import {
+  apiFetch, fetchJSON, RM, $, $$, fmtN, fmtM, fmt1, fmtPct, plural, pad2, dShort, dFull, dStamp, dDate,
+  escapeHtml, geoChipRow, IC, EV, LT, FUNNEL_ENTRY_TYPES, eventMeta, hueBox, rCls, countUp, toast,
+  DATA, buildIndexes, loadCore, invalidateHistories, getCampaignHistories, getCampaignHistory, afterMutation,
+  last21Dates, seriesForCampaign, windowDates, prevWindowDates, sumDates, countActiveCampaigns, windowArrays,
+  computeLinkStats, allocatePrice, computeLinkRows, linkDisplayUrl, state, CAMP_PAGE_SIZE,
+  fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
+  daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours,
+} from './shared.js';
 
-// Generic fetch wrapper: bounces to the login page if the session is
-// missing/expired (server responds 401).
-async function apiFetch(url, opts = {}) {
-  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
-  const res = await fetch(url, { ...opts, headers });
-  if (res.status === 401) {
-    window.location.href = "/";
-  }
-  return res;
-}
-
-async function fetchJSON(url, opts) {
-  const res = await apiFetch(url, opts);
-  if (!res.ok) {
-    let msg = res.statusText || `HTTP ${res.status}`;
-    try {
-      const body = await res.json();
-      if (body && body.error) msg = body.error;
-    } catch {
-      /* body wasn't JSON — keep statusText */
-    }
-    throw new Error(msg);
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
-
-/* ================= УТИЛИТЫ ================= */
-const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const $  = s => document.querySelector(s);
-const $$ = s => [...document.querySelectorAll(s)];
-const fmtN = n => Math.round(n || 0).toLocaleString('ru-RU');
-const fmtM = n => fmtN(n) + ' ₽';
-const fmt1 = n => (Math.round((n || 0) * 10) / 10).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const fmtPct = n => fmt1(n) + '%';
-const plural = (n, a, b, c) => { n = Math.abs(n) % 100; const d = n % 10; if (n > 10 && n < 20) return c; if (d > 1 && d < 5) return b; if (d === 1) return a; return c; };
-const pad2 = n => String(n).padStart(2, '0');
-const dShort = dateStr => { const [, m, d] = dateStr.split('-'); return d + '.' + m; };
-const dFull  = dateStr => { const [y, m, d] = dateStr.split('-'); return `${d}.${m}.${y}`; };
-const dStamp = ts => { const d = new Date(ts); return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
-const dDate  = ts => { const d = new Date(ts); return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}`; };
-
-function escapeHtml(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-// Approximate geo breakdown chip, built from camp.geo (top buckets by pct,
-// e.g. [{flag:'🇷🇺',pct:62}, ...] -> "🇷🇺 62% · 🇺🇦 20% · 🌐 18%"). Omitted
-// entirely when there's no geo data yet.
-function geoChipRow(geo) {
-  if (!geo || !geo.length) return '';
-  const top = [...geo].sort((a, b) => b.pct - a.pct).slice(0, 4);
-  const text = top.map(g => `${g.flag} ${g.pct}%`).join(' · ');
-  return `<span class="chip neutral mono">${escapeHtml(text)}</span>`;
-}
-
-/* иконки */
-const ic = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
-const IC = {
-  up:ic('<path d="M7 17 17 7M9 7h8v8"/>'), x:ic('<path d="M6 6l12 12M18 6 6 18"/>'),
-  check:ic('<path d="m5 12.5 4.5 4.5L19 7"/>'), warn:ic('<path d="M12 8v5m0 3.5v.01M10.3 3.9 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'),
-  copy:ic('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
-  rub:ic('<path d="M7 20h7M7 16h7M7 4h4.5a4 4 0 0 1 0 8H7V4zm0 0v16"/>'),
-  users:ic('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.7-3.2 3.3-5 6.5-5s5.8 1.8 6.5 5"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M17.8 15.3c2 .7 3.3 2.2 3.7 4.7"/>'),
-  target:ic('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>'),
-  cps:ic('<path d="M4 19h16M6 16V9m4 7V5m4 11v-5m4 5V8"/>'),
-  zap:ic('<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/>'),
-  clock:ic('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'),
-  play:ic('<path d="m7 5 12 7-12 7V5z"/>'),
-  out:ic('<path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M14 8l4 4-4 4m4-4H9"/>'),
-  card:ic('<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/>'),
-  rot:ic('<path d="M20 11a8 8 0 1 0-2.3 6.3M20 4v4h-4"/>'),
-  xcirc:ic('<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/>')
-};
-const EV = {
-  join:{l:'Заход',c:'#57B6FF',i:IC.users}, leave:{l:'Выход',c:'#FF6B7A',i:IC.out},
-  lead:{l:'Лид',c:'#9B8CFF',i:IC.zap}, trial_start:{l:'Триал',c:'#7CC6FF',i:IC.play},
-  payment:{l:'Оплата',c:'#3DDC97',i:IC.card}, renewal:{l:'Продление',c:'#3DDC97',i:IC.rot},
-  churn:{l:'Отписка',c:'#FF6B7A',i:IC.xcirc}, join_request:{l:'Заявка на вход',c:'#FFB454',i:IC.clock}
-};
-const LT = {invite:{l:'Инвайт',cls:'t-invite'}, invite_closed:{l:'Закрытый',cls:'t-closed'}};
-const FUNNEL_ENTRY_TYPES = ['join', 'lead', 'trial_start'];
-
-function eventMeta(type) { return EV[type] || { l: type, c: '#8A94A6', i: IC.zap }; }
-const hueBox = c => `background:${c}1f;color:${c};border:1px solid ${c}33`;
-const rCls = v => v >= 70 ? 'r-good' : v >= 55 ? 'r-mid' : 'r-bad';
-
-/* ================= СПАРКЛАЙН / АНИМАЦИИ ================= */
+/* ================= СПАРКЛАЙН / АНИМАЦИИ (десктоп-специфичные размеры) ================= */
 function spark(vals, color = '#57B6FF') {
   if (!vals || !vals.length) vals = [0, 0];
   const w = 92, h = 26, mn = Math.min(...vals), mx = Math.max(...vals), r = (mx - mn) || 1;
   const pts = vals.map((v, i) => [i / (vals.length - 1 || 1) * w, h - 3 - ((v - mn) / r) * (h - 7)]);
   const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d} L ${w} ${h} L 0 ${h} Z" fill="${color}" opacity=".12"/><path class="spark-l" pathLength="1" d="${d}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round"/></svg>`;
-}
-function countUp(el, val, fmt) {
-  if (RM) { el.textContent = fmt(val); return; }
-  const t0 = performance.now(), dur = 900;
-  (function f(t) { const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3); el.textContent = fmt(val * e); if (p < 1) requestAnimationFrame(f); })(t0);
-}
-function toast(msg, type = 'ok') {
-  const t = document.createElement('div');
-  t.className = 'toast t-' + type;
-  t.innerHTML = `<span class="t-ic">${type === 'ok' ? IC.check : type === 'warn' ? IC.warn : IC.zap}</span><span>${escapeHtml(msg)}</span>`;
-  $('#toastRoot').appendChild(t);
-  requestAnimationFrame(() => t.classList.add('in'));
-  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, 3400);
 }
 
 // Native <dialog> confirmation — the <form method="dialog"> buttons close it and
@@ -135,196 +35,7 @@ function confirmDialog({ title, text, okLabel = 'Удалить', danger = true 
   });
 }
 
-/* ================= ХРАНИЛИЩЕ ДАННЫХ ================= */
-const DATA = {
-  metrics: null,        // { campaigns, daily }
-  extended: null,       // { campaigns, advertisers }
-  projects: [],
-  projectsById: {},
-  recentEvents: [],
-  byCampaignDate: new Map(),  // `${campaignId}|${date}` -> {subs,revenue}
-  byDate: new Map(),          // date -> {subs,revenue} summed across all campaigns
-  byAdvertiserDate: new Map(), // `${advertiser}|${date}` -> {subs,revenue}
-  dateList: [],          // sorted ascending distinct dates present in daily
-  histories: null,       // Map<campaignId, history> once loaded
-  historiesPromise: null,
-  utmLinks: [],          // /api/utm/links — independent UTM tracking, not campaign links
-  utmSources: [],        // /api/utm/sources rollup
-};
-
-function buildIndexes() {
-  DATA.byCampaignDate = new Map();
-  DATA.byDate = new Map();
-  DATA.byAdvertiserDate = new Map();
-  for (const row of DATA.metrics.daily) {
-    DATA.byCampaignDate.set(row.campaignId + '|' + row.date, row);
-    const agg = DATA.byDate.get(row.date) || { subs: 0, revenue: 0 };
-    agg.subs += row.subs; agg.revenue += row.revenue;
-    DATA.byDate.set(row.date, agg);
-    const advKey = row.advertiser + '|' + row.date;
-    const advAgg = DATA.byAdvertiserDate.get(advKey) || { subs: 0, revenue: 0 };
-    advAgg.subs += row.subs; advAgg.revenue += row.revenue;
-    DATA.byAdvertiserDate.set(advKey, advAgg);
-  }
-  DATA.dateList = Array.from(DATA.byDate.keys()).sort();
-}
-
-async function loadCore() {
-  const [metrics, extended, projects, recentEvents] = await Promise.all([
-    fetchJSON('/api/metrics'),
-    fetchJSON('/api/metrics/extended'),
-    fetchJSON('/api/projects'),
-    fetchJSON('/api/events/recent?limit=8'),
-  ]);
-  DATA.metrics = metrics;
-  DATA.extended = extended;
-  DATA.projects = projects;
-  DATA.projectsById = Object.fromEntries(projects.map(p => [p.id, p]));
-  DATA.recentEvents = recentEvents;
-  buildIndexes();
-  $('#nb-camp').textContent = extended.campaigns.length;
-  $('#nb-proj').textContent = projects.length;
-}
-
-function invalidateHistories() {
-  DATA.histories = null;
-  DATA.historiesPromise = null;
-}
-
-// Fetches /api/campaigns/:id/history for every known campaign exactly once
-// and caches the Map; reused by the Кампании (links mode) and
-// Проекты screens instead of re-fetching per screen.
-function getCampaignHistories() {
-  if (!DATA.historiesPromise) {
-    const ids = (DATA.extended?.campaigns || []).map(c => c.id);
-    DATA.historiesPromise = Promise.all(
-      ids.map(id => fetchJSON(`/api/campaigns/${id}/history`).catch(err => {
-        console.error(`[dashboard] Failed to load history for campaign ${id}:`, err);
-        return null;
-      }))
-    ).then(list => {
-      const map = new Map();
-      for (const h of list) if (h && h.campaign) map.set(h.campaign.id, h);
-      DATA.histories = map;
-      return map;
-    });
-  }
-  return DATA.historiesPromise;
-}
-
-async function getCampaignHistory(id) {
-  if (DATA.histories && DATA.histories.has(id)) return DATA.histories.get(id);
-  const h = await fetchJSON(`/api/campaigns/${id}/history`);
-  if (!DATA.histories) DATA.histories = new Map();
-  DATA.histories.set(id, h);
-  return h;
-}
-
-async function afterMutation() {
-  await loadCore();
-  invalidateHistories();
-}
-
-function last21Dates() { return DATA.dateList.slice(-21); }
-function seriesForCampaign(campaignId, dates) {
-  return dates.map(d => DATA.byCampaignDate.get(campaignId + '|' + d) || { subs: 0, revenue: 0 });
-}
-
-/* ---- окно периода (7д/14д/30д/Все) ---- */
-function windowDates(period) {
-  if (period === 'all') return DATA.dateList.slice();
-  return DATA.dateList.slice(-period);
-}
-function prevWindowDates(period) {
-  if (period === 'all') return null;
-  const all = DATA.dateList;
-  const start = all.length - 2 * period;
-  if (start < 0) return null; // not enough history for a full previous window
-  return all.slice(start, all.length - period);
-}
-function sumDates(dates) {
-  return dates.reduce((acc, d) => {
-    const v = DATA.byDate.get(d) || { subs: 0, revenue: 0 };
-    acc.subs += v.subs; acc.revenue += v.revenue;
-    return acc;
-  }, { subs: 0, revenue: 0 });
-}
-function countActiveCampaigns(dates) {
-  const dateSet = new Set(dates);
-  const ids = new Set();
-  for (const row of DATA.metrics.daily) {
-    if (dateSet.has(row.date) && (row.subs > 0 || row.revenue > 0)) ids.add(row.campaignId);
-  }
-  return ids.size;
-}
-
-/* ---- разбивка кампании по ссылкам из реальных событий ---- */
-function computeLinkStats(links, events) {
-  return (links || []).map(l => {
-    const linkEvents = (events || []).filter(e => e.linkId === l.id);
-    const entryEvents = linkEvents.filter(e => FUNNEL_ENTRY_TYPES.includes(e.eventType));
-    const joins = entryEvents.length;
-    const subs = new Set(entryEvents.map(e => e.tgUserId)).size;
-    const buyers = new Set(linkEvents.filter(e => e.eventType === 'payment').map(e => e.tgUserId)).size;
-    const revenue = linkEvents
-      .filter(e => e.eventType === 'payment' || e.eventType === 'renewal')
-      .reduce((s, e) => s + (e.amount || 0), 0);
-    return { link: l, joins, subs, buyers, revenue };
-  });
-}
-// Best-effort split of a campaign's (contractually per-campaign) price across
-// its links, proportional to revenue share, falling back to joins share.
-function allocatePrice(linkStats, price) {
-  const totalRevenue = linkStats.reduce((s, x) => s + x.revenue, 0);
-  const totalJoins = linkStats.reduce((s, x) => s + x.joins, 0);
-  return linkStats.map(x => {
-    let share;
-    if (totalRevenue > 0) share = x.revenue / totalRevenue;
-    else if (totalJoins > 0) share = x.joins / totalJoins;
-    else share = linkStats.length ? 1 / linkStats.length : 0;
-    return { ...x, priceAlloc: price * share };
-  });
-}
-
-async function computeLinkRows() {
-  const histories = await getCampaignHistories();
-  const rows = [];
-  for (const camp of DATA.extended.campaigns) {
-    const hist = histories.get(camp.id);
-    if (!hist) continue;
-    const linkStats = allocatePrice(computeLinkStats(hist.links, hist.events), camp.price);
-    const creative = hist.tags?.find(t => t.tagKey === 'creative')?.tagValue || null;
-    for (const stat of linkStats) {
-      rows.push({
-        campaign: camp,
-        link: stat.link,
-        joins: stat.joins,
-        subs: stat.subs,
-        buyers: stat.buyers,
-        revenue: stat.revenue,
-        cps: stat.buyers ? stat.priceAlloc / stat.buyers : null,
-        pricePerSub: stat.subs ? stat.priceAlloc / stat.subs : null,
-        r24: camp.retention24h,
-        r48: camp.retention48h,
-        url: linkDisplayUrl(stat.link),
-        createdAt: hist.campaign?.createdAt || null,
-        creative,
-      });
-    }
-  }
-  return rows;
-}
-
-/* ---- URL ссылки для отображения ---- */
-function linkDisplayUrl(link) {
-  if (!link) return null;
-  // telegramRef is already the full https://t.me/+... invite URL — never prepend anything.
-  return link.telegramRef;
-}
-
-/* ================= СОСТОЯНИЕ UI ================= */
-const state = { screen: 'overview', period: 30, mode: 'links', q: '', campPage: 1, campTotalPages: 1 };
-const CAMP_PAGE_SIZE = 25;
+/* ================= СОСТОЯНИЕ UI (десктоп-специфичное) ================= */
 let chart = null;
 
 /* ================= ОБЗОР ================= */
@@ -432,15 +143,6 @@ function renderFeed() {
 }
 
 /* график */
-function windowArrays() {
-  const dates = windowDates(state.period);
-  return {
-    labels: dates.map(dShort),
-    subs: dates.map(d => (DATA.byDate.get(d) || { subs: 0 }).subs),
-    rev: dates.map(d => (DATA.byDate.get(d) || { revenue: 0 }).revenue),
-    cps: dates.map(d => { const v = DATA.byDate.get(d) || { subs: 0, revenue: 0 }; return +(v.subs ? (v.revenue / v.subs).toFixed(2) : 0); }),
-  };
-}
 function ensureChart() {
   if (!window.Chart) { $('#chartFallback').hidden = false; return; }
   if (chart) return;
@@ -483,26 +185,6 @@ function toggleEmpty(show) {
   empty.classList.toggle('show', show);
   if (show) $('#campEmptyQ').textContent = '«' + state.q + '»';
   $('#campBody').style.display = show ? 'none' : '';
-}
-
-// Fetches one page of the campaigns tab from the server — the DB query
-// itself is paginated (LIMIT/OFFSET), and retention/conversion/link stats
-// are computed only for that page's campaigns, so loading stays fast no
-// matter how many campaigns the project has accumulated.
-async function fetchCampaignsPage(mode, page) {
-  const params = new URLSearchParams({ mode, page: String(page), pageSize: String(CAMP_PAGE_SIZE) });
-  if (state.q.trim()) params.set('q', state.q.trim());
-  return fetchJSON(`/api/campaigns/page?${params}`);
-}
-
-function renderPager(total, page, totalPages) {
-  const pager = $('#campPager');
-  if (!pager) return;
-  if (total === 0) { pager.hidden = true; return; }
-  pager.hidden = false;
-  $('#campPagerInfo').textContent = `Стр. ${page} из ${totalPages}`;
-  $('#campPagerPrev').disabled = page <= 1;
-  $('#campPagerNext').disabled = page >= totalPages;
 }
 
 let campRenderToken = 0;
@@ -615,15 +297,6 @@ async function renderCampaigns() {
 }
 
 /* сегменты */
-function segInit(seg, cb) {
-  const thumb = seg.querySelector('.thumb');
-  const place = b => { thumb.style.left = b.offsetLeft + 'px'; thumb.style.width = b.offsetWidth + 'px'; };
-  seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-    seg.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); place(b); cb(b);
-  }));
-  place(seg.querySelector('.on'));
-  addEventListener('resize', () => place(seg.querySelector('.on')));
-}
 segInit($('#modeSeg'), b => { state.mode = b.dataset.m; state.campPage = 1; renderCampaigns(); });
 segInit($('#periodSeg'), b => { state.period = b.dataset.p === 'all' ? 'all' : +b.dataset.p; renderKPIs(); refreshChart(); });
 let campSearchDebounce = null;
@@ -658,31 +331,6 @@ function exportPrivatkasCsv() {
 }
 
 $('#trashBtn').addEventListener('click', openTrash);
-async function fetchAllCampaignRowsForExport(mode) {
-  const EXPORT_PAGE_SIZE = 100;
-  const out = [];
-  let page = 1, totalPages = 1;
-  do {
-    const params = new URLSearchParams({ mode, page: String(page), pageSize: String(EXPORT_PAGE_SIZE) });
-    if (state.q.trim()) params.set('q', state.q.trim());
-    const data = await fetchJSON(`/api/campaigns/page?${params}`);
-    totalPages = data.totalPages;
-    if (mode === 'links') {
-      for (const c of data.campaigns) {
-        for (const l of c.links) {
-          out.push({ campaign: c, link: l, subs: l.subs, revenue: l.revenue, cps: l.cps, pricePerSub: l.pricePerSub, r24: c.retention24h, r48: c.retention48h, url: l.telegramRef, creative: c.creative });
-        }
-      }
-    } else {
-      for (const a of data.advertisers) {
-        out.push({ ...a, roi: a.totalPrice ? (a.totalRevenue / a.totalPrice * 100) : null });
-      }
-    }
-    page++;
-  } while (page <= totalPages);
-  return out;
-}
-
 $('#exportBtn').addEventListener('click', async () => {
   if (state.screen === 'privatkas') { exportPrivatkasCsv(); return; }
   if (state.screen === 'utm') { exportUtmCsv(); return; }
@@ -725,11 +373,6 @@ async function openCampaign(campaignId) {
   }
   if (!hist) return;
   renderCampaignModal(camp, hist);
-}
-
-async function moveLink(linkId, targetCampaignId) {
-  await fetchJSON(`/api/links/${linkId}/campaign`, { method: 'PATCH', body: JSON.stringify({ campaignId: targetCampaignId }) });
-  await afterMutation();
 }
 
 function renderCampaignModal(camp, hist) {
@@ -915,11 +558,6 @@ function closeModal() {
 }
 
 /* ================= КОРЗИНА ================= */
-function daysUntilPurge(deletedAt) {
-  const purgeAt = new Date(deletedAt).getTime() + 30 * 24 * 60 * 60 * 1000;
-  return Math.max(0, Math.ceil((purgeAt - Date.now()) / (24 * 60 * 60 * 1000)));
-}
-
 async function openTrash() {
   let rows;
   try {
@@ -992,10 +630,6 @@ function renderTrashModal(rows) {
 }
 
 /* ================= ПРОЕКТЫ ================= */
-function typeLabel(t) { return t === 'channel' ? 'Канал' : 'Бот-подписка'; }
-function typeChipClass(t) { return t === 'channel' ? 't-proj' : 't-bot'; }
-function identOf(p) { return p.type === 'channel' ? (p.telegramChatId || '—') : (p.botUsername || '—'); }
-
 async function renderProjects() {
   const list = DATA.projects;
   $('#projSub').textContent = `${list.length} ${plural(list.length, 'проект', 'проекта', 'проектов')} · каналы и боты-приватки`;
@@ -1078,16 +712,9 @@ $('#projForm').addEventListener('submit', async e => {
    Independent tracking mechanic — separate from campaigns/links (channel-invite
    ad attribution). Do not conflate: a "UTM link" here has no relation to a
    campaign link row, it's tracked purely by utm_source/medium/campaign/content. */
-function roiCls(v) { if (v === null || v === undefined) return ''; return v >= 100 ? 'r-good' : v >= 70 ? 'r-mid' : 'r-bad'; }
 function convCell(pct) {
   if (pct === null || pct === undefined) return '<span style="color:var(--dim)">—</span>';
   return `<div class="convcell"><span class="mono" style="font-size:12px">${fmtPct(pct)}</span><div class="bar"><i style="width:${Math.min(100, pct)}%"></i></div></div>`;
-}
-function fmtHours(h) {
-  if (h === null || h === undefined) return '—';
-  if (h < 24) return fmt1(h) + 'ч';
-  const days = Math.floor(h / 24), rem = Math.round(h % 24);
-  return rem ? `${days}д ${rem}ч` : `${days}д`;
 }
 
 function renderUtmKpis(links) {
