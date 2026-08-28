@@ -972,12 +972,23 @@ if (channelBot) {
         console.log(`[channelBot] Logged join event for user ${tgUserId}`);
       } else if (wasIn && !isIn) {
         // Leave/kick — no invite_link is ever present here, so attribute via last-touch instead.
-        await logEvent({
-          tgUserId,
-          eventType: EVENT_TYPES.LEAVE,
-          languageCode: update.new_chat_member.user.language_code,
-        });
-        console.log(`[channelBot] Logged leave event for user ${tgUserId}`);
+        try {
+          await logEvent({
+            tgUserId,
+            eventType: EVENT_TYPES.LEAVE,
+            languageCode: update.new_chat_member.user.language_code,
+          });
+          console.log(`[channelBot] Logged leave event for user ${tgUserId}`);
+        } catch (error: any) {
+          if (error?.message?.includes("Cannot attribute event")) {
+            // Expected, not a bug: this user left without ever having a tracked
+            // touch (joined before tracking started, or via an untracked link)
+            // — nothing to attribute the leave to.
+            console.log(`[channelBot] Skipped leave event for untracked user ${tgUserId}`);
+          } else {
+            throw error;
+          }
+        }
       }
     } catch (error) {
       console.error("[channelBot] Error processing chat_member update:", error);
