@@ -46,6 +46,8 @@ import { getCampaignGeoBreakdown } from "./services/geo.js";
 import { eq } from "drizzle-orm";
 import { redeemAndRotateToken, getSessionTgUserId } from "./services/dashboardAuth.js";
 import { channelBot } from "./bots/channelBot.js";
+import { createFullExport } from "./jobs/backup.js";
+import fs from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -199,6 +201,27 @@ app.use("/api", async (req, res, next) => {
   if (await hasValidDashSession(req)) return next();
 
   return res.status(401).json({ error: "Unauthorized" });
+});
+
+// GET /api/export/full — downloads a complete, point-in-time sqlite snapshot
+// (every table, exactly as the schema defines it) for admins who want the
+// full raw dataset rather than the scoped CSV export on each dashboard tab.
+// Reuses the same sqlite.backup() mechanism as the scheduled nightly backup
+// (src/jobs/backup.ts), just to a one-off file that's deleted right after
+// it's streamed to the client.
+app.get("/api/export/full", async (_req, res) => {
+  let tempPath: string | null = null;
+  try {
+    tempPath = await createFullExport();
+    const filename = `tg-analytics-export-${new Date().toISOString().slice(0, 10)}.db`;
+    res.download(tempPath, filename, (err) => {
+      if (tempPath) fs.unlink(tempPath, () => {});
+      if (err) console.error("[export] Failed to send full export:", err);
+    });
+  } catch (error: any) {
+    if (tempPath) fs.unlink(tempPath, () => {});
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // --- Projects API ---

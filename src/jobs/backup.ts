@@ -56,6 +56,22 @@ export async function backupDatabase() {
   }
 }
 
+// On-demand full export for the "Скачать полный бэкап" dashboard button
+// (GET /api/export/full in server.ts) — a separate function from
+// backupDatabase() above because it writes to its own one-off filename
+// (prefixed "export-", never touched by pruneOldBackups' "analytics-*"
+// filter) and doesn't share its concurrency guard: this is a point-in-time
+// snapshot for a human to download right now, not the nightly rotation, so
+// it should never be silently skipped just because a scheduled backup
+// happens to be running at the same moment. Running two sqlite.backup()
+// calls at once is safe as long as they target different destination files.
+export async function createFullExport(): Promise<string> {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const destination = path.join(BACKUP_DIR, `export-${Date.now()}.db`);
+  await sqlite.backup(destination);
+  return destination;
+}
+
 // Daily at 03:15 — 15 minutes after the existing daily stats aggregation job
 // (src/jobs/dailyAggregate.ts runs at 03:00), so the backup captures that
 // day's freshly-aggregated stats too.
