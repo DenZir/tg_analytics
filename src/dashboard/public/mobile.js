@@ -232,7 +232,7 @@ async function renderCampaigns() {
     }).join('');
     toggleEmpty(rows.length === 0);
     wrap.querySelectorAll('.crow').forEach(el => el.addEventListener('click', () => openCampaign(+el.dataset.c)));
-  } else {
+  } else if (state.mode === 'adv') {
     let data;
     try {
       data = await fetchCampaignsPage('advertisers', state.campPage);
@@ -274,10 +274,62 @@ async function renderCampaigns() {
       const camp = DATA.extended.campaigns.find(c => c.advertiser === el.dataset.adv);
       if (camp) openCampaign(camp.id);
     }));
+  } else {
+    let data;
+    try {
+      data = await fetchCampaignsPage('creatives', state.campPage);
+    } catch (err) {
+      if (token !== campRenderToken) return;
+      wrap.innerHTML = `<div style="padding:20px 4px;color:var(--dim);font-size:12px;text-align:center">Не удалось загрузить креативы: ${escapeHtml(err.message)}</div>`;
+      return;
+    }
+    if (token !== campRenderToken) return;
+
+    state.campTotalPages = data.totalPages;
+    const trendDates = last21Dates();
+    const rows = data.creatives.map(c => {
+      const roi = c.totalPrice ? (c.totalRevenue / c.totalPrice * 100) : null;
+      const key = c.creative || '-';
+      const trend = trendDates.map(d => (DATA.byCreativeDate.get(key + '|' + d) || { revenue: 0 }).revenue);
+      return { ...c, roi, trend };
+    });
+    $('#campCount').textContent = `${data.total} ${plural(data.total, 'креатив', 'креатива', 'креативов')}`;
+    state.campaignsView = { mode: 'creatives', rows };
+    renderPager(data.total, data.page, data.totalPages);
+
+    wrap.innerHTML = rows.map((c, i) => `<article class="card crow" style="--i:${i};cursor:default">
+      <div class="crow-top"><span class="crow-name">${c.creative ? escapeHtml(c.creative) : 'без креатива'}</span><span class="crow-rev">${fmtM(c.totalRevenue)}</span></div>
+      <div class="crow-url">${c.campaignsCount} ${plural(c.campaignsCount, 'кампания', 'кампании', 'кампаний')} · ROI <span class="${c.roi === null ? '' : c.roi >= 100 ? 'r-good' : c.roi >= 70 ? 'r-mid' : 'r-bad'}">${c.roi === null ? '—' : fmtPct(c.roi)}</span></div>
+      <hr class="crow-sep">
+      <div class="m-grid">
+        <div class="m-cell"><span>Закупки</span><b>${fmtM(c.totalPrice)}</b></div>
+        <div class="m-cell"><span>Подписки</span><b>${fmtN(c.totalSubs)}</b></div>
+        <div class="m-cell"><span>Ср. ₽/подписчик</span><b>${c.avgPricePerSub !== null && c.avgPricePerSub !== undefined ? fmt1(c.avgPricePerSub) + ' ₽' : '—'}</b></div>
+        <div class="m-cell"><span>Ср. ₽/покупка</span><b>${c.avgCps !== null && c.avgCps !== undefined ? fmt1(c.avgCps) + ' ₽' : '—'}</b></div>
+        <div class="m-cell"><span>LTV когорты</span><b>${c.avgCohortLtv !== null && c.avgCohortLtv !== undefined ? fmt1(c.avgCohortLtv) + ' ₽' : '—'}</b></div>
+        <div class="m-cell"><span>Ср. R24ч</span><b class="${c.avgRetention24h !== null && c.avgRetention24h !== undefined ? rCls(c.avgRetention24h) : ''}">${c.avgRetention24h !== null && c.avgRetention24h !== undefined ? fmtPct(c.avgRetention24h) : '—'}</b></div>
+      </div>
+      <div class="crow-spark">${spark(c.trend, '#9B8CFF')}</div>
+    </article>`).join('');
+    toggleEmpty(rows.length === 0);
   }
 }
 
-segInit($('#modeSeg'), b => { state.mode = b.dataset.m; state.campPage = 1; renderCampaigns(); });
+// Каждый режим ищет по своему полю (ссылка/рекламодатель/креатив), поэтому
+// плейсхолдер поля поиска обновляется вместе с режимом — иначе он обещает
+// поиск по рекламодателю там, где на деле фильтруется креатив.
+const CAMP_SEARCH_PLACEHOLDER = {
+  links: 'Поиск по ссылке…',
+  adv: 'Поиск по рекламодателю…',
+  creatives: 'Поиск по креативу…',
+};
+function syncCampSearchPlaceholder() {
+  const input = $('#campSearch');
+  if (input) input.placeholder = CAMP_SEARCH_PLACEHOLDER[state.mode] || CAMP_SEARCH_PLACEHOLDER.links;
+}
+syncCampSearchPlaceholder();
+
+segInit($('#modeSeg'), b => { state.mode = b.dataset.m; state.campPage = 1; syncCampSearchPlaceholder(); renderCampaigns(); });
 $$('#periodChips .pchip').forEach(b => b.addEventListener('click', () => {
   $$('#periodChips .pchip').forEach(x => x.classList.remove('on')); b.classList.add('on');
   state.period = b.dataset.p === 'all' ? 'all' : +b.dataset.p; renderKPIs(); refreshChart();
@@ -297,7 +349,7 @@ $('#trashBtn').addEventListener('click', openTrash);
 $('#exportBtn').addEventListener('click', async () => {
   const view = state.campaignsView;
   if (!view) { toast('Нет данных для экспорта', 'warn'); return; }
-  const apiMode = view.mode === 'links' ? 'links' : 'advertisers';
+  const apiMode = view.mode === 'links' ? 'links' : view.mode === 'creatives' ? 'creatives' : 'advertisers';
   const btn = $('#exportBtn');
   btn.disabled = true;
   try {
@@ -307,9 +359,12 @@ $('#exportBtn').addEventListener('click', async () => {
     if (view.mode === 'links') {
       rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'LTV когорты ₽', 'R24ч %', 'R48ч %']);
       allRows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, csvNum(r.subs), csvNum(r.revenue), csvNum(r.pricePerSub, 2), csvNum(r.cps, 2), csvNum(r.avgCohortLtv, 2), csvNum(r.r24), csvNum(r.r48)]));
-    } else {
+    } else if (view.mode === 'adv') {
       rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'LTV когорты ₽', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
       allRows.forEach(a => rows.push([a.advertiser, csvNum(a.campaignsCount), csvNum(a.totalPrice), csvNum(a.totalSubs), csvNum(a.totalRevenue), csvNum(a.avgPricePerSub), csvNum(a.avgCps), csvNum(a.avgCohortLtv), csvNum(a.roi, 1), csvNum(a.avgRetention24h), csvNum(a.avgRetention48h)]));
+    } else {
+      rows.push(['Креатив', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'LTV когорты ₽', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
+      allRows.forEach(c => rows.push([c.creative || 'без креатива', csvNum(c.campaignsCount), csvNum(c.totalPrice), csvNum(c.totalSubs), csvNum(c.totalRevenue), csvNum(c.avgPricePerSub), csvNum(c.avgCps), csvNum(c.avgCohortLtv), csvNum(c.roi, 1), csvNum(c.avgRetention24h), csvNum(c.avgRetention48h)]));
     }
     const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-' + view.mode + '.csv'; a.click();

@@ -129,6 +129,7 @@ export const DATA = {
   byCampaignDate: new Map(),  // `${campaignId}|${date}` -> {subs,revenue}
   byDate: new Map(),          // date -> {subs,revenue} summed across all campaigns
   byAdvertiserDate: new Map(), // `${advertiser}|${date}` -> {subs,revenue}
+  byCreativeDate: new Map(), // `${creative}|${date}` -> {subs,revenue}
   dateList: [],          // sorted ascending distinct dates present in daily
   histories: null,       // Map<campaignId, history> once loaded
   historiesPromise: null,
@@ -140,6 +141,7 @@ export function buildIndexes() {
   DATA.byCampaignDate = new Map();
   DATA.byDate = new Map();
   DATA.byAdvertiserDate = new Map();
+  DATA.byCreativeDate = new Map();
   for (const row of DATA.metrics.daily) {
     DATA.byCampaignDate.set(row.campaignId + '|' + row.date, row);
     const agg = DATA.byDate.get(row.date) || { subs: 0, revenue: 0 };
@@ -149,6 +151,13 @@ export function buildIndexes() {
     const advAgg = DATA.byAdvertiserDate.get(advKey) || { subs: 0, revenue: 0 };
     advAgg.subs += row.subs; advAgg.revenue += row.revenue;
     DATA.byAdvertiserDate.set(advKey, advAgg);
+    // getMetrics() already puts a `creative` on every daily row, using '-' when
+    // the campaign has no creative tag — keep that exact sentinel so lookups
+    // from the «По креативам» rows line up.
+    const creKey = (row.creative || '-') + '|' + row.date;
+    const creAgg = DATA.byCreativeDate.get(creKey) || { subs: 0, revenue: 0 };
+    creAgg.subs += row.subs; creAgg.revenue += row.revenue;
+    DATA.byCreativeDate.set(creKey, creAgg);
   }
   DATA.dateList = Array.from(DATA.byDate.keys()).sort();
 }
@@ -354,6 +363,10 @@ export async function fetchAllCampaignRowsForExport(mode) {
         for (const l of c.links) {
           out.push({ campaign: c, link: l, subs: l.subs, revenue: l.revenue, cps: l.cps, pricePerSub: l.pricePerSub, avgCohortLtv: l.avgCohortLtv, r24: c.retention24h, r48: c.retention48h, url: l.telegramRef, creative: c.creative });
         }
+      }
+    } else if (mode === 'creatives') {
+      for (const c of data.creatives) {
+        out.push({ ...c, roi: c.totalPrice ? (c.totalRevenue / c.totalPrice * 100) : null });
       }
     } else {
       for (const a of data.advertisers) {

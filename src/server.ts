@@ -31,6 +31,7 @@ import {
   getPurchaseConversion,
   getAdvertiserStats,
   getAdvertisersPage,
+  getCreativesPage,
   getPrivatkaFinance,
 } from "./services/metrics.js";
 import {
@@ -657,13 +658,15 @@ app.get("/api/metrics/extended", async (_req, res) => {
   }
 });
 
-// GET /api/campaigns/page?mode=links|advertisers&page=&pageSize=&q=
+// GET /api/campaigns/page?mode=links|advertisers|creatives&page=&pageSize=&q=
 // Paginated data source for the "Кампании" dashboard tab — computes
 // retention/conversion/link stats only for the requested page's campaigns
 // instead of every campaign in the project (see /api/metrics/extended).
 app.get("/api/campaigns/page", async (req, res) => {
   try {
-    const mode = req.query.mode === "advertisers" ? "advertisers" : "links";
+    const rawMode = req.query.mode;
+    const mode =
+      rawMode === "advertisers" ? "advertisers" : rawMode === "creatives" ? "creatives" : "links";
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
@@ -671,6 +674,9 @@ app.get("/api/campaigns/page", async (req, res) => {
     if (mode === "advertisers") {
       const { rows, total } = await getAdvertisersPage({ page, pageSize, q });
       res.json({ mode, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), advertisers: rows });
+    } else if (mode === "creatives") {
+      const { rows, total } = await getCreativesPage({ page, pageSize, q });
+      res.json({ mode, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), creatives: rows });
     } else {
       const { rows, total } = await getCampaignsPage({ page, pageSize, q });
       res.json({ mode, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), campaigns: rows });

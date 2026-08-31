@@ -459,6 +459,181 @@ export async function getAdvertisersPage(
   return { rows, total: Number(total) || 0 };
 }
 
+export interface CreativesPageParams {
+  page: number;
+  pageSize: number;
+  q?: string;
+}
+
+export interface CreativePageRow {
+  creative: string; // '' == campaigns that never got a creative tag
+  campaignsCount: number;
+  totalPrice: number;
+  totalSubs: number;
+  totalRevenue: number;
+  avgCps: number | null;
+  avgPricePerSub: number | null;
+  avgRetention24h: number | null;
+  avgRetention48h: number | null;
+  cohortAcquiredUsers: number;
+  avgCohortLtv: number | null;
+}
+
+// Same shape as getAdvertisersPage, but grouped by the campaign's "creative"
+// tag instead of its advertiser — this is what powers the «По креативам» mode,
+// where the point is comparing creatives against each other rather than
+// buyers. The tagKey filter lives in the LEFT JOIN's ON clause on purpose: put
+// it in WHERE and the left join silently degrades into an inner one, dropping
+// every campaign without a creative tag out of the totals instead of
+// collecting them into one "no creative" bucket.
+export async function getCreativesPage(
+  params: CreativesPageParams
+): Promise<{ rows: CreativePageRow[]; total: number }> {
+  const { page, pageSize } = params;
+  const q = params.q?.trim();
+  const offset = (page - 1) * pageSize;
+
+  const creativeKey = sql<string>`coalesce(${campaignTags.tagValue}, '')`;
+  const creativeJoin = and(
+    eq(campaignTags.campaignId, campaigns.id),
+    eq(campaignTags.tagKey, "creative")
+  );
+
+  const searchCond = q
+    ? and(
+        isNull(campaigns.deletedAt),
+        sql`lower_unicode(coalesce(${campaignTags.tagValue}, '')) LIKE lower_unicode(${`%${q}%`})`
+      )
+    : isNull(campaigns.deletedAt);
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(distinct ${creativeKey})` })
+    .from(campaigns)
+    .leftJoin(campaignTags, creativeJoin)
+    .where(searchCond);
+
+  if (Number(total) === 0) return { rows: [], total: 0 };
+
+  const campaignAgg = db
+    .select({
+      campaignId: dailyStats.campaignId,
+      subs: sql<number>`sum(${dailyStats.subs})`.as("subs"),
+      revenue: sql<number>`sum(${dailyStats.revenue})`.as("revenue"),
+    })
+    .from(dailyStats)
+    .groupBy(dailyStats.campaignId)
+    .as("campaign_agg");
+
+  const grouped = await db
+    .select({
+      creative: creativeKey,
+      campaignsCount: sql<number>`count(*)`,
+      totalPrice: sql<number>`coalesce(sum(${campaigns.price}), 0)`,
+      totalSubs: sql<number>`coalesce(sum(${campaignAgg.subs}), 0)`,
+      totalRevenue: sql<number>`coalesce(sum(${campaignAgg.revenue}), 0)`,
+    })
+    .from(campaigns)
+    .leftJoin(campaignTags, creativeJoin)
+    .leftJoin(campaignAgg, eq(campaignAgg.campaignId, campaigns.id))
+    .where(searchCond)
+    .groupBy(creativeKey)
+    .orderBy(sql`coalesce(sum(${campaignAgg.revenue}), 0) desc`)
+    .limit(pageSize)
+    .offset(offset);
+
+  if (grouped.length === 0) return { rows: [], total: Number(total) || 0 };
+
+  // Campaign counts here are small, so resolving "which campaigns belong to
+  // the creatives on this page" in JS is simpler (and safer) than trying to
+  // feed a SQL expression into inArray().
+  const allCampaigns = await db
+    .select({ id: campaigns.id, creative: creativeKey })
+    .from(campaigns)
+    .leftJoin(campaignTags, creativeJoin)
+    .where(isNull(campaigns.deletedAt));
+
+  const wanted = new Set(grouped.map((g) => g.creative));
+  const campaignIdsByCreative = new Map<string, number[]>();
+  for (const c of allCampaigns) {
+    if (!wanted.has(c.creative)) continue;
+    const arr = campaignIdsByCreative.get(c.creative) || [];
+    arr.push(c.id);
+    campaignIdsByCreative.set(c.creative, arr);
+  }
+  const allCampaignIds = [...campaignIdsByCreative.values()].flat();
+
+  const paymentRows = allCampaignIds.length
+    ? await db
+        .select({ campaignId: links.campaignId, tgUserId: events.tgUserId })
+        .from(events)
+        .innerJoin(links, eq(events.linkId, links.id))
+        .where(and(inArray(links.campaignId, allCampaignIds), eq(events.eventType, EVENT_TYPES.PAYMENT)))
+    : [];
+  const buyersByCampaign = new Map<number, Set<string>>();
+  for (const row of paymentRows) {
+    const set = buyersByCampaign.get(row.campaignId) ?? new Set<string>();
+    set.add(row.tgUserId);
+    buyersByCampaign.set(row.campaignId, set);
+  }
+
+  const retentionByCampaign = new Map<number, { retention24h: number | null; retention48h: number | null }>();
+  await Promise.all(
+    allCampaignIds.map(async (id) => {
+      retentionByCampaign.set(id, await getRetentionStats(id));
+    })
+  );
+
+  const { byCampaign: cohortByCampaign } = await getCohortLtv();
+
+  const rows: CreativePageRow[] = grouped.map((g) => {
+    const campIds = campaignIdsByCreative.get(g.creative) || [];
+    const uniqueBuyers = new Set<string>();
+    const retentions24: number[] = [];
+    const retentions48: number[] = [];
+    let cohortAcquiredUsers = 0;
+    let cohortRevenue = 0;
+    for (const id of campIds) {
+      for (const buyer of buyersByCampaign.get(id) ?? []) {
+        uniqueBuyers.add(buyer);
+      }
+      const ret = retentionByCampaign.get(id);
+      if (ret?.retention24h !== null && ret?.retention24h !== undefined) retentions24.push(ret.retention24h);
+      if (ret?.retention48h !== null && ret?.retention48h !== undefined) retentions48.push(ret.retention48h);
+      const cohort = cohortByCampaign.get(id);
+      if (cohort) {
+        cohortAcquiredUsers += cohort.acquiredUsers;
+        cohortRevenue += cohort.cohortRevenue;
+      }
+    }
+    const totalBuyers = uniqueBuyers.size;
+    const totalPrice = Number(g.totalPrice) || 0;
+    const totalSubs = Number(g.totalSubs) || 0;
+    const totalRevenue = Number(g.totalRevenue) || 0;
+
+    return {
+      creative: g.creative,
+      campaignsCount: Number(g.campaignsCount) || 0,
+      totalPrice,
+      totalSubs,
+      totalRevenue,
+      avgCps: totalBuyers > 0 ? Number((totalPrice / totalBuyers).toFixed(2)) : null,
+      avgPricePerSub: totalSubs > 0 ? Number((totalPrice / totalSubs).toFixed(2)) : null,
+      avgRetention24h:
+        retentions24.length > 0
+          ? Number((retentions24.reduce((s, r) => s + r, 0) / retentions24.length).toFixed(2))
+          : null,
+      avgRetention48h:
+        retentions48.length > 0
+          ? Number((retentions48.reduce((s, r) => s + r, 0) / retentions48.length).toFixed(2))
+          : null,
+      cohortAcquiredUsers,
+      avgCohortLtv: cohortAcquiredUsers > 0 ? Number((cohortRevenue / cohortAcquiredUsers).toFixed(2)) : null,
+    };
+  });
+
+  return { rows, total: Number(total) || 0 };
+}
+
 export async function getMetrics() {
   const statsList = await db.select().from(dailyStats);
   const campaignsList = await db.select().from(campaigns).where(isNull(campaigns.deletedAt));
