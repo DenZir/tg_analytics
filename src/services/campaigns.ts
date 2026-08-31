@@ -2,7 +2,7 @@ import { db } from "../db/index.js";
 import { campaigns, campaignTags, links, projects, events, dailyStats } from "../db/schema.js";
 import { eq, and, inArray, desc, sql, isNull, isNotNull } from "drizzle-orm";
 import { aggregate } from "../jobs/dailyAggregate.js";
-import { getRetentionStats } from "./metrics.js";
+import { getRetentionStats, getCohortLtv } from "./metrics.js";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 import { logAdminAction } from "./auditLog.js";
 
@@ -579,6 +579,8 @@ export interface CampaignsPageLinkRow {
   revenue: number;
   cps: number | null;
   pricePerSub: number | null;
+  cohortAcquiredUsers: number;
+  avgCohortLtv: number | null;
 }
 
 export interface CampaignsPageRow {
@@ -642,14 +644,17 @@ export async function getCampaignsPage(
 
   const campaignIds = pageCampaigns.map((c) => c.id);
 
-  const [pageLinks, pageTags, retentions] = await Promise.all([
+  const [pageLinks, pageTags, retentions, cohort] = await Promise.all([
     db.select().from(links).where(inArray(links.campaignId, campaignIds)),
     db
       .select()
       .from(campaignTags)
       .where(and(inArray(campaignTags.campaignId, campaignIds), eq(campaignTags.tagKey, "creative"))),
     Promise.all(campaignIds.map((id) => getRetentionStats(id))),
+    getCohortLtv(),
   ]);
+
+  const cohortByLink = cohort.byLink;
 
   const linkIds = pageLinks.map((l) => l.id);
   const pageEvents = linkIds.length
@@ -698,6 +703,7 @@ export async function getCampaignsPage(
     const totalJoins = linkStats.reduce((s, x) => s + x.joins, 0);
 
     const linkRows: CampaignsPageLinkRow[] = linkStats.map((x) => {
+      const linkCohort = cohortByLink.get(x.link.id) || { acquiredUsers: 0, cohortRevenue: 0 };
       let share: number;
       if (totalRevenue > 0) share = x.revenue / totalRevenue;
       else if (totalJoins > 0) share = x.joins / totalJoins;
@@ -714,6 +720,11 @@ export async function getCampaignsPage(
         revenue: x.revenue,
         cps: x.buyers ? priceAlloc / x.buyers : null,
         pricePerSub: x.subs ? priceAlloc / x.subs : null,
+        cohortAcquiredUsers: linkCohort.acquiredUsers,
+        avgCohortLtv:
+          linkCohort.acquiredUsers > 0
+            ? Number((linkCohort.cohortRevenue / linkCohort.acquiredUsers).toFixed(2))
+            : null,
       };
     });
 

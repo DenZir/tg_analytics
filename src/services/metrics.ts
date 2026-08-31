@@ -3,26 +3,43 @@ import { dailyStats, campaigns, campaignTags, links, events, projects } from "..
 import { eq, and, inArray, sql, isNull } from "drizzle-orm";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 
-// Maps each tgUserId to the campaign of their very FIRST funnel-entry event
-// (join/lead/trial_start), then sums ALL their lifetime payment+renewal
-// amounts regardless of which link those specific later events are
-// attributed to via last-touch. Unlike totalRevenue elsewhere in this file,
-// this number never moves to a different campaign just because the user
-// later clicked a different ad — it answers "how much did the people THIS
-// campaign originally acquired end up paying, in total, ever."
-async function getCohortLtvByCampaign(): Promise<Map<number, { acquiredUsers: number; cohortRevenue: number }>> {
+export interface CohortLtvAgg {
+  acquiredUsers: number;
+  cohortRevenue: number;
+}
+
+// Maps each tgUserId to the campaign AND link of their very FIRST funnel-entry
+// event (join/lead/trial_start), then sums ALL their lifetime payment+renewal
+// amounts regardless of which link those specific later events are attributed
+// to via last-touch. Unlike totalRevenue elsewhere in this file, this number
+// never moves to a different campaign/link just because the user later clicked
+// a different ad — it answers "how much did the people THIS campaign (or this
+// exact link) originally acquired end up paying, in total, ever."
+export async function getCohortLtv(): Promise<{
+  byCampaign: Map<number, CohortLtvAgg>;
+  byLink: Map<number, CohortLtvAgg>;
+}> {
   const entryRows = await db
-    .select({ tgUserId: events.tgUserId, campaignId: links.campaignId, ts: events.ts })
+    .select({
+      tgUserId: events.tgUserId,
+      linkId: events.linkId,
+      campaignId: links.campaignId,
+      ts: events.ts,
+    })
     .from(events)
     .innerJoin(links, eq(events.linkId, links.id))
     .where(inArray(events.eventType, FUNNEL_ENTRY_TYPES as unknown as string[]));
 
-  const firstTouchByUser = new Map<string, { campaignId: number; ts: number }>();
+  const firstTouchByUser = new Map<string, { campaignId: number; linkId: number; ts: number }>();
   for (const row of entryRows) {
     const tsMs = row.ts.getTime();
     const existing = firstTouchByUser.get(row.tgUserId);
     if (!existing || tsMs < existing.ts) {
-      firstTouchByUser.set(row.tgUserId, { campaignId: row.campaignId, ts: tsMs });
+      firstTouchByUser.set(row.tgUserId, {
+        campaignId: row.campaignId,
+        linkId: row.linkId,
+        ts: tsMs,
+      });
     }
   }
 
@@ -36,14 +53,23 @@ async function getCohortLtvByCampaign(): Promise<Map<number, { acquiredUsers: nu
     revenueByUser.set(row.tgUserId, (revenueByUser.get(row.tgUserId) || 0) + (row.amount || 0));
   }
 
-  const byCampaign = new Map<number, { acquiredUsers: number; cohortRevenue: number }>();
+  const byCampaign = new Map<number, CohortLtvAgg>();
+  const byLink = new Map<number, CohortLtvAgg>();
   for (const [tgUserId, touch] of firstTouchByUser.entries()) {
-    const agg = byCampaign.get(touch.campaignId) || { acquiredUsers: 0, cohortRevenue: 0 };
-    agg.acquiredUsers += 1;
-    agg.cohortRevenue += revenueByUser.get(tgUserId) || 0;
-    byCampaign.set(touch.campaignId, agg);
+    const revenue = revenueByUser.get(tgUserId) || 0;
+
+    const campAgg = byCampaign.get(touch.campaignId) || { acquiredUsers: 0, cohortRevenue: 0 };
+    campAgg.acquiredUsers += 1;
+    campAgg.cohortRevenue += revenue;
+    byCampaign.set(touch.campaignId, campAgg);
+
+    const linkAgg = byLink.get(touch.linkId) || { acquiredUsers: 0, cohortRevenue: 0 };
+    linkAgg.acquiredUsers += 1;
+    linkAgg.cohortRevenue += revenue;
+    byLink.set(touch.linkId, linkAgg);
   }
-  return byCampaign;
+
+  return { byCampaign, byLink };
 }
 
 export async function getPurchaseConversion(campaignId: number) {
@@ -201,7 +227,7 @@ export async function getAdvertiserStats() {
     buyersByCampaign.set(row.campaignId, set);
   }
 
-  const cohortByCampaign = await getCohortLtvByCampaign();
+  const { byCampaign: cohortByCampaign } = await getCohortLtv();
 
   // Group campaigns by advertiser
   const advertiserMap = new Map<string, typeof campaignsList>();
@@ -382,7 +408,7 @@ export async function getAdvertisersPage(
     })
   );
 
-  const cohortByCampaign = await getCohortLtvByCampaign();
+  const { byCampaign: cohortByCampaign } = await getCohortLtv();
 
   const rows: AdvertiserPageRow[] = grouped.map((g) => {
     const campIds = campaignIdsByAdvertiser.get(g.advertiser) || [];

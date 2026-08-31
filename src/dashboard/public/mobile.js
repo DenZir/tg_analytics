@@ -6,7 +6,7 @@ import {
   last21Dates, seriesForCampaign, windowDates, prevWindowDates, sumDates, countActiveCampaigns, windowArrays,
   computeLinkStats, allocatePrice, computeLinkRows, linkDisplayUrl, state, CAMP_PAGE_SIZE,
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
-  daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours,
+  daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum,
 } from './shared.js';
 
 /* ================= СПАРКЛАЙН (мобильные размеры) ================= */
@@ -197,6 +197,7 @@ async function renderCampaigns() {
           revenue: l.revenue,
           cps: l.cps,
           pricePerSub: l.pricePerSub,
+          avgCohortLtv: l.avgCohortLtv,
           r24: c.retention24h,
           r48: c.retention48h,
           url: l.telegramRef,
@@ -222,6 +223,7 @@ async function renderCampaigns() {
           <div class="m-cell"><span>Подписки</span><b>${fmtN(r.subs)}</b></div>
           <div class="m-cell"><span>₽/подписчик</span><b>${r.pricePerSub !== null ? fmt1(r.pricePerSub) + ' ₽' : '—'}</b></div>
           <div class="m-cell"><span>₽/покупка</span><b>${r.cps !== null ? fmt1(r.cps) + ' ₽' : '—'}</b></div>
+          <div class="m-cell"><span>LTV когорты</span><b>${r.avgCohortLtv !== null && r.avgCohortLtv !== undefined ? fmt1(r.avgCohortLtv) + ' ₽' : '—'}</b></div>
           <div class="m-cell"><span>R24ч</span><b class="${r.r24 !== null && r.r24 !== undefined ? rCls(r.r24) : ''}">${r.r24 !== null && r.r24 !== undefined ? fmtPct(r.r24) : '—'}</b></div>
           <div class="m-cell"><span>R48ч</span><b class="${r.r48 !== null && r.r48 !== undefined ? rCls(r.r48) : ''}">${r.r48 !== null && r.r48 !== undefined ? fmtPct(r.r48) : '—'}</b></div>
         </div>
@@ -303,11 +305,11 @@ $('#exportBtn').addEventListener('click', async () => {
     if (!allRows.length) { toast('Нет данных для экспорта', 'warn'); return; }
     const rows = [];
     if (view.mode === 'links') {
-      rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'R24ч %', 'R48ч %']);
-      allRows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, r.subs, r.revenue, r.pricePerSub !== null ? r.pricePerSub.toFixed(2) : '', r.cps !== null ? r.cps.toFixed(2) : '', r.r24 ?? '', r.r48 ?? '']));
+      rows.push(['Ссылка', 'URL', 'Тип', 'Рекламодатель', 'Кампания', 'Подписки', 'Выручка ₽', '₽/подписчик', '₽/покупка', 'LTV когорты ₽', 'R24ч %', 'R48ч %']);
+      allRows.forEach(r => rows.push([r.link.label || '', r.url || '', LT[r.link.linkType]?.l || r.link.linkType, r.campaign.advertiser, r.campaign.id, csvNum(r.subs), csvNum(r.revenue), csvNum(r.pricePerSub, 2), csvNum(r.cps, 2), csvNum(r.avgCohortLtv, 2), csvNum(r.r24), csvNum(r.r48)]));
     } else {
       rows.push(['Рекламодатель', 'Кампаний', 'Закупки ₽', 'Подписки', 'Выручка ₽', 'Ср. ₽/подписчик', 'Ср. ₽/покупка', 'LTV когорты ₽', 'ROI %', 'Ср. R24ч %', 'Ср. R48ч %']);
-      allRows.forEach(a => rows.push([a.advertiser, a.campaignsCount, a.totalPrice, a.totalSubs, a.totalRevenue, a.avgPricePerSub ?? '', a.avgCps ?? '', a.avgCohortLtv ?? '', a.roi !== null ? a.roi.toFixed(1) : '', a.avgRetention24h ?? '', a.avgRetention48h ?? '']));
+      allRows.forEach(a => rows.push([a.advertiser, csvNum(a.campaignsCount), csvNum(a.totalPrice), csvNum(a.totalSubs), csvNum(a.totalRevenue), csvNum(a.avgPricePerSub), csvNum(a.avgCps), csvNum(a.avgCohortLtv), csvNum(a.roi, 1), csvNum(a.avgRetention24h), csvNum(a.avgRetention48h)]));
     }
     const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tg-analytics-' + view.mode + '.csv'; a.click();

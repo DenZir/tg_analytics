@@ -352,7 +352,7 @@ export async function fetchAllCampaignRowsForExport(mode) {
     if (mode === 'links') {
       for (const c of data.campaigns) {
         for (const l of c.links) {
-          out.push({ campaign: c, link: l, subs: l.subs, revenue: l.revenue, cps: l.cps, pricePerSub: l.pricePerSub, r24: c.retention24h, r48: c.retention48h, url: l.telegramRef, creative: c.creative });
+          out.push({ campaign: c, link: l, subs: l.subs, revenue: l.revenue, cps: l.cps, pricePerSub: l.pricePerSub, avgCohortLtv: l.avgCohortLtv, r24: c.retention24h, r48: c.retention48h, url: l.telegramRef, creative: c.creative });
         }
       }
     } else {
@@ -399,4 +399,17 @@ export function fmtHours(h) {
   if (h < 24) return fmt1(h) + 'ч';
   const days = Math.floor(h / 24), rem = Math.round(h % 24);
   return rem ? `${days}д ${rem}ч` : `${days}д`;
+}
+
+/* ================= CSV ================= */
+// Excel in a ru-RU locale parses dot-decimals like "6.03" as dates ("6 марта"),
+// silently corrupting exported metrics. The field delimiter in our CSVs is ';',
+// so a comma decimal separator is unambiguous and Excel reads it as a number.
+// Pass `digits` to keep an existing toFixed() shape; omit it to leave the
+// number's natural precision. Empty/невалидные values stay empty cells.
+export function csvNum(value, digits = null) {
+  if (value === null || value === undefined || value === '') return '';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '';
+  return (digits === null ? String(n) : n.toFixed(digits)).replace('.', ',');
 }
