@@ -1,9 +1,9 @@
-import { randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "../db/index.js";
 import { dashboardSessions } from "../db/schema.js";
 import { eq, gt, and } from "drizzle-orm";
 
-const SESSION_TTL_MS = 5 * 60 * 60 * 1000; // 5 hours
+export const SESSION_TTL_MS = 5 * 60 * 60 * 1000; // 5 hours
 
 function generateToken(): string {
   return randomBytes(32).toString("hex");
@@ -58,4 +58,50 @@ export async function getSessionTgUserId(token: string): Promise<string | null> 
     .limit(1);
 
   return rows[0]?.tgUserId ?? null;
+}
+
+// Telegram Login Widget hands the browser a signed profile payload and
+// redirects here with it in the query string. Every field is attacker-
+// controllable, so the `hash` is the ONLY thing that makes this trustworthy:
+// it's an HMAC-SHA256 of the sorted "key=value" payload, keyed by the SHA-256
+// of the bot token — a secret only Telegram and this server hold. Without
+// this check anyone could simply request /auth/telegram?id=<an admin id>.
+const TELEGRAM_LOGIN_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+export type TelegramLoginResult =
+  | { ok: true; tgUserId: string }
+  | { ok: false; reason: string };
+
+export function verifyTelegramLogin(
+  params: Record<string, string>,
+  botToken: string
+): TelegramLoginResult {
+  const { hash, ...rest } = params;
+
+  if (!hash || !/^[0-9a-f]{64}$/i.test(hash)) return { ok: false, reason: "missing or malformed hash" };
+  if (!rest.id) return { ok: false, reason: "missing id" };
+  if (!rest.auth_date) return { ok: false, reason: "missing auth_date" };
+
+  const dataCheckString = Object.keys(rest)
+    .sort()
+    .map((key) => `${key}=${rest[key]}`)
+    .join("\n");
+
+  const secretKey = createHash("sha256").update(botToken).digest();
+  const expected = createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
+
+  const expectedBuf = Buffer.from(expected, "hex");
+  const actualBuf = Buffer.from(hash.toLowerCase(), "hex");
+  if (expectedBuf.length !== actualBuf.length || !timingSafeEqual(expectedBuf, actualBuf)) {
+    return { ok: false, reason: "signature mismatch" };
+  }
+
+  // Replay guard: without it a captured callback URL would log someone in
+  // forever, since the signature itself never expires.
+  const authDateMs = Number(rest.auth_date) * 1000;
+  if (!Number.isFinite(authDateMs) || Date.now() - authDateMs > TELEGRAM_LOGIN_MAX_AGE_MS) {
+    return { ok: false, reason: "auth_date too old" };
+  }
+
+  return { ok: true, tgUserId: String(rest.id) };
 }

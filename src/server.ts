@@ -44,7 +44,14 @@ import {
 } from "./services/utm.js";
 import { getCampaignGeoBreakdown } from "./services/geo.js";
 import { eq } from "drizzle-orm";
-import { redeemAndRotateToken, getSessionTgUserId } from "./services/dashboardAuth.js";
+import {
+  redeemAndRotateToken,
+  getSessionTgUserId,
+  createLoginToken,
+  verifyTelegramLogin,
+  SESSION_TTL_MS,
+} from "./services/dashboardAuth.js";
+import { isAdmin } from "./config/admins.js";
 import { channelBot } from "./bots/channelBot.js";
 import { createFullExport } from "./jobs/backup.js";
 import fs from "node:fs";
@@ -95,12 +102,35 @@ app.get("/health", async (_req, res) => {
 const CHANNEL_BOT_USERNAME = process.env.CHANNEL_BOT_USERNAME || "";
 const BOT_DEEP_LINK = CHANNEL_BOT_USERNAME ? `https://t.me/${CHANNEL_BOT_USERNAME}` : null;
 
+// Telegram Login Widget: one-click sign-in straight from this page. Rendered
+// only when both the bot username and a dashboard URL are configured. The
+// username is matched against Telegram's own format before being interpolated
+// so it can't break out of the HTML attribute, and the domain in
+// DASHBOARD_URL must be the exact one registered with BotFather via
+// /setdomain — Telegram silently refuses to render the widget otherwise.
+const DASHBOARD_BASE_URL = (process.env.DASHBOARD_URL || "").replace(/\/+$/, "");
+const TELEGRAM_LOGIN_WIDGET =
+  /^[A-Za-z0-9_]{4,32}$/.test(CHANNEL_BOT_USERNAME) && DASHBOARD_BASE_URL
+    ? `<script async src="https://telegram.org/js/telegram-widget.js?22"
+        data-telegram-login="${CHANNEL_BOT_USERNAME}"
+        data-size="large"
+        data-userpic="false"
+        data-auth-url="${DASHBOARD_BASE_URL}/auth/telegram"
+        data-request-access="write"></script>`
+    : "";
+
 const LOGIN_REQUIRED_HTML = `<!DOCTYPE html>
 <html lang="ru">
 <head><meta charset="utf-8"><title>TG Analytics — вход</title></head>
 <body style="font-family: sans-serif; text-align: center; padding: 60px 20px;">
   <h2>Требуется авторизация</h2>
-  <p>Чтобы открыть дашборд, зайдите в Telegram-бота и нажмите «🔐 Авторизация в дашборд» в главном меню.</p>
+  ${
+    TELEGRAM_LOGIN_WIDGET
+      ? `<p>Войдите через Telegram — аккаунтом из списка администраторов.</p>
+  <p>${TELEGRAM_LOGIN_WIDGET}</p>
+  <p style="color:#888;font-size:13px;margin-top:32px">Кнопка не появилась? Запасной вход — через бота:</p>`
+      : `<p>Чтобы открыть дашборд, зайдите в Telegram-бота и нажмите «🔐 Авторизация в дашборд» в главном меню.</p>`
+  }
   ${
     BOT_DEEP_LINK
       ? `<p><a href="${BOT_DEEP_LINK}" style="display:inline-block;padding:12px 24px;background:#2AABEE;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Открыть бота</a></p>`
@@ -148,10 +178,50 @@ app.get("/auth/callback", async (req, res) => {
   res.cookie("dash_session", newToken, {
     httpOnly: true,
     sameSite: "lax",
-    maxAge: 5 * 60 * 60 * 1000, // 5 hours, matches dashboardAuth's SESSION_TTL_MS
+    maxAge: SESSION_TTL_MS,
     // secure: true intentionally omitted for now — this runs behind a plain-HTTP-to-the-app
     // Cloudflare tunnel during development; revisit once served consistently over a stable HTTPS domain.
   });
+  res.redirect("/");
+});
+
+// GET /auth/telegram — callback for the Telegram Login Widget on the login
+// page. Everything in the query string comes from the user's browser, so the
+// HMAC check inside verifyTelegramLogin is what makes it trustworthy; only
+// after that does the Telegram id get matched against the admin allowlist.
+app.get("/auth/telegram", async (req, res) => {
+  const botToken = process.env.CHANNEL_BOT_TOKEN;
+  if (!botToken) {
+    return res.status(503).send("Вход через Telegram не настроен: не задан CHANNEL_BOT_TOKEN.");
+  }
+
+  const params: Record<string, string> = {};
+  for (const [key, value] of Object.entries(req.query)) {
+    if (typeof value === "string") params[key] = value;
+  }
+
+  const result = verifyTelegramLogin(params, botToken);
+  if (!result.ok) {
+    console.warn(`[auth] Telegram login rejected: ${result.reason}`);
+    return res
+      .status(401)
+      .send("Не удалось подтвердить вход через Telegram. Откройте дашборд заново и попробуйте ещё раз.");
+  }
+
+  if (!isAdmin(result.tgUserId)) {
+    console.warn(`[auth] Telegram login denied for non-admin ${result.tgUserId}`);
+    return res.status(403).send("Этот Telegram-аккаунт не в списке администраторов дашборда.");
+  }
+
+  const token = await createLoginToken(result.tgUserId);
+  res.cookie("dash_session", token, {
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: SESSION_TTL_MS,
+    // secure: true intentionally omitted, matching /auth/callback above — this
+    // runs behind a plain-HTTP-to-the-app tunnel during development.
+  });
+  console.log(`[auth] Telegram widget login for admin ${result.tgUserId}`);
   res.redirect("/");
 });
 
