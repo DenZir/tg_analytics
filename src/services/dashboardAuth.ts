@@ -3,7 +3,7 @@ import { db } from "../db/index.js";
 import { dashboardSessions } from "../db/schema.js";
 import { eq, gt, and } from "drizzle-orm";
 
-export const SESSION_TTL_MS = 5 * 60 * 60 * 1000; // 5 hours
+export const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 function generateToken(): string {
   return randomBytes(32).toString("hex");

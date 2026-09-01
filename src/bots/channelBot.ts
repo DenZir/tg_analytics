@@ -107,6 +107,22 @@ function getMainMenuKeyboard() {
   ]);
 }
 
+// Mints a one-time dashboard login link. Shared by the main menu's
+// "🔐 Авторизация в дашборд" button and by the `?start=dash` deep link the
+// dashboard's own login page points at — the deep link exists so signing in
+// never requires a Telegram session in the browser, which is what the login
+// widget needs and what makes it ask for a phone number.
+async function sendDashboardLoginLink(ctx: any) {
+  const token = await createLoginToken(String(ctx.from.id));
+  const dashUrl = (process.env.DASHBOARD_URL || "http://localhost:3000").replace(/\/$/, "");
+  return ctx.reply(
+    "🔐 Ссылка для входа в дашборд одноразовая — нажмите кнопку ниже, чтобы авторизоваться:",
+    Markup.inlineKeyboard([
+      Markup.button.url("🌐 Войти в дашборд", `${dashUrl}/auth/callback?token=${token}`),
+    ])
+  );
+}
+
 async function sendMainMenu(ctx: any) {
   const text = "📱 <b>Главное меню TG Analytics</b>\n\nВыберите нужное действие:";
   const keyboard = getMainMenuKeyboard();
@@ -491,6 +507,13 @@ if (channelBot) {
     if (!isAdmin(ctx.from?.id)) {
       return ctx.reply("Not authorized");
     }
+    // `/start dash` comes from the dashboard's login page, so hand over the
+    // login link straight away instead of making the admin hunt for it in the
+    // menu.
+    const payload = String(ctx.payload ?? ctx.startPayload ?? "").trim();
+    if (payload === "dash") {
+      return sendDashboardLoginLink(ctx);
+    }
     return sendMainMenu(ctx);
   });
 
@@ -605,14 +628,7 @@ if (channelBot) {
         if (!isAdmin(ctx.from?.id)) {
           return ctx.reply("Not authorized");
         }
-        const token = await createLoginToken(String(ctx.from.id));
-        const dashUrl = (process.env.DASHBOARD_URL || "http://localhost:3000").replace(/\/$/, "");
-        return ctx.reply(
-          "🔐 Ссылка для входа в дашборд одноразовая — нажмите кнопку ниже, чтобы авторизоваться:",
-          Markup.inlineKeyboard([
-            Markup.button.url("🌐 Войти в дашборд", `${dashUrl}/auth/callback?token=${token}`),
-          ])
-        );
+        return sendDashboardLoginLink(ctx);
       }
 
       if (data === "menu_main" || data === "card_cancel") {

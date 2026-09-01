@@ -101,7 +101,13 @@ app.get("/health", async (_req, res) => {
 });
 
 const CHANNEL_BOT_USERNAME = process.env.CHANNEL_BOT_USERNAME || "";
-const BOT_DEEP_LINK = CHANNEL_BOT_USERNAME ? `https://t.me/${CHANNEL_BOT_USERNAME}` : null;
+// `?start=dash` makes the bot answer with a one-time login link immediately,
+// so signing in never needs a Telegram session in the browser — which is what
+// the login widget below requires, and why it otherwise asks for a phone
+// number on a browser that has never signed into Telegram Web.
+const BOT_DEEP_LINK = CHANNEL_BOT_USERNAME
+  ? `https://t.me/${CHANNEL_BOT_USERNAME}?start=dash`
+  : null;
 
 // Telegram Login Widget: one-click sign-in straight from this page. Rendered
 // only when both the bot username and a dashboard URL are configured. The
@@ -125,16 +131,17 @@ const LOGIN_REQUIRED_HTML = `<!DOCTYPE html>
 <head><meta charset="utf-8"><title>TG Analytics — вход</title></head>
 <body style="font-family: sans-serif; text-align: center; padding: 60px 20px;">
   <h2>Требуется авторизация</h2>
+  <p>Войдите аккаунтом из списка администраторов.</p>
   ${
-    TELEGRAM_LOGIN_WIDGET
-      ? `<p>Войдите через Telegram — аккаунтом из списка администраторов.</p>
-  <p>${TELEGRAM_LOGIN_WIDGET}</p>
-  <p style="color:#888;font-size:13px;margin-top:32px">Кнопка не появилась? Запасной вход — через бота:</p>`
+    BOT_DEEP_LINK
+      ? `<p><a href="${BOT_DEEP_LINK}" style="display:inline-block;padding:12px 24px;background:#2AABEE;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Войти через бота</a></p>
+  <p style="color:#888;font-size:13px">Откроется Telegram — нажмите «🌐 Войти в дашборд».</p>`
       : `<p>Чтобы открыть дашборд, зайдите в Telegram-бота и нажмите «🔐 Авторизация в дашборд» в главном меню.</p>`
   }
   ${
-    BOT_DEEP_LINK
-      ? `<p><a href="${BOT_DEEP_LINK}" style="display:inline-block;padding:12px 24px;background:#2AABEE;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Открыть бота</a></p>`
+    TELEGRAM_LOGIN_WIDGET
+      ? `<p style="color:#888;font-size:13px;margin-top:32px">Или через виджет Telegram — он попросит номер телефона, если в этом браузере нет сессии Telegram Web:</p>
+  <p>${TELEGRAM_LOGIN_WIDGET}</p>`
       : ""
   }
 </body>
