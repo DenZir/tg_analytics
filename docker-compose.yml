@@ -5,10 +5,18 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    # Loopback-only — a reverse proxy on the host (Caddy or similar) talks to
-    # this over 127.0.0.1, nothing is reachable from outside this machine.
-    ports:
-      - "127.0.0.1:${PORT:-3000}:${PORT:-3000}"
+    # Host networking: the container shares the host's network namespace, so
+    # the app is reachable on the host's own 127.0.0.1:${PORT} with no port
+    # publishing at all (`ports:` is incompatible with this mode). This is what
+    # lets the bots reach the API over plain localhost — under bridge
+    # networking each container's localhost is its own, and a loopback-bound
+    # published port is unreachable from any other container.
+    #
+    # NOTE: the app calls app.listen(PORT) without a host argument, so it binds
+    # 0.0.0.0 — under host networking that means ${PORT} is open on every
+    # interface of the machine, not just loopback as before. Keep the host
+    # firewall closed on that port.
+    network_mode: host
     volumes:
       # Bind-mounts the sqlite file itself so it survives container
       # recreation. Must match DB_PATH in .env (default ./analytics.dev.db,
