@@ -56,6 +56,12 @@ export const events = sqliteTable(
     tgUserId: text("tg_user_id").notNull(),
     eventType: text("event_type").notNull(),
     amount: real("amount").notNull().default(0),
+    // Promo code spent on this purchase, and what it took off. `amount` is
+    // already net of the discount — it is the money actually received — so
+    // revenue metrics need no adjustment; these two only answer "which codes
+    // are working".
+    promoCode: text("promo_code"),
+    discountAmount: real("discount_amount").notNull().default(0),
     languageCode: text("language_code"),
     ts: integer("ts", { mode: "timestamp" })
       .notNull()

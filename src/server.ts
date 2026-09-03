@@ -33,6 +33,7 @@ import {
   getAdvertisersPage,
   getCreativesPage,
   getPrivatkaFinance,
+  getPromoStats,
 } from "./services/metrics.js";
 import {
   createUtmLink,
@@ -547,7 +548,8 @@ app.get("/api/attribution", async (req, res) => {
 // POST /api/events
 app.post("/api/events", async (req, res) => {
   try {
-    const { linkId, tgUserId, eventType, amount, languageCode } = req.body;
+    const { linkId, tgUserId, eventType, amount, languageCode, promoCode, discountAmount } =
+      req.body;
     if (!tgUserId || !eventType) {
       return res.status(400).json({ error: "Missing required fields (tgUserId, eventType)" });
     }
@@ -558,12 +560,26 @@ app.post("/api/events", async (req, res) => {
       });
     }
 
+    // The promo code is free text coming from a bot, so it is trimmed and
+    // length-capped before it can ever reach a dashboard cell.
+    const normalizedPromo =
+      typeof promoCode === "string" && promoCode.trim() !== ""
+        ? promoCode.trim().slice(0, 64)
+        : undefined;
+
+    const parsedDiscount = discountAmount === undefined ? 0 : Number(discountAmount);
+    if (!Number.isFinite(parsedDiscount) || parsedDiscount < 0) {
+      return res.status(400).json({ error: "discountAmount must be a non-negative number" });
+    }
+
     const event = await logEvent({
       linkId: linkId ? Number(linkId) : undefined,
       tgUserId: String(tgUserId),
       eventType: String(eventType),
       amount: amount ? Number(amount) : 0,
       languageCode: languageCode ? String(languageCode) : undefined,
+      promoCode: normalizedPromo,
+      discountAmount: parsedDiscount,
     });
 
     res.status(201).json({ success: true, event });
@@ -571,6 +587,16 @@ app.post("/api/events", async (req, res) => {
     if (error.message && error.message.includes("Cannot attribute event")) {
       return res.status(422).json({ error: error.message });
     }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/promo — per-code promo performance for the dashboard.
+app.get("/api/promo", async (_req, res) => {
+  try {
+    res.json(await getPromoStats());
+  } catch (error: any) {
+    console.error("[api] Failed to load promo stats:", error);
     res.status(500).json({ error: error.message });
   }
 });

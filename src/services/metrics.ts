@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { dailyStats, campaigns, campaignTags, links, events, projects } from "../db/schema.js";
-import { eq, and, inArray, sql, isNull } from "drizzle-orm";
+import { eq, and, inArray, sql, isNull, isNotNull, desc } from "drizzle-orm";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 
 export interface CohortLtvAgg {
@@ -821,4 +821,58 @@ export async function getPrivatkaFinance() {
       dailySeries,
     };
   });
+}
+
+export interface PromoCodeStats {
+  promoCode: string;
+  /** Paid orders that used the code — first purchases and renewals alike. */
+  redemptions: number;
+  /** Distinct people who used it, which differs from redemptions on renewals. */
+  buyers: number;
+  /** Money actually received on those orders, already net of the discount. */
+  revenue: number;
+  /** Total given away. Revenue plus this is what the same orders would have cost. */
+  discountGiven: number;
+  /** Average cheque on the discounted orders. */
+  avgOrder: number;
+  lastUsedAt: Date | null;
+}
+
+/**
+ * Per-code promo performance, busiest first.
+ *
+ * Reads the payment events rather than the bots' own tables, so it covers every
+ * bot reporting into this service and needs no cross-database access. `amount`
+ * on an event is already the sum charged, so revenue here is real money in —
+ * `discountGiven` is what it would additionally have been at list price.
+ */
+export async function getPromoStats(): Promise<PromoCodeStats[]> {
+  const rows = await db
+    .select({
+      promoCode: events.promoCode,
+      redemptions: sql<number>`count(*)`,
+      buyers: sql<number>`count(distinct ${events.tgUserId})`,
+      revenue: sql<number>`coalesce(sum(${events.amount}), 0)`,
+      discountGiven: sql<number>`coalesce(sum(${events.discountAmount}), 0)`,
+      lastUsedTs: sql<number | null>`max(${events.ts})`,
+    })
+    .from(events)
+    .where(
+      and(
+        isNotNull(events.promoCode),
+        inArray(events.eventType, [EVENT_TYPES.PAYMENT, EVENT_TYPES.RENEWAL])
+      )
+    )
+    .groupBy(events.promoCode)
+    .orderBy(desc(sql`count(*)`));
+
+  return rows.map((r) => ({
+    promoCode: r.promoCode as string,
+    redemptions: Number(r.redemptions),
+    buyers: Number(r.buyers),
+    revenue: Number(r.revenue),
+    discountGiven: Number(r.discountGiven),
+    avgOrder: Number(r.redemptions) > 0 ? Number(r.revenue) / Number(r.redemptions) : 0,
+    lastUsedAt: r.lastUsedTs ? new Date(Number(r.lastUsedTs) * 1000) : null,
+  }));
 }

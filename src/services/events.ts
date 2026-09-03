@@ -10,6 +10,8 @@ export interface LogEventInput {
   amount?: number;
   ts?: Date;
   languageCode?: string;
+  promoCode?: string;
+  discountAmount?: number;
 }
 
 export async function logEvent(input: LogEventInput) {
@@ -42,6 +44,8 @@ export async function logEvent(input: LogEventInput) {
           tgUserId: input.tgUserId,
           eventType: input.eventType,
           amount: input.amount ?? 0,
+          promoCode: input.promoCode ?? null,
+          discountAmount: input.discountAmount ?? 0,
           languageCode: input.languageCode ?? null,
           ts: input.ts ?? new Date(),
         })

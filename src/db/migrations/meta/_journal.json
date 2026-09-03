@@ -71,6 +71,13 @@
       "when": 1787942087150,
       "tag": "0009_next_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788447485399,
+      "tag": "0010_lively_mattie_franklin",
+      "breakpoints": true
     }
   ]
 }
