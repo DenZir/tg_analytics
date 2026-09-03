@@ -299,14 +299,14 @@ tr.flash,.flash{animation:flash 1.6s ease}
 .tl-meta .amt{color:var(--green);display:block;font-size:11.5px}
 
 /* ============ ТАБ-БАР ============ */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:grid;grid-template-columns:repeat(5,1fr);padding:7px 6px calc(8px + env(safe-area-inset-bottom,0px));background:rgba(9,12,17,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--line)}
-.tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;color:var(--dim);font:600 9px var(--body);padding:7px 2px;border-radius:12px;transition:color .2s;text-align:center;line-height:1.15}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:grid;grid-template-columns:repeat(6,1fr);padding:7px 4px calc(8px + env(safe-area-inset-bottom,0px));background:rgba(9,12,17,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--line)}
+.tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;color:var(--dim);font:600 8.5px var(--body);padding:7px 1px;border-radius:12px;transition:color .2s;text-align:center;line-height:1.15}
 .tab svg{width:19px;height:19px;transition:transform .25s var(--ease)}
 .tab.on{color:var(--text)}
 .tab.on svg{color:var(--accent);transform:translateY(-2px)}
 .tab.on::before{content:'';position:absolute;top:-8px;left:50%;transform:translateX(-50%);width:20px;height:2.5px;border-radius:2px;background:var(--accent);box-shadow:0 0 10px rgba(87,182,255,.8)}
 .tab:active svg{transform:scale(.88)}
-.tbadge{position:absolute;top:1px;right:8px;font:600 8.5px var(--mono);color:var(--accent);background:rgba(87,182,255,.14);border:1px solid rgba(87,182,255,.3);padding:1px 4px;border-radius:9px}
+.tbadge{position:absolute;top:1px;right:4px;font:600 8.5px var(--mono);color:var(--accent);background:rgba(87,182,255,.14);border:1px solid rgba(87,182,255,.3);padding:1px 4px;border-radius:9px}
 
 /* ============ ТОСТЫ ============ */
 .toast-root{position:fixed;left:14px;right:14px;bottom:calc(var(--tab) + 14px);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
@@ -472,6 +472,11 @@ tr.flash,.flash{animation:flash 1.6s ease}
   </article>
 </section>
 
+<!-- ========== ПРОМОКОДЫ ========== -->
+<section class="screen" id="scr-promo">
+  <div id="promoCards"></div>
+</section>
+
 <!-- ========== ПРИВАТКИ ========== -->
 <section class="screen" id="scr-privatkas">
   <div class="scr-head rv" style="--i:0">
@@ -525,6 +530,7 @@ tr.flash,.flash{animation:flash 1.6s ease}
   <button class="tab" data-scr="campaigns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 17 5v13L3 12.5v-2z"/><path d="M7 13.5V18a2 2 0 0 0 4 0v-3"/><path d="M17 8.5c1.7.6 2.5 1.7 2.5 3s-.8 2.4-2.5 3"/></svg>Кампании<span class="tbadge" id="nb-camp">—</span></button>
   <button class="tab" data-scr="utm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.7 3.3h6a2 2 0 0 1 2 2v6l-9.6 9.6a1.5 1.5 0 0 1-2.1 0l-5.9-5.9a1.5 1.5 0 0 1 0-2.1l9.6-9.6z"/><circle cx="16.8" cy="7.2" r="1.4"/></svg>UTM<span class="tbadge" id="nb-utm">—</span></button>
   <button class="tab" data-scr="privatkas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>Приватки</button>
+  <button class="tab" data-scr="promo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4v-3z"/><path d="M12 8.5v11" stroke-dasharray="2 2.5"/></svg>Промо<span class="tbadge" id="nb-promo">—</span></button>
   <button class="tab" data-scr="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3.5 13 8.5 4.7L20.5 13"/><path d="m3.5 17 8.5 4.7L20.5 17" opacity=".45"/></svg>Проекты<span class="tbadge" id="nb-proj">—</span></button>
 </nav>
 

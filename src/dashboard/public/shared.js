@@ -333,6 +333,15 @@ export const CAMP_PAGE_SIZE = 25;
 // itself is paginated (LIMIT/OFFSET), and retention/conversion/link stats
 // are computed only for that page's campaigns, so loading stays fast no
 // matter how many campaigns the project has accumulated.
+/**
+ * Per-code promo performance. `revenue` is money actually received (already net
+ * of the discount) and `discountGiven` is what was handed out on top, so the two
+ * added together are what those orders would have cost at list price.
+ */
+export async function fetchPromoStats() {
+  return fetchJSON('/api/promo');
+}
+
 export async function fetchCampaignsPage(mode, page) {
   const params = new URLSearchParams({ mode, page: String(page), pageSize: String(CAMP_PAGE_SIZE) });
   if (state.q.trim()) params.set('q', state.q.trim());

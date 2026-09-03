@@ -6,7 +6,7 @@ import {
   last21Dates, seriesForCampaign, windowDates, prevWindowDates, sumDates, countActiveCampaigns, windowArrays,
   computeLinkStats, allocatePrice, computeLinkRows, linkDisplayUrl, state, CAMP_PAGE_SIZE,
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
-  daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum,
+  daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
 } from './shared.js';
 
 /* ================= СПАРКЛАЙН (мобильные размеры) ================= */
@@ -1020,11 +1020,49 @@ $('#projForm').addEventListener('submit', async e => {
   }
 });
 
+/* ================= ПРОМОКОДЫ ================= */
+// Карточка на код: таблица на 375px не читается. Reuses the pf-* block layout
+// already used by the приватки cards rather than inventing new classes.
+async function renderPromo() {
+  const wrap = $('#promoCards');
+  let rows;
+  try {
+    rows = await fetchPromoStats();
+  } catch (err) {
+    toast(`Не удалось загрузить промокоды: ${err.message}`, 'warn');
+    wrap.innerHTML = '<div style="padding:16px 4px;font-size:12px;color:var(--dim)">Не удалось загрузить промокоды</div>';
+    return;
+  }
+
+  const badge = $('#nb-promo');
+  if (badge) badge.textContent = rows.length || '—';
+
+  if (!rows.length) {
+    wrap.innerHTML =
+      '<div style="padding:16px 4px;font-size:12px;color:var(--dim)">Промокодов ещё не применяли. ' +
+      'Создайте код в боте — он появится здесь после первой оплаты.</div>';
+    return;
+  }
+
+  wrap.innerHTML = rows.map((r, i) => `<article class="card pf-card rv" style="--i:${i}">
+    <div class="card-h"><span class="card-idx">${String(i + 1).padStart(2, '0')} / промокод</span><div><div class="card-t">${escapeHtml(r.promoCode)}</div><div class="card-s">${fmtN(r.redemptions)} ${plural(r.redemptions, 'применение', 'применения', 'применений')} · ${fmtN(r.buyers)} ${plural(r.buyers, 'покупатель', 'покупателя', 'покупателей')}</div></div></div>
+    <div class="pf-body">
+      <div class="pf-grid">
+        <div class="pf-block"><div class="pf-lbl">Выручка</div><div class="pf-val">${fmtM(r.revenue)}</div><div class="pf-sub">получено на счёт</div></div>
+        <div class="pf-block"><div class="pf-lbl">Отдано скидками</div><div class="pf-val">${fmtM(r.discountGiven)}</div><div class="pf-sub">недополучено</div></div>
+        <div class="pf-block"><div class="pf-lbl">Средний чек</div><div class="pf-val">${fmtM(r.avgOrder)}</div><div class="pf-sub">со скидкой</div></div>
+        <div class="pf-block"><div class="pf-lbl">Последнее</div><div class="pf-val">${r.lastUsedAt ? dDate(new Date(r.lastUsedAt)) : '—'}</div><div class="pf-sub">применение</div></div>
+      </div>
+    </div>
+  </article>`).join('');
+}
+
 /* ================= НАВИГАЦИЯ ================= */
 async function renderCurrentScreen() {
   if (state.screen === 'overview') { renderKPIs(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
   else if (state.screen === 'campaigns') await renderCampaigns();
   else if (state.screen === 'utm') await renderUtm();
+  else if (state.screen === 'promo') await renderPromo();
   else if (state.screen === 'privatkas') await renderPrivatkas();
   else if (state.screen === 'projects') await renderProjects();
 }
@@ -1039,6 +1077,7 @@ async function go(scr) {
   if (scr === 'overview') { renderKPIs(); ensureChart(); refreshChart(); if (!rendered.ov) { renderTop5(); renderQuality(); renderFeed(); rendered.ov = 1; } }
   if (scr === 'campaigns') await renderCampaigns();
   if (scr === 'utm') await renderUtm();
+  if (scr === 'promo') await renderPromo();
   if (scr === 'privatkas') await renderPrivatkas();
   if (scr === 'projects') await renderProjects();
 }

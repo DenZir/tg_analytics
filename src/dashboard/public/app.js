@@ -6,7 +6,7 @@ import {
   last21Dates, seriesForCampaign, windowDates, prevWindowDates, sumDates, countActiveCampaigns, windowArrays,
   computeLinkStats, allocatePrice, computeLinkRows, linkDisplayUrl, state, CAMP_PAGE_SIZE,
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
-  daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum,
+  daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
 } from './shared.js';
 
 /* ================= СПАРКЛАЙН / АНИМАЦИИ (десктоп-специфичные размеры) ================= */
@@ -1070,7 +1070,7 @@ function renderPrivatkaCompare(list) {
   <article class="card table-card rv" style="--i:${list.length}">
     <div class="card-h"><span class="card-idx">${String(list.length + 1).padStart(2, '0')} / сравнение</span><div><div class="card-t">Сравнение приваток</div><div class="card-s">по выручке за всё время</div></div></div>
     <div class="tbl-wrap">
-      <table class="tbl">
+      <div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>Приватка</th><th class="num">Доход (всё время)</th><th class="num">Средний чек (всё время)</th><th class="num">ARPPU</th></tr></thead>
         <tbody>
           ${sorted.map(p => `<tr>
@@ -1111,13 +1111,71 @@ const SCREENS = {
   campaigns: { t: 'Кампании', s: 'Эффективность закупок: режимы «по ссылкам», «по рекламодателям» и «по креативам»', c: { p: 0, s: 1, e: 1 } },
   utm: { t: 'UTM-метки', s: 'Независимый трекинг источников трафика: старты, покупки, CAC/ROI по utm-меткам', c: { p: 0, s: 0, e: 1 } },
   privatkas: { t: 'Приватки', s: 'Финансы подписочных ботов: доход, средний чек, ARPPU', c: { p: 0, s: 0, e: 1 } },
+  promo: { t: 'Промокоды', s: 'Какие коды приводят к оплате: применения, выручка и размер отданных скидок', c: { p: 0, s: 0, e: 0 } },
   projects: { t: 'Проекты', s: 'Реестр каналов и ботов-приваток, связывание проектов', c: { p: 0, s: 0, e: 0 } },
 };
+
+// Промокоды: одна строка на код, самые ходовые сверху.
+async function renderPromo() {
+  const wrap = $('#promoTableWrap');
+  let rows;
+  try {
+    rows = await fetchPromoStats();
+  } catch (err) {
+    wrap.innerHTML = `<div class="card" style="padding:22px;color:var(--dim);font-size:13px">Не удалось загрузить промокоды: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  const badge = $('#nb-promo');
+  if (badge) badge.textContent = rows.length || '—';
+
+  if (!rows.length) {
+    wrap.innerHTML =
+      '<div class="card" style="padding:22px;color:var(--dim);font-size:13px">' +
+      'Промокодов ещё не применяли.<br>Создайте код в боте — он появится здесь после первой оплаты.</div>';
+    return;
+  }
+
+  const totalRedemptions = rows.reduce((a, r) => a + r.redemptions, 0);
+  const totalRevenue = rows.reduce((a, r) => a + r.revenue, 0);
+  const totalDiscount = rows.reduce((a, r) => a + r.discountGiven, 0);
+
+  wrap.innerHTML = `
+  <div class="card">
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr>
+        <th>Код</th><th class="num">Применений</th><th class="num">Покупателей</th>
+        <th class="num">Выручка</th><th class="num">Отдано скидками</th>
+        <th class="num">Средний чек</th><th class="num">Последнее</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td><code>${escapeHtml(r.promoCode)}</code></td>
+          <td class="num">${r.redemptions}</td>
+          <td class="num">${r.buyers}</td>
+          <td class="num">${fmtM(r.revenue)}</td>
+          <td class="num">${fmtM(r.discountGiven)}</td>
+          <td class="num">${fmtM(r.avgOrder)}</td>
+          <td class="num">${r.lastUsedAt ? dDate(new Date(r.lastUsedAt)) : '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+      <tfoot><tr>
+        <td><b>Итого</b></td>
+        <td class="num"><b>${totalRedemptions}</b></td>
+        <td class="num">—</td>
+        <td class="num"><b>${fmtM(totalRevenue)}</b></td>
+        <td class="num"><b>${fmtM(totalDiscount)}</b></td>
+        <td class="num">—</td><td class="num">—</td>
+      </tr></tfoot>
+    </table></div>
+  </div>`;
+}
 
 async function renderCurrentScreen() {
   if (state.screen === 'overview') { renderKPIs(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
   else if (state.screen === 'campaigns') await renderCampaigns();
   else if (state.screen === 'utm') await renderUtm();
+  else if (state.screen === 'promo') await renderPromo();
   else if (state.screen === 'privatkas') await renderPrivatkas();
   else if (state.screen === 'projects') await renderProjects();
 }
@@ -1133,6 +1191,7 @@ async function go(scr) {
   if (scr === 'overview') { renderKPIs(); ensureChart(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
   if (scr === 'campaigns') await renderCampaigns();
   if (scr === 'utm') await renderUtm();
+  if (scr === 'promo') await renderPromo();
   if (scr === 'privatkas') await renderPrivatkas();
   if (scr === 'projects') await renderProjects();
 }
