@@ -209,6 +209,100 @@ export async function createLinkForCampaign(
   return insertedLink;
 }
 
+// Normalizes a hand-made Telegram invite link into the exact string Telegram
+// itself reports back in `chat_member.invite_link.invite_link`.
+//
+// Why an exact-string match matters: attribution looks a join up by
+// `links.telegram_ref` (see getLinkByRef / the chat_member handler in
+// src/bots/channelBot.ts), and that lookup is a plain equality comparison
+// against whatever Telegram sends. So only the parts that Telegram itself
+// always normalizes may be touched here — the scheme (always https) and the
+// host (always lowercase `t.me`). The invite hash is case-SENSITIVE and is
+// left byte-for-byte as typed; lower/upper-casing it would produce a row that
+// can never be matched by a real join. For the same reason the legacy
+// `/joinchat/<hash>` form is kept as-is rather than rewritten to `/+<hash>`:
+// Telegram keeps reporting old links in their original shape.
+//
+// A public username link (https://t.me/somechannel) is rejected outright: it
+// is the channel's public address, not an invite link, and Telegram never puts
+// it into `chat_member.invite_link`, so binding a campaign to it would silently
+// never attribute a single join.
+export function normalizeInviteRef(
+  raw: string
+): { ok: true; ref: string } | { ok: false; error: string } {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) {
+    return { ok: false, error: "Ссылка пустая — пришлите инвайт-ссылку канала." };
+  }
+
+  let rest = trimmed;
+  const schemeMatch = /^([A-Za-z][A-Za-z0-9+.-]*):\/\//.exec(rest);
+  if (schemeMatch) {
+    const scheme = schemeMatch[1].toLowerCase();
+    if (scheme !== "http" && scheme !== "https") {
+      return {
+        ok: false,
+        error: `Неподдерживаемый формат ссылки (${schemeMatch[1]}://). Ожидается https://t.me/+ХЕШ или https://t.me/joinchat/ХЕШ.`,
+      };
+    }
+    rest = rest.slice(schemeMatch[0].length);
+  }
+
+  const slash = rest.indexOf("/");
+  if (slash === -1) {
+    return {
+      ok: false,
+      error: "Это не похоже на инвайт-ссылку. Ожидается https://t.me/+ХЕШ или https://t.me/joinchat/ХЕШ.",
+    };
+  }
+
+  const host = rest.slice(0, slash).toLowerCase();
+  if (host !== "t.me") {
+    return {
+      ok: false,
+      error: `Домен «${rest.slice(0, slash)}» не поддерживается — Telegram присылает инвайт-ссылки только на t.me.`,
+    };
+  }
+
+  const path = rest.slice(slash + 1).replace(/\/+$/, "");
+
+  const plusMatch = /^\+([A-Za-z0-9_-]+)$/.exec(path);
+  if (plusMatch) {
+    return { ok: true, ref: `https://t.me/+${plusMatch[1]}` };
+  }
+
+  const joinchatMatch = /^joinchat\/([A-Za-z0-9_-]+)$/i.exec(path);
+  if (joinchatMatch) {
+    return { ok: true, ref: `https://t.me/joinchat/${joinchatMatch[1]}` };
+  }
+
+  if (/^[A-Za-z0-9_]{4,32}$/.test(path)) {
+    return {
+      ok: false,
+      error:
+        `«${path}» — это публичный юзернейм канала, а не инвайт-ссылка. ` +
+        `Telegram никогда не присылает его в chat_member, поэтому переходы по нему не привяжутся. ` +
+        `Создайте инвайт-ссылку в настройках канала (вид https://t.me/+ХЕШ) и пришлите её.`,
+    };
+  }
+
+  return {
+    ok: false,
+    error: "Не удалось разобрать ссылку. Ожидается https://t.me/+ХЕШ или https://t.me/joinchat/ХЕШ.",
+  };
+}
+
+// Link types a manually-made invite may be bound as — mirrors what
+// createInviteForCampaign writes for bot-created invites.
+export const MANUAL_LINK_TYPES = ["invite", "invite_closed"] as const;
+export type ManualLinkType = (typeof MANUAL_LINK_TYPES)[number];
+
+export interface ReadyLinkInput {
+  telegramRef: string;
+  linkType: ManualLinkType;
+  label?: string;
+}
+
 export async function createCampaignWithLinks(
   projectId: number,
   advertiser: string,
@@ -216,8 +310,34 @@ export async function createCampaignWithLinks(
   linkName: string,
   tags?: Array<{ tagKey: string; tagValue: string }> | Record<string, string>,
   isClosedLink: boolean = false,
-  createInviteFn?: (channelId: string | number, campaignId: number, name?: string, isClosed?: boolean, label?: string) => Promise<{ inviteLink: string; savedLink: any }>
+  createInviteFn?: (channelId: string | number, campaignId: number, name?: string, isClosed?: boolean, label?: string) => Promise<{ inviteLink: string; savedLink: any }>,
+  // When set, the owner already made this invite link by hand in Telegram: it
+  // is bound to the new campaign as-is and no new invite is created in the
+  // channel. Omitting it keeps the original behaviour (bot mints the invite).
+  readyLink?: ReadyLinkInput
 ) {
+  // Validate the ready link BEFORE the campaign row exists. Between the moment
+  // the admin typed it and this call, the link could have been taken by
+  // another campaign or auto-registered by the chat_member handler — and if we
+  // created the campaign first and then failed to attach a link, the DB would
+  // be left with an orphan campaign that has to be cleaned up by hand.
+  let verifiedRef: string | null = null;
+  if (readyLink) {
+    const normalized = normalizeInviteRef(readyLink.telegramRef);
+    if (!normalized.ok) throw new Error(normalized.error);
+
+    const existing = await getLinkByRef(normalized.ref);
+    if (existing) {
+      const owner = await getCampaignById(existing.campaignId);
+      throw new Error(
+        `Ссылка уже привязана к кампании #${existing.campaignId}` +
+          (owner ? ` («${owner.advertiser}»)` : "") +
+          ". Перенесите её в дашборде вместо создания новой кампании."
+      );
+    }
+    verifiedRef = normalized.ref;
+  }
+
   const campaign = await createCampaign({
     projectId,
     advertiser,
@@ -231,8 +351,24 @@ export async function createCampaignWithLinks(
 
   let channelLink: { inviteLink: string; savedLink: any } | null = null;
 
-  // 1. Channel invite link
-  if (project?.type === "channel" && project.telegramChatId && createInviteFn) {
+  if (readyLink && verifiedRef) {
+    // Attach the hand-made link. The unique index on links.telegram_ref is the
+    // last line of defence against a race with the auto-registration path, so
+    // a failure here rolls the fresh campaign back rather than leaving it empty.
+    try {
+      const savedLink = await createLinkForCampaign(
+        campaign.id,
+        verifiedRef,
+        readyLink.linkType,
+        readyLink.label
+      );
+      channelLink = { inviteLink: verifiedRef, savedLink };
+    } catch (error) {
+      await deleteCampaignCascade(campaign.id);
+      throw error;
+    }
+  } else if (project?.type === "channel" && project.telegramChatId && createInviteFn) {
+    // 1. Channel invite link
     const inviteName = `${advertiser} — ${linkName}`;
     channelLink = await createInviteFn(project.telegramChatId, campaign.id, inviteName, isClosedLink, linkName);
   }

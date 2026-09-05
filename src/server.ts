@@ -18,6 +18,12 @@ import {
   getAttributionForUser,
   reassignLinkCampaign,
   getCampaignsPage,
+  getCampaignById,
+  getLinkByRef,
+  createLinkForCampaign,
+  normalizeInviteRef,
+  MANUAL_LINK_TYPES,
+  type ManualLinkType,
   softDeleteCampaign,
   restoreCampaign,
   getTrashedCampaigns,
@@ -389,6 +395,67 @@ app.post("/api/campaigns", async (req, res) => {
 
     res.status(201).json(campaign);
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/campaigns/:id/links — binds an invite link the owner created by
+// hand in Telegram to an existing campaign, so it is attributed from the very
+// first join instead of landing in the "Не размечено (авто)" bucket and having
+// to be reassigned afterwards.
+app.post("/api/campaigns/:id/links", async (req, res) => {
+  try {
+    const campaignId = Number(req.params.id);
+    if (!Number.isInteger(campaignId) || campaignId <= 0) {
+      return res.status(400).json({ error: "Invalid campaign id" });
+    }
+
+    const { telegramRef, label, linkType } = req.body ?? {};
+    if (typeof telegramRef !== "string" || !telegramRef.trim()) {
+      return res.status(400).json({ error: "Missing required field (telegramRef)" });
+    }
+
+    const requestedType = linkType === undefined ? "invite" : String(linkType);
+    if (!(MANUAL_LINK_TYPES as readonly string[]).includes(requestedType)) {
+      return res.status(400).json({
+        error: `Invalid linkType "${requestedType}". Must be one of: ${MANUAL_LINK_TYPES.join(", ")}`,
+      });
+    }
+
+    const normalized = normalizeInviteRef(telegramRef);
+    if (!normalized.ok) {
+      return res.status(400).json({ error: normalized.error });
+    }
+
+    const campaign = await getCampaignById(campaignId);
+    if (!campaign) {
+      return res.status(400).json({ error: `Campaign ${campaignId} not found` });
+    }
+
+    // Already tracked — report who owns it so the caller can decide whether to
+    // move it over with PATCH /api/links/:id/campaign instead.
+    const existing = await getLinkByRef(normalized.ref);
+    if (existing) {
+      const owner = await getCampaignById(existing.campaignId);
+      return res.status(409).json({
+        error: "This invite link is already attached to a campaign",
+        linkId: existing.id,
+        campaignId: existing.campaignId,
+        advertiser: owner?.advertiser ?? null,
+      });
+    }
+
+    const trimmedLabel = label !== undefined && label !== null ? String(label).trim() : "";
+    const link = await createLinkForCampaign(
+      campaignId,
+      normalized.ref,
+      requestedType as ManualLinkType,
+      trimmedLabel || undefined
+    );
+
+    res.status(201).json(link);
+  } catch (error: any) {
+    console.error("[api] Failed to attach invite link to campaign:", error);
     res.status(500).json({ error: error.message });
   }
 });
