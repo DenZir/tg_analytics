@@ -13,6 +13,8 @@ import {
   getDistinctTagValues,
   getProjectByChatId,
   getOrCreateUnassignedCampaign,
+  normalizeInviteRef,
+  getCampaignById,
 } from "../services/campaigns.js";
 import { logEvent } from "../services/events.js";
 import { getMetrics } from "../services/metrics.js";
@@ -65,7 +67,7 @@ export async function createInviteForCampaign(
 
 // --- User Interactive State for Form Card & Privatka Creation ---
 interface UserState {
-  awaitingField?: "advertiser" | "price" | "tags" | "creative" | "linkName" | "privatka_username" | "privatka_name";
+  awaitingField?: "advertiser" | "price" | "tags" | "creative" | "linkName" | "readyLink" | "privatka_username" | "privatka_name";
   tempPrivatkaUsername?: string;
   tempCreativesList?: string[];
   // Draft Card State
@@ -73,6 +75,9 @@ interface UserState {
   advertiser?: string;
   price?: number;
   linkName?: string;
+  // Invite link the owner created by hand in Telegram. When set, "🚀 Создать"
+  // binds this link to the new campaign instead of minting a fresh invite.
+  readyLink?: string;
   isClosedLink?: boolean;
   tags?: Record<string, string>;
   cardMessageId?: number;
@@ -167,7 +172,15 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
     noticeText = "\n\n💬 <i>Отправьте название поста/креатива ответным текстом...</i>";
   } else if (state.awaitingField === "linkName") {
     noticeText = "\n\n💬 <i>Отправьте короткое название ссылки для быстрого распознавания (например: \"ВК-паблик Х, пост от 12.08\")...</i>";
+  } else if (state.awaitingField === "readyLink") {
+    noticeText =
+      "\n\n💬 <i>Отправьте одним сообщением готовую инвайт-ссылку канала (https://t.me/+ХЕШ). " +
+      "Бот не будет создавать новую ссылку, а привяжет эту. Отправьте <code>-</code>, чтобы очистить поле.</i>";
   }
+
+  const readyLinkText = state.readyLink
+    ? `<code>${escapeHtml(state.readyLink)}</code>`
+    : "нет (бот создаст сам)";
 
   const cardText =
     `📝 <b>Карточка создания рекламной ссылки</b>\n\n` +
@@ -176,6 +189,7 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
     `🔤 <b>Название ссылки</b>: ${linkNameText}\n` +
     `💰 <b>Цена</b>: ${priceText}\n` +
     `🚪 <b>Ссылка</b>: ${closedStatus}\n` +
+    `🔗 <b>Готовая ссылка</b>: ${readyLinkText}\n` +
     `🏷️ <b>Теги</b>: ${tagsText}` +
     noticeText;
 
@@ -196,6 +210,12 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
     ],
     [
       Markup.button.callback(`🚪 Ссылка: ${state.isClosedLink ? "Закрытая" : "Прямая"}`, "card_toggle_closed"),
+    ],
+    [
+      Markup.button.callback(
+        state.readyLink ? "🔗 Готовая ссылка ✅" : "🔗 Готовая ссылка",
+        "card_input_readylink"
+      ),
     ],
     [
       Markup.button.callback("❌ Отмена", "card_cancel"),
@@ -433,6 +453,47 @@ if (channelBot) {
         return;
       } else if (state.awaitingField === "linkName") {
         state.linkName = text;
+        delete state.awaitingField;
+        try { await ctx.deleteMessage(); } catch (_) {}
+        await renderDraftCard(ctx, userId, false);
+        return;
+      } else if (state.awaitingField === "readyLink") {
+        // "-" clears the field, so a link entered by mistake doesn't force the
+        // admin to throw away the whole card.
+        if (text === "-") {
+          delete state.readyLink;
+          delete state.awaitingField;
+          try { await ctx.deleteMessage(); } catch (_) {}
+          await renderDraftCard(ctx, userId, false);
+          return;
+        }
+
+        const normalized = normalizeInviteRef(text);
+        if (!normalized.ok) {
+          // Stay in the awaiting state so the admin can just retype the link.
+          await ctx.reply(
+            `⚠️ ${escapeHtml(normalized.error)}\n\nПришлите ссылку ещё раз или отправьте <code>-</code>, чтобы очистить поле.`,
+            { parse_mode: "HTML" }
+          );
+          return;
+        }
+
+        const existingLink = await getLinkByRef(normalized.ref);
+        if (existingLink) {
+          const owner = await getCampaignById(existingLink.campaignId);
+          const ownerText = owner
+            ? `«${escapeHtml(owner.advertiser)}» (ID: <code>${owner.id}</code>)`
+            : `ID <code>${existingLink.campaignId}</code>`;
+          await ctx.reply(
+            `⚠️ Эта ссылка уже привязана к кампании ${ownerText}.\n\n` +
+            `Пришлите другую ссылку, отправьте <code>-</code>, чтобы очистить поле, ` +
+            `или перенесите ссылку между кампаниями в дашборде.`,
+            { parse_mode: "HTML" }
+          );
+          return;
+        }
+
+        state.readyLink = normalized.ref;
         delete state.awaitingField;
         try { await ctx.deleteMessage(); } catch (_) {}
         await renderDraftCard(ctx, userId, false);
@@ -786,6 +847,14 @@ if (channelBot) {
         return renderDraftCard(ctx, userId);
       }
 
+      if (data === "card_input_readylink") {
+        await ctx.answerCbQuery();
+        const state = userStates.get(userId) || { isClosedLink: false };
+        state.awaitingField = "readyLink";
+        userStates.set(userId, state);
+        return renderDraftCard(ctx, userId);
+      }
+
       if (data === "card_input_price") {
         await ctx.answerCbQuery();
         const state = userStates.get(userId) || { isClosedLink: false };
@@ -877,7 +946,39 @@ if (channelBot) {
           return ctx.answerCbQuery("⚠️ Укажите цену закупки!");
         }
 
-        await ctx.answerCbQuery("Создаём ссылки...");
+        // Re-validate the hand-typed link right before creating anything.
+        // Time passes between typing it and pressing "Создать", during which
+        // another campaign — or the automatic chat_member registration — could
+        // have claimed it. Bailing out here (and again inside
+        // createCampaignWithLinks, before the campaign row is inserted) is what
+        // keeps a failed binding from leaving an orphan campaign behind.
+        if (state.readyLink) {
+          const recheck = normalizeInviteRef(state.readyLink);
+          if (!recheck.ok) {
+            await ctx.answerCbQuery();
+            return ctx.reply(
+              `⚠️ Готовая ссылка не прошла проверку: ${escapeHtml(recheck.error)}\n\nКампания не создана.`,
+              { parse_mode: "HTML" }
+            );
+          }
+          const taken = await getLinkByRef(recheck.ref);
+          if (taken) {
+            const owner = await getCampaignById(taken.campaignId);
+            const ownerText = owner
+              ? `«${escapeHtml(owner.advertiser)}» (ID: <code>${owner.id}</code>)`
+              : `ID <code>${taken.campaignId}</code>`;
+            await ctx.answerCbQuery();
+            return ctx.reply(
+              `⚠️ Готовая ссылка уже привязана к кампании ${ownerText}.\n\n` +
+              `Кампания не создана. Задайте другую ссылку кнопкой «🔗 Готовая ссылка» ` +
+              `или очистите поле, отправив <code>-</code>.`,
+              { parse_mode: "HTML" }
+            );
+          }
+          state.readyLink = recheck.ref;
+        }
+
+        await ctx.answerCbQuery(state.readyLink ? "Привязываем ссылку..." : "Создаём ссылки...");
 
         try {
           const creationResult = await createCampaignWithLinks(
@@ -887,14 +988,22 @@ if (channelBot) {
             state.linkName,
             state.tags || {},
             state.isClosedLink || false,
-            createInviteForCampaign
+            createInviteForCampaign,
+            state.readyLink
+              ? {
+                  telegramRef: state.readyLink,
+                  linkType: state.isClosedLink ? "invite_closed" : "invite",
+                  label: state.linkName,
+                }
+              : undefined
           );
 
           let linksResultText = "";
 
           if (creationResult.channelLink) {
             const linkTypeLabel = state.isClosedLink ? "Инвайт-ссылка с заявкой 🔒" : "Инвайт-ссылка 🔓";
-            linksResultText += `📢 <b>${linkTypeLabel} канала</b>:\n${creationResult.channelLink.inviteLink}\n\n`;
+            const originLabel = state.readyLink ? " (готовая, привязана)" : "";
+            linksResultText += `📢 <b>${linkTypeLabel} канала</b>${originLabel}:\n${creationResult.channelLink.inviteLink}\n\n`;
           } else {
             linksResultText += `⚠️ У канала не указан telegramChatId (добавьте через seedProject).\n\n`;
           }
