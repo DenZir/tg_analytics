@@ -149,11 +149,21 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
   const projectsList = await getAllProjects();
   const selectedProject = projectsList.find((p) => p.id === state.projectId);
 
-  const channelName = selectedProject ? escapeHtml(selectedProject.name) : "не выбран";
+  const channelName = selectedProject
+    ? escapeHtml(selectedProject.name)
+    : "не выбран <i>(проект, к которому привяжется статистика)</i>";
   const advertiserText = state.advertiser ? escapeHtml(state.advertiser) : "не указан";
   const linkNameText = state.linkName ? escapeHtml(state.linkName) : "не указано";
   const priceText = state.price !== undefined ? `${state.price} ₽` : "не указана";
   const closedStatus = state.isClosedLink ? "Закрытая (заявка) 🔒" : "Прямая 🔓";
+  // With a hand-made link pasted in, the toggle no longer picks what to create —
+  // it only describes what was pasted, and the bot cannot verify it (Bot API
+  // exposes only the invite links the bot created itself).
+  const closedRowLabel = state.readyLink ? "Тип готовой ссылки" : "Какую ссылку создать";
+  const closedRowHint = state.readyLink
+    ? " <i>(укажите реальный — бот не проверит)</i>"
+    : "";
+  const closedButtonLabel = state.readyLink ? "Тип готовой ссылки" : "Создать ссылку";
 
   const tagsText = state.tags && Object.keys(state.tags).length > 0
     ? Object.entries(state.tags).map(([k, v]) => `${escapeHtml(k)}=${escapeHtml(v)}`).join(", ")
@@ -188,7 +198,7 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
     `👤 <b>Продавец</b>: ${advertiserText}\n` +
     `🔤 <b>Название ссылки</b>: ${linkNameText}\n` +
     `💰 <b>Цена</b>: ${priceText}\n` +
-    `🚪 <b>Ссылка</b>: ${closedStatus}\n` +
+    `🚪 <b>${closedRowLabel}</b>: ${closedStatus}${closedRowHint}\n` +
     `🔗 <b>Готовая ссылка</b>: ${readyLinkText}\n` +
     `🏷️ <b>Теги</b>: ${tagsText}` +
     noticeText;
@@ -209,7 +219,10 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
       Markup.button.callback("🏷️ Теги", "card_input_tags"),
     ],
     [
-      Markup.button.callback(`🚪 Ссылка: ${state.isClosedLink ? "Закрытая" : "Прямая"}`, "card_toggle_closed"),
+      Markup.button.callback(
+        `🚪 ${closedButtonLabel}: ${state.isClosedLink ? "Закрытая" : "Прямая"}`,
+        "card_toggle_closed"
+      ),
     ],
     [
       Markup.button.callback(
@@ -934,7 +947,14 @@ if (channelBot) {
         const state = userStates.get(userId);
 
         if (!state?.projectId) {
-          return ctx.answerCbQuery("⚠️ Сначала выберите канал!");
+          // campaigns.project_id is NOT NULL and the dashboard groups everything
+          // by project, so the channel is required even when the bot itself
+          // creates no link (ready link case).
+          return ctx.answerCbQuery(
+            state?.readyLink
+              ? "⚠️ Сначала выберите канал! Он задаёт проект, к которому привяжется кампания и её статистика. Готовую ссылку бот в нём не создаёт."
+              : "⚠️ Сначала выберите канал! В нём бот создаст инвайт-ссылку, а к его проекту привяжется статистика кампании."
+          );
         }
         if (!state.advertiser) {
           return ctx.answerCbQuery("⚠️ Укажите имя продавца / рекламодателя!");
