@@ -20,6 +20,7 @@ import {
   getCampaignsPage,
   getCampaignById,
   getLinkByRef,
+  resolveLinkByTelegramRef,
   createLinkForCampaign,
   normalizeInviteRef,
   MANUAL_LINK_TYPES,
@@ -434,8 +435,9 @@ app.post("/api/campaigns/:id/links", async (req, res) => {
 
     // Already tracked — report who owns it so the caller can decide whether to
     // move it over with PATCH /api/links/:id/campaign instead.
-    const existing = await getLinkByRef(normalized.ref);
-    if (existing) {
+    const match = await resolveLinkByTelegramRef(normalized.ref);
+    if (match.status === "found") {
+      const existing = match.link;
       const owner = await getCampaignById(existing.campaignId);
       return res.status(409).json({
         error: "This invite link is already attached to a campaign",

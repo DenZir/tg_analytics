@@ -326,8 +326,9 @@ export async function createCampaignWithLinks(
     const normalized = normalizeInviteRef(readyLink.telegramRef);
     if (!normalized.ok) throw new Error(normalized.error);
 
-    const existing = await getLinkByRef(normalized.ref);
-    if (existing) {
+    const match = await resolveLinkByTelegramRef(normalized.ref);
+    if (match.status === "found") {
+      const existing = match.link;
       const owner = await getCampaignById(existing.campaignId);
       throw new Error(
         `Ссылка уже привязана к кампании #${existing.campaignId}` +

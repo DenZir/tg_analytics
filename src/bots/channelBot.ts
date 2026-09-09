@@ -2,7 +2,6 @@ import { Telegraf, Markup, Scenes, session } from "telegraf";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import {
   createLinkForCampaign,
-  getLinkByRef,
   createProject,
   getAllProjects,
   createCampaign,
@@ -14,6 +13,8 @@ import {
   getProjectByChatId,
   getOrCreateUnassignedCampaign,
   normalizeInviteRef,
+  resolveLinkByTelegramRef,
+  setLinkType,
   getCampaignById,
 } from "../services/campaigns.js";
 import { logEvent } from "../services/events.js";
@@ -491,8 +492,12 @@ if (channelBot) {
           return;
         }
 
-        const existingLink = await getLinkByRef(normalized.ref);
-        if (existingLink) {
+        // Resolver, not an exact compare: a link that already auto-registered on
+        // someone's join is stored with the hash Telegram hid, so an exact match
+        // would miss it and we would end up with two rows for one link.
+        const existing = await resolveLinkByTelegramRef(normalized.ref);
+        if (existing.status === "found") {
+          const existingLink = existing.link;
           const owner = await getCampaignById(existingLink.campaignId);
           const ownerText = owner
             ? `«${escapeHtml(owner.advertiser)}» (ID: <code>${owner.id}</code>)`
@@ -981,8 +986,9 @@ if (channelBot) {
               { parse_mode: "HTML" }
             );
           }
-          const taken = await getLinkByRef(recheck.ref);
-          if (taken) {
+          const claimed = await resolveLinkByTelegramRef(recheck.ref);
+          if (claimed.status === "found") {
+            const taken = claimed.link;
             const owner = await getCampaignById(taken.campaignId);
             const ownerText = owner
               ? `«${escapeHtml(owner.advertiser)}» (ID: <code>${owner.id}</code>)`
@@ -1091,7 +1097,16 @@ if (channelBot) {
         const inviteUrl = update.invite_link?.invite_link;
         if (!inviteUrl) return;
 
-        let link = await getLinkByRef(inviteUrl);
+        // Telegram hides the hash of links it did not create for us, so this
+        // has to tolerate a shortened ref rather than compare strings exactly.
+        const match = await resolveLinkByTelegramRef(inviteUrl);
+        let link = match.status === "found" ? match.link : null;
+
+        if (match.status === "found" && match.ambiguousWith) {
+          console.error(
+            `[channelBot] Invite link ${inviteUrl} matches several rows (using ${link!.id}, also ${match.ambiguousWith.join(", ")}) — merge them, stats are split`
+          );
+        }
 
         if (!link) {
           // Link wasn't created through our bot (e.g. made manually by another admin,
@@ -1102,10 +1117,22 @@ if (channelBot) {
 
           const unassignedCampaign = await getOrCreateUnassignedCampaign(project.id);
           const label = update.invite_link?.name || null;
-          link = await createLinkForCampaign(unassignedCampaign.id, inviteUrl, "invite", label);
+          const linkType = update.invite_link?.creates_join_request ? "invite_closed" : "invite";
+          link = await createLinkForCampaign(unassignedCampaign.id, inviteUrl, linkType, label);
           console.log(
             `[channelBot] Auto-registered unknown invite link ${inviteUrl} under unassigned campaign ${unassignedCampaign.id}`
           );
+        } else {
+          // The update carries what the link actually is, which beats whatever an
+          // admin guessed on the card when binding a hand-made link.
+          const actualType = update.invite_link?.creates_join_request ? "invite_closed" : "invite";
+          if (
+            (link.linkType === "invite" || link.linkType === "invite_closed") &&
+            link.linkType !== actualType
+          ) {
+            await setLinkType(link.id, actualType);
+            console.log(`[channelBot] Corrected link ${link.id} type to ${actualType}`);
+          }
         }
 
         await logEvent({
@@ -1146,8 +1173,20 @@ if (channelBot) {
       const inviteUrl = ctx.chatJoinRequest?.invite_link?.invite_link;
       if (!inviteUrl) return;
 
-      const link = await getLinkByRef(inviteUrl);
-      if (link) {
+      const match = await resolveLinkByTelegramRef(inviteUrl);
+      if (match.status === "found") {
+        const link = match.link;
+        if (match.ambiguousWith) {
+          console.error(
+            `[channelBot] Invite link ${inviteUrl} matches several rows (using ${link.id}, also ${match.ambiguousWith.join(", ")}) — merge them, stats are split`
+          );
+        }
+        // Reaching this handler at all means the link asks for approval, so the
+        // stored type is wrong if it says otherwise.
+        if (link.linkType === "invite") {
+          await setLinkType(link.id, "invite_closed");
+          console.log(`[channelBot] Corrected link ${link.id} type to invite_closed`);
+        }
         await logEvent({
           linkId: link.id,
           tgUserId: String(ctx.chatJoinRequest.from.id),
