@@ -435,6 +435,100 @@ export async function getLinkByRef(telegramRef: string) {
   return link || null;
 }
 
+/** Telegram replaces the hash with these when it hides a link from us. */
+const TRUNCATION_MARKS = ["...", "…"];
+
+/**
+ * The shortest prefix we accept as proof that two refs are the same link.
+ * `https://t.me/+` is 14 characters, so this demands at least six characters of
+ * hash on top — Telegram hands out eight, and anything shorter than this could
+ * collide between unrelated links.
+ */
+const MIN_PREFIX_LENGTH = 20;
+
+function splitRef(raw: string): { base: string; truncated: boolean } | null {
+  let value = String(raw ?? "").trim();
+  if (!value) return null;
+
+  let truncated = false;
+  for (const mark of TRUNCATION_MARKS) {
+    if (value.endsWith(mark)) {
+      value = value.slice(0, -mark.length);
+      truncated = true;
+      break;
+    }
+  }
+
+  const normalized = normalizeInviteRef(value);
+  return normalized.ok ? { base: normalized.ref, truncated } : null;
+}
+
+function sameLink(
+  a: { base: string; truncated: boolean },
+  b: { base: string; truncated: boolean }
+): boolean {
+  // Two full links must be equal. Prefix matching is only sound when at least
+  // one side is a link Telegram deliberately shortened — otherwise
+  // `https://t.me/+ABC` would "match" the unrelated `https://t.me/+ABCDEF`.
+  if (!a.truncated && !b.truncated) return a.base === b.base;
+
+  const [shorter, longer] =
+    a.base.length <= b.base.length ? [a.base, b.base] : [b.base, a.base];
+  return shorter.length >= MIN_PREFIX_LENGTH && longer.startsWith(shorter);
+}
+
+export type LinkMatch =
+  | { status: "found"; link: typeof links.$inferSelect; ambiguousWith?: number[] }
+  | { status: "none" };
+
+/**
+ * Finds the stored link a Telegram ref refers to, tolerating the hash Telegram
+ * hides from us.
+ *
+ * `ChatInviteLink.invite_link` is documented as: "If the link was created by
+ * another chat administrator, then the second part of the link will be replaced
+ * with '…'." Every invite an admin makes by hand in the app therefore reaches
+ * this bot as `https://t.me/+<8 chars>...`, and an exact compare against the
+ * full URL the admin pasted into the campaign card can never hit — which is
+ * precisely the case the hand-made-link binding exists for.
+ *
+ * So the compare falls back to a prefix, and it has to work in both directions:
+ * the incoming ref may be the shortened one (stored row is full), or the stored
+ * row may be the shortened one (the link auto-registered on someone's join
+ * before an admin got round to binding it).
+ *
+ * Filtering happens in JS rather than SQL on purpose: SQLite's LIKE is
+ * case-insensitive for ASCII while invite hashes are case-sensitive, so a LIKE
+ * prefix would cheerfully match two different links. The table holds tens of
+ * rows, so reading it is cheaper than getting that subtlety wrong.
+ */
+export async function resolveLinkByTelegramRef(rawRef: string): Promise<LinkMatch> {
+  const incoming = splitRef(rawRef);
+  if (!incoming) return { status: "none" };
+
+  const all = await db.select().from(links);
+  const matches = all.filter((row) => {
+    const stored = splitRef(row.telegramRef);
+    return stored !== null && sameLink(stored, incoming);
+  });
+
+  if (matches.length === 0) return { status: "none" };
+
+  // Duplicates mean two rows describe one physical link — usually a full URL
+  // bound by hand next to a shortened one that auto-registered earlier. Dropping
+  // the event would lose a join for good, so attribute to the oldest row (stable
+  // across redeliveries) and let the caller shout about the duplicates.
+  const [oldest, ...rest] = matches.sort((x, y) => x.id - y.id);
+  return rest.length > 0
+    ? { status: "found", link: oldest, ambiguousWith: rest.map((r) => r.id) }
+    : { status: "found", link: oldest };
+}
+
+/** Corrects a link's recorded type once Telegram tells us what it really is. */
+export async function setLinkType(linkId: number, linkType: string) {
+  await db.update(links).set({ linkType }).where(eq(links.id, linkId));
+}
+
 export async function getCampaignById(id: number) {
   const campaign = await db.query.campaigns.findFirst({
     where: eq(campaigns.id, id),
