@@ -107,31 +107,35 @@ export function eventMeta(type) { return EV[type] || { l: type, c: '#8A94A6', i:
    в списке ничего не различает. Подпись строится вокруг названия ссылки — в нём
    и площадка, и цена, и дата; когда названия нет, остаются цена и дата создания. */
 export function campaignOptionLabel(c) {
-  const parts = [`#${c.id}`, c.advertiser];
+  // The link name is what a campaign is known by — it carries the placement,
+  // the price and the date («@Kisake_Hanza 750 вечер 08.09»). The advertiser is
+  // a separate column in the tables and only stands in when no link is named.
   const linkLabel = (c.linkLabels || []).find(Boolean);
-  if (linkLabel) {
-    parts.push(linkLabel);
-  } else {
-    if (c.price) parts.push(fmtM(c.price));
-    if (c.createdAt) parts.push(dDate(c.createdAt));
-  }
+  if (linkLabel) return `#${c.id} · ${linkLabel}`;
+
+  const parts = [`#${c.id}`, c.advertiser];
+  if (c.price) parts.push(fmtM(c.price));
+  if (c.createdAt) parts.push(dDate(c.createdAt));
   return parts.join(' · ');
 }
 
-/** Совпадение по номеру, рекламодателю или названию любой из ссылок кампании. */
+/**
+ * Совпадение по номеру, рекламодателю или названию любой из ссылок кампании.
+ *
+ * Ищет шире, чем показывает: рекламодателя в подписи может не быть, но искать
+ * по нему привычно, поэтому он участвует в поиске всегда.
+ */
 export function campaignMatches(c, query) {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return campaignOptionLabel(c).toLowerCase().includes(q);
+  const haystack = [
+    `#${c.id}`,
+    c.advertiser || '',
+    ...(c.linkLabels || []),
+  ].join(' ').toLowerCase();
+  return haystack.includes(q);
 }
 
-/**
- * Пересобирает <option> под текущий фильтр.
- *
- * Именно пересобирает, а не прячет лишние через CSS: display:none на <option>
- * Safari игнорирует, и список остался бы полным. Выбранное значение сохраняется,
- * если всё ещё проходит фильтр.
- */
 export function fillCampaignOptions(select, campaigns, query) {
   const previous = select.value;
   const matched = campaigns.filter(c => campaignMatches(c, query));
