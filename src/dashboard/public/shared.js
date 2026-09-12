@@ -101,6 +101,46 @@ export const LT = {invite:{l:'Инвайт',cls:'t-invite'}, invite_closed:{l:'�
 export const FUNNEL_ENTRY_TYPES = ['join', 'lead', 'trial_start'];
 
 export function eventMeta(type) { return EV[type] || { l: type, c: '#8A94A6', i: IC.zap }; }
+
+/* ---- выбор кампании (перевешивание ссылки) ----
+   Одного рекламодателя обычно ведут несколько кампаний, поэтому «#39 · фарид»
+   в списке ничего не различает. Подпись строится вокруг названия ссылки — в нём
+   и площадка, и цена, и дата; когда названия нет, остаются цена и дата создания. */
+export function campaignOptionLabel(c) {
+  const parts = [`#${c.id}`, c.advertiser];
+  const linkLabel = (c.linkLabels || []).find(Boolean);
+  if (linkLabel) {
+    parts.push(linkLabel);
+  } else {
+    if (c.price) parts.push(fmtM(c.price));
+    if (c.createdAt) parts.push(dDate(c.createdAt));
+  }
+  return parts.join(' · ');
+}
+
+/** Совпадение по номеру, рекламодателю или названию любой из ссылок кампании. */
+export function campaignMatches(c, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return campaignOptionLabel(c).toLowerCase().includes(q);
+}
+
+/**
+ * Пересобирает <option> под текущий фильтр.
+ *
+ * Именно пересобирает, а не прячет лишние через CSS: display:none на <option>
+ * Safari игнорирует, и список остался бы полным. Выбранное значение сохраняется,
+ * если всё ещё проходит фильтр.
+ */
+export function fillCampaignOptions(select, campaigns, query) {
+  const previous = select.value;
+  const matched = campaigns.filter(c => campaignMatches(c, query));
+  select.innerHTML =
+    '<option value="">— не выбрано —</option>' +
+    matched.map(c => `<option value="${c.id}">${escapeHtml(campaignOptionLabel(c))}</option>`).join('') +
+    '<option value="__new">+ Создать новую кампанию…</option>';
+  select.value = [...select.options].some(o => o.value === previous) ? previous : '';
+}
 export const hueBox = c => `background:${c}1f;color:${c};border:1px solid ${c}33`;
 export const rCls = v => v >= 70 ? 'r-good' : v >= 55 ? 'r-mid' : 'r-bad';
 

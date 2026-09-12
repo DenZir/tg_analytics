@@ -6,6 +6,7 @@ import {
   last21Dates, seriesForCampaign, windowDates, prevWindowDates, sumDates, countActiveCampaigns, windowArrays,
   computeLinkStats, allocatePrice, computeLinkRows, linkDisplayUrl, state, CAMP_PAGE_SIZE,
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
+  fillCampaignOptions,
   daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
 } from './shared.js';
 
@@ -496,11 +497,8 @@ function renderCampaignModal(camp, hist) {
             </div>
             <div class="lk-move">
               <label>Перевесить на кампанию:</label>
-              <select class="inp reassign">
-                <option value="">— не выбрано —</option>
-                ${otherCampaigns.map(x => `<option value="${x.id}">#${x.id} · ${escapeHtml(x.advertiser)}</option>`).join('')}
-                <option value="__new">+ Создать новую кампанию…</option>
-              </select>
+              <input class="inp camp-search" type="search" placeholder="Поиск кампании…">
+              <select class="inp reassign"></select>
               <button class="btn tiny btn-primary move-btn" hidden>${IC.check} Перевесить</button>
               <div class="newcamp" hidden>
                 <input class="inp nc-adv" placeholder="Рекламодатель">
@@ -582,6 +580,14 @@ function renderCampaignModal(camp, hist) {
   ov.querySelectorAll('.lk-row').forEach(row => {
     const linkId = +row.dataset.l;
     const sel = row.querySelector('.reassign'), mv = row.querySelector('.move-btn'), nc = row.querySelector('.newcamp');
+    const search = row.querySelector('.camp-search');
+    fillCampaignOptions(sel, otherCampaigns, '');
+    search.addEventListener('input', () => {
+      fillCampaignOptions(sel, otherCampaigns, search.value);
+      // Rebuilding may drop the selection, so the buttons follow it back.
+      mv.hidden = !(sel.value && sel.value !== '__new');
+      nc.hidden = sel.value !== '__new';
+    });
     sel.addEventListener('change', () => {
       mv.hidden = !(sel.value && sel.value !== '__new');
       nc.hidden = sel.value !== '__new';

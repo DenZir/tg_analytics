@@ -638,6 +638,10 @@ export async function getMetrics() {
   const statsList = await db.select().from(dailyStats);
   const campaignsList = await db.select().from(campaigns).where(isNull(campaigns.deletedAt));
   const tagsList = await db.select().from(campaignTags);
+  // Link names come along so a campaign can be told apart from the others by the
+  // same advertiser: "#39 · фарид" is four identical rows in a picker, whereas
+  // the link name carries the placement, the price and the date.
+  const linksList = await db.select({ campaignId: links.campaignId, label: links.label }).from(links);
 
   const daily = statsList.map((stat) => {
     const camp = campaignsList.find((c) => c.id === stat.campaignId);
@@ -668,6 +672,10 @@ export async function getMetrics() {
       projectId: camp.projectId,
       advertiser: camp.advertiser,
       price: camp.price,
+      createdAt: camp.createdAt,
+      linkLabels: linksList
+        .filter((l) => l.campaignId === camp.id && l.label)
+        .map((l) => l.label as string),
       creative: creativeTag?.tagValue || "-",
       totalSubs,
       totalRevenue,
