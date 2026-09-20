@@ -20,3 +20,7 @@ repomix-output.xml
 logs/
 .deploy_keys/
 docker-compose.override.yml
+
+# Резервные копии .env — в них живые ключи
+.env.bak*
+.env.*.bak

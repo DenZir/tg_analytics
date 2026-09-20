@@ -617,8 +617,18 @@ app.get("/api/attribution", async (req, res) => {
 // POST /api/events
 app.post("/api/events", async (req, res) => {
   try {
-    const { linkId, tgUserId, eventType, amount, languageCode, promoCode, discountAmount } =
-      req.body;
+    const {
+      projectId,
+      linkId,
+      utmLinkId,
+      botUsername,
+      tgUserId,
+      eventType,
+      amount,
+      languageCode,
+      promoCode,
+      discountAmount,
+    } = req.body;
     if (!tgUserId || !eventType) {
       return res.status(400).json({ error: "Missing required fields (tgUserId, eventType)" });
     }
@@ -642,7 +652,10 @@ app.post("/api/events", async (req, res) => {
     }
 
     const event = await logEvent({
+      projectId: projectId ? Number(projectId) : undefined,
       linkId: linkId ? Number(linkId) : undefined,
+      utmLinkId: utmLinkId ? Number(utmLinkId) : undefined,
+      botUsername: botUsername ? String(botUsername) : undefined,
       tgUserId: String(tgUserId),
       eventType: String(eventType),
       amount: amount ? Number(amount) : 0,
@@ -653,7 +666,11 @@ app.post("/api/events", async (req, res) => {
 
     res.status(201).json({ success: true, event });
   } catch (error: any) {
-    if (error.message && error.message.includes("Cannot attribute event")) {
+    // 422 now means only one thing: the event names no project and nothing in
+    // it points at one. Lack of *attribution* is no longer an error — it is
+    // recorded as organic — so a caller seeing this is genuinely missing a
+    // field rather than bringing untracked traffic.
+    if (error?.name === "UnplaceableEventError") {
       return res.status(422).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
@@ -673,10 +690,18 @@ app.get("/api/promo", async (_req, res) => {
 // GET /api/events/recent?limit=<n>
 app.get("/api/events/recent", async (req, res) => {
   try {
-    const { limit } = req.query;
+    const { limit, projectIds } = req.query;
     const parsedLimit = limit !== undefined ? Number(limit) : undefined;
+    const parsedProjectIds =
+      typeof projectIds === "string" && projectIds.trim() !== ""
+        ? projectIds
+            .split(",")
+            .map((v) => Number(v.trim()))
+            .filter((v) => Number.isInteger(v) && v > 0)
+        : undefined;
     const recentEvents = await getRecentEvents(
-      parsedLimit !== undefined && !Number.isNaN(parsedLimit) ? parsedLimit : undefined
+      parsedLimit !== undefined && !Number.isNaN(parsedLimit) ? parsedLimit : undefined,
+      parsedProjectIds
     );
     res.json(recentEvents);
   } catch (error: any) {
@@ -702,12 +727,14 @@ app.post("/api/payments/webhook", async (req, res) => {
       }
     }
 
-    if (!linkId) {
-      return res.status(400).json({ error: "Could not find a valid linkId for payment" });
-    }
-
+    // No link is not a reason to refuse money. logEvent falls back to the
+    // buyer's own history and then to the project, recording the payment as
+    // organic rather than rejecting it — which is what used to happen here, and
+    // is how purchases went missing.
     const event = await logEvent({
-      linkId: Number(linkId),
+      projectId: req.body.projectId ? Number(req.body.projectId) : undefined,
+      botUsername: req.body.botUsername ? String(req.body.botUsername) : undefined,
+      linkId: linkId ? Number(linkId) : undefined,
       tgUserId: String(tgUserId),
       eventType: "payment",
       amount: Number(amount),
@@ -803,16 +830,17 @@ app.get("/api/privatkas/finance", async (_req, res) => {
 // POST /api/utm/links
 app.post("/api/utm/links", async (req, res) => {
   try {
-    const { utmSource, utmMedium, utmCampaign, utmContent, label, spend, slug, botUsername } =
+    const { projectId, utmSource, utmMedium, utmCampaign, utmContent, label, spend, slug, botUsername } =
       req.body;
 
-    if (!utmSource || !utmMedium || !utmCampaign) {
+    if (!projectId || !utmSource || !utmMedium || !utmCampaign) {
       return res
         .status(400)
-        .json({ error: "Missing required fields (utmSource, utmMedium, utmCampaign)" });
+        .json({ error: "Missing required fields (projectId, utmSource, utmMedium, utmCampaign)" });
     }
 
     const link = await createUtmLink({
+      projectId: Number(projectId),
       utmSource: String(utmSource),
       utmMedium: String(utmMedium),
       utmCampaign: String(utmCampaign),
@@ -886,7 +914,7 @@ app.post("/api/utm/hit", async (req, res) => {
       return res.status(404).json({ error: "Unknown UTM slug" });
     }
 
-    res.status(201).json({ success: true });
+    res.status(201).json({ success: true, recorded: result.recorded });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -895,7 +923,7 @@ app.post("/api/utm/hit", async (req, res) => {
 // POST /api/utm/purchase
 app.post("/api/utm/purchase", async (req, res) => {
   try {
-    const { tgUserId, amount, eventType } = req.body;
+    const { tgUserId, amount, eventType, projectId, botUsername } = req.body;
     if (!tgUserId || amount === undefined) {
       return res.status(400).json({ error: "Missing required fields (tgUserId, amount)" });
     }
@@ -903,9 +931,15 @@ app.post("/api/utm/purchase", async (req, res) => {
       return res.status(400).json({ error: "eventType must be 'payment' or 'renewal'" });
     }
 
-    const result = await recordUtmPurchase(String(tgUserId), Number(amount), eventType);
+    const result = await recordUtmPurchase(String(tgUserId), Number(amount), eventType, {
+      projectId: projectId ? Number(projectId) : undefined,
+      botUsername: botUsername ? String(botUsername) : undefined,
+    });
     res.status(200).json(result);
   } catch (error: any) {
+    if (error?.name === "UnplaceableEventError") {
+      return res.status(422).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message });
   }
 });

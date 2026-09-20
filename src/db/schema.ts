@@ -50,9 +50,18 @@ export const events = sqliteTable(
   "events",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    linkId: integer("link_id")
+    // The project is the only thing an event is always sure about. Attribution
+    // is not: a buyer who never touched a tracked link or a UTM slug still
+    // spent real money, and used to be dropped on the floor because link_id
+    // was mandatory. Both attribution columns are now optional and `source`
+    // records which one actually resolved — so "by link + by UTM + organic"
+    // always adds back up to the project's total, with nothing missing.
+    projectId: integer("project_id")
       .notNull()
-      .references(() => links.id),
+      .references(() => projects.id),
+    linkId: integer("link_id").references(() => links.id),
+    utmLinkId: integer("utm_link_id").references(() => utmLinks.id),
+    source: text("source").notNull().default("organic"),
     tgUserId: text("tg_user_id").notNull(),
     eventType: text("event_type").notNull(),
     amount: real("amount").notNull().default(0),
@@ -68,13 +77,21 @@ export const events = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => [
-    unique("events_link_user_type_ts_unique").on(
-      table.linkId,
+    // Deduplication key for Telegram's habit of redelivering the same update.
+    // It used to lead with link_id, which no longer works: SQLite treats NULLs
+    // as distinct, so every organic event would slip past the constraint. The
+    // project is never null, and two different links cannot both be the true
+    // source for one user, one event type and one second.
+    unique("events_project_user_type_ts_unique").on(
+      table.projectId,
       table.tgUserId,
       table.eventType,
       table.ts
     ),
     index("events_user_ts_idx").on(table.tgUserId, table.ts),
+    index("events_project_ts_idx").on(table.projectId, table.ts),
+    index("events_link_idx").on(table.linkId),
+    index("events_utm_link_idx").on(table.utmLinkId),
   ]
 );
 
@@ -98,10 +115,18 @@ export const dailyStats = sqliteTable(
   ]
 );
 
-// --- Independent UTM-tracking mechanic (separate from the campaigns/links/events model above) ---
+// --- UTM tracking: a second way to attribute an event, not a second ledger ---
+//
+// UTM links used to own their own event table and stood outside the project
+// model entirely, which is why the dashboard could never say which project a
+// UTM hit belonged to. They now hang off a project like everything else, and
+// the events they generate live in `events` alongside the rest.
 
 export const utmLinks = sqliteTable("utm_links", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id),
   slug: text("slug").notNull().unique(),
   utmSource: text("utm_source").notNull(),
   utmMedium: text("utm_medium").notNull(),
@@ -127,6 +152,11 @@ export const dashboardSessions = sqliteTable("dashboard_sessions", {
   expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
 });
 
+/**
+ * Legacy. Every row here was copied into `events` by migration 0011 and nothing
+ * writes to this table any more — it is kept for one release so the copy can be
+ * checked against its source before the table is dropped.
+ */
 export const utmEvents = sqliteTable(
   "utm_events",
   {

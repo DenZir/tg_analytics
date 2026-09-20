@@ -901,8 +901,12 @@ export async function getCampaignsPage(
     arr.push(l);
     linksByCampaign.set(l.campaignId, arr);
   }
+  // Events are no longer guaranteed to carry a link — organic ones never do.
+  // This map is keyed by link, so those rows simply have no place in it; they
+  // are counted at the project level instead, not here.
   const eventsByLink = new Map<number, typeof pageEvents>();
   for (const e of pageEvents) {
+    if (e.linkId === null) continue;
     const arr = eventsByLink.get(e.linkId) || [];
     arr.push(e);
     eventsByLink.set(e.linkId, arr);

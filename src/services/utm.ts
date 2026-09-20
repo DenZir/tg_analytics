@@ -1,11 +1,19 @@
 import { randomBytes } from "node:crypto";
 import { db } from "../db/index.js";
-import { utmLinks, utmEvents } from "../db/schema.js";
-import { eq, and, desc } from "drizzle-orm";
+import { utmLinks, events } from "../db/schema.js";
+import { eq, isNotNull } from "drizzle-orm";
+import { EVENT_TYPES } from "../db/eventTypes.js";
+import { logEvent } from "./events.js";
 
-// Local to this mechanic - do not import the unrelated EVENT_TYPES from src/db/eventTypes.ts,
-// that enum belongs to the campaigns/links/events attribution model.
-const UTM_EVENT_TYPES = { START: "start", PAYMENT: "payment", RENEWAL: "renewal" } as const;
+// UTM events are ordinary events now — same table, same vocabulary. What this
+// mechanic used to call a "start" is what the rest of the system calls a lead:
+// somebody pressed start in the bot. Keeping the old word would have left every
+// UTM arrival outside the funnel, since only EVENT_TYPES.LEAD counts as an entry.
+const UTM_EVENT_TYPES = {
+  START: EVENT_TYPES.LEAD,
+  PAYMENT: EVENT_TYPES.PAYMENT,
+  RENEWAL: EVENT_TYPES.RENEWAL,
+} as const;
 
 const SLUG_ALPHABET =
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -21,6 +29,11 @@ export function generateSlug(length = 8): string {
 }
 
 export interface CreateUtmLinkInput {
+  /**
+   * Which project this link feeds. Required: a UTM link that belongs to no
+   * project is how the dashboard ended up unable to say where its traffic went.
+   */
+  projectId: number;
   utmSource: string;
   utmMedium: string;
   utmCampaign: string;
@@ -66,6 +79,7 @@ export async function createUtmLink(input: CreateUtmLinkInput) {
   const [created] = await db
     .insert(utmLinks)
     .values({
+      projectId: input.projectId,
       slug,
       utmSource: input.utmSource,
       utmMedium: input.utmMedium,
@@ -104,7 +118,35 @@ function median(values: number[]): number | null {
   return sorted[mid];
 }
 
-type UtmEventRow = typeof utmEvents.$inferSelect;
+type UtmEventRow = {
+  utmLinkId: number;
+  tgUserId: string;
+  eventType: string;
+  amount: number;
+  ts: Date;
+};
+
+/**
+ * Reads UTM-attributed rows out of the shared `events` table in the shape the
+ * metric helpers below already expect, so moving the storage did not ripple
+ * into any of the arithmetic.
+ */
+async function selectUtmEvents(utmLinkId?: number): Promise<UtmEventRow[]> {
+  const rows = await db
+    .select({
+      utmLinkId: events.utmLinkId,
+      tgUserId: events.tgUserId,
+      eventType: events.eventType,
+      amount: events.amount,
+      ts: events.ts,
+    })
+    .from(events)
+    .where(
+      utmLinkId === undefined ? isNotNull(events.utmLinkId) : eq(events.utmLinkId, utmLinkId)
+    );
+
+  return rows.filter((r): r is UtmEventRow => r.utmLinkId !== null);
+}
 
 function computeMetrics(rows: UtmEventRow[], spend: number | null) {
   const startRows = rows.filter((r) => r.eventType === UTM_EVENT_TYPES.START);
@@ -224,7 +266,7 @@ function computeCohortLtv(allEvents: UtmEventRow[]): Map<number, { acquiredUsers
 
 export async function listUtmLinksWithMetrics() {
   const linksList = await db.select().from(utmLinks);
-  const allEvents = await db.select().from(utmEvents);
+  const allEvents = await selectUtmEvents();
 
   const eventsByLink = new Map<number, UtmEventRow[]>();
   for (const e of allEvents) {
@@ -252,10 +294,7 @@ export async function getUtmLinkDetail(id: number) {
   const link = await getUtmLinkById(id);
   if (!link) return null;
 
-  const rows = await db
-    .select()
-    .from(utmEvents)
-    .where(eq(utmEvents.utmLinkId, id));
+  const rows = await selectUtmEvents(id);
 
   const metrics = computeMetrics(rows, link.spend ?? null);
 
@@ -292,7 +331,7 @@ export async function getUtmLinkDetail(id: number) {
 
 export async function getUtmSourceRollup() {
   const linksList = await db.select().from(utmLinks);
-  const allEvents = await db.select().from(utmEvents);
+  const allEvents = await selectUtmEvents();
 
   const eventsByLink = new Map<number, UtmEventRow[]>();
   for (const e of allEvents) {
@@ -352,65 +391,56 @@ export async function recordUtmHit(
   slug: string,
   tgUserId: string,
   languageCode?: string
-): Promise<{ found: false } | { found: true; event: UtmEventRow | null }> {
+): Promise<{ found: false } | { found: true; recorded: boolean }> {
   const link = await getUtmLinkBySlug(slug);
   if (!link) return { found: false };
 
-  try {
-    const [inserted] = await db
-      .insert(utmEvents)
-      .values({
-        utmLinkId: link.id,
-        tgUserId,
-        eventType: UTM_EVENT_TYPES.START,
-        amount: 0,
-        languageCode: languageCode ?? null,
-      })
-      .returning();
-    return { found: true, event: inserted };
-  } catch (error: any) {
-    // Unique constraint violation indicates duplicate delivery (e.g. Telegram retry) on an
-    // otherwise valid slug -> treat as an idempotent success, not an unknown-slug failure.
-    if (
-      error?.code === "SQLITE_CONSTRAINT" ||
-      error?.code === "SQLITE_CONSTRAINT_UNIQUE" ||
-      error?.message?.includes("UNIQUE constraint failed")
-    ) {
-      return { found: true, event: null };
-    }
-    throw error;
-  }
+  // logEvent swallows the duplicate-key case and returns null, which is the
+  // right answer for a Telegram retry: the hit is already on record.
+  const event = await logEvent({
+    utmLinkId: link.id,
+    projectId: link.projectId,
+    tgUserId,
+    eventType: UTM_EVENT_TYPES.START,
+    languageCode,
+  });
+
+  return { found: true, recorded: event !== null };
 }
 
+/**
+ * Records a purchase made by a user who arrived through a UTM link — and, just
+ * as importantly, one made by a user who did not.
+ *
+ * The old version returned `{ attributed: false }` and wrote nothing at all
+ * when it could find no prior touch, which meant a real payment left no trace
+ * anywhere. For a channel-backed project that was a slow leak; for a bot where
+ * most arrivals are organic it would have hidden most of the revenue. Now the
+ * unattributed case is recorded as organic against the project, and the return
+ * value only reports which of the two happened.
+ */
 export async function recordUtmPurchase(
   tgUserId: string,
   amount: number,
-  eventType: "payment" | "renewal"
+  eventType: "payment" | "renewal",
+  context: { projectId?: number; botUsername?: string } = {}
 ) {
-  return db.transaction((tx) => {
-    const lastStart = tx
-      .select()
-      .from(utmEvents)
-      .where(and(eq(utmEvents.tgUserId, tgUserId), eq(utmEvents.eventType, UTM_EVENT_TYPES.START)))
-      .orderBy(desc(utmEvents.ts), desc(utmEvents.id))
-      .limit(1)
-      .all();
-
-    if (lastStart.length === 0) {
-      return { attributed: false as const };
-    }
-
-    const utmLinkId = lastStart[0].utmLinkId;
-
-    tx.insert(utmEvents)
-      .values({
-        utmLinkId,
-        tgUserId,
-        eventType,
-        amount,
-      })
-      .run();
-
-    return { attributed: true as const, utmLinkId };
+  const event = await logEvent({
+    tgUserId,
+    eventType,
+    amount,
+    projectId: context.projectId,
+    botUsername: context.botUsername,
   });
+
+  // Nothing inserted means the unique key caught a redelivery of a purchase we
+  // already have — not a failure, and not a second sale.
+  if (!event) return { attributed: false as const, recorded: false as const };
+
+  return {
+    attributed: event.utmLinkId !== null,
+    recorded: true as const,
+    utmLinkId: event.utmLinkId,
+    source: event.source,
+  };
 }

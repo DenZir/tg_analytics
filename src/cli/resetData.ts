@@ -86,7 +86,7 @@ async function main() {
         const pCampIds = pCamps.map((c) => c.id);
         const pLinks = allLinksList.filter((l) => pCampIds.includes(l.campaignId));
         const pLinkIds = pLinks.map((l) => l.id);
-        const pEvs = allEventsList.filter((e) => pLinkIds.includes(e.linkId));
+        const pEvs = allEventsList.filter((e) => e.projectId === p.id || (e.linkId !== null && pLinkIds.includes(e.linkId)));
 
         console.log(`  • Project ID ${p.id} "${p.name}" (${p.type}): ${pCamps.length} campaigns, ${pLinks.length} links, ${pEvs.length} events will be deleted.`);
       }

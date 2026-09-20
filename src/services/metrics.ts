@@ -32,6 +32,9 @@ export async function getCohortLtv(): Promise<{
 
   const firstTouchByUser = new Map<string, { campaignId: number; linkId: number; ts: number }>();
   for (const row of entryRows) {
+    // The inner join above already guarantees a link; the null check is for the
+    // type system, which cannot see that far.
+    if (row.linkId === null) continue;
     const tsMs = row.ts.getTime();
     const existing = firstTouchByUser.get(row.tgUserId);
     if (!existing || tsMs < existing.ts) {
