@@ -153,36 +153,27 @@ export const dashboardSessions = sqliteTable("dashboard_sessions", {
 });
 
 /**
- * Legacy. Every row here was copied into `events` by migration 0011 and nothing
- * writes to this table any more — it is kept for one release so the copy can be
- * checked against its source before the table is dropped.
+ * Archive of the old UTM event ledger. Migration 0011 copied every row into
+ * `events` and left this table behind untouched, so the merge can be checked
+ * against its source; nothing reads or writes it any more.
+ *
+ * Two deliberate differences from the original. It has no foreign key, because
+ * the table it pointed at (`utm_links`) is rebuilt in that same migration and
+ * SQLite cannot drop a referenced table inside a transaction — which is exactly
+ * where drizzle runs migrations, making `PRAGMA foreign_keys=OFF` a no-op. And
+ * it has no indexes, because nothing queries it.
+ *
+ * Safe to drop once the numbers have been confirmed in production.
  */
-export const utmEvents = sqliteTable(
-  "utm_events",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    utmLinkId: integer("utm_link_id")
-      .notNull()
-      .references(() => utmLinks.id),
-    tgUserId: text("tg_user_id").notNull(),
-    eventType: text("event_type").notNull(), // 'start' | 'payment' | 'renewal'
-    amount: real("amount").notNull().default(0),
-    languageCode: text("language_code"),
-    ts: integer("ts", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  (table) => [
-    unique("utm_events_link_user_type_ts_unique").on(
-      table.utmLinkId,
-      table.tgUserId,
-      table.eventType,
-      table.ts
-    ),
-    index("utm_events_user_ts_idx").on(table.tgUserId, table.ts),
-    index("utm_events_link_idx").on(table.utmLinkId),
-  ]
-);
+export const utmEvents = sqliteTable("utm_events", {
+  id: integer("id").primaryKey(),
+  utmLinkId: integer("utm_link_id").notNull(),
+  tgUserId: text("tg_user_id").notNull(),
+  eventType: text("event_type").notNull(),
+  amount: real("amount").notNull().default(0),
+  languageCode: text("language_code"),
+  ts: integer("ts", { mode: "timestamp" }).notNull(),
+});
 
 // --- Audit trail for admin actions (e.g. campaign trash/restore/purge) ---
 

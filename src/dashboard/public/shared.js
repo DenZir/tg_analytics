@@ -207,12 +207,15 @@ export function buildIndexes() {
 }
 
 export async function loadCore() {
-  const [metrics, extended, projects, recentEvents] = await Promise.all([
+  const scope = projectScopeParam();
+  const [metrics, extended, projects, recentEvents, overview] = await Promise.all([
     fetchJSON('/api/metrics'),
     fetchJSON('/api/metrics/extended'),
     fetchJSON('/api/projects'),
-    fetchJSON('/api/events/recent?limit=8'),
+    fetchJSON('/api/events/recent?limit=8' + (scope ? '&' + scope : '')),
+    fetchJSON(`/api/overview?days=${state.period === 'all' ? 0 : state.period}` + (scope ? '&' + scope : '')),
   ]);
+  DATA.overview = overview;
   DATA.metrics = metrics;
   DATA.extended = extended;
   DATA.projects = projects;
@@ -370,7 +373,30 @@ export function linkDisplayUrl(link) {
 }
 
 /* ================= СОСТОЯНИЕ UI (кампании/пагинация) ================= */
-export const state = { screen: 'overview', period: 30, mode: 'links', q: '', campPage: 1, campTotalPages: 1 };
+// projectIds: пустой массив означает «все проекты». Выбор переживает
+// перезагрузку страницы — за ним возвращаются каждый день, и сбрасывать его на
+// «все» при каждом открытии дашборда раздражает больше, чем помогает.
+const PROJECT_SCOPE_KEY = 'tga.projectIds';
+
+function loadProjectScope() {
+  try {
+    const raw = localStorage.getItem(PROJECT_SCOPE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(v => Number.isInteger(v) && v > 0) : [];
+  } catch { return []; }
+}
+
+export function saveProjectScope(ids) {
+  try { localStorage.setItem(PROJECT_SCOPE_KEY, JSON.stringify(ids)); } catch { /* приватный режим — не беда */ }
+}
+
+export const state = { screen: 'overview', period: 30, mode: 'links', q: '', campPage: 1, campTotalPages: 1, projectIds: loadProjectScope() };
+
+/** Кусок query-строки с текущим выбором проектов, либо пустая строка. */
+export function projectScopeParam() {
+  return state.projectIds.length ? `projectIds=${state.projectIds.join(',')}` : '';
+}
 export const CAMP_PAGE_SIZE = 25;
 
 // Fetches one page of the campaigns tab from the server — the DB query

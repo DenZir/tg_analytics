@@ -25,7 +25,15 @@ const REVENUE_TYPES: string[] = [EVENT_TYPES.PAYMENT, EVENT_TYPES.RENEWAL];
 export interface OverviewParams {
   /** Empty or omitted means every project — the "Все" option. */
   projectIds?: number[];
-  /** How many days of history the daily series covers. */
+  /**
+   * Size of the window the totals cover, in days. 0 (or omitted) means all time
+   * — the "Все" option in the period switch. The daily chart always spans
+   * SERIES_DAYS regardless, since a chart of a single week is not worth drawing.
+   *
+   * The window has to be applied server-side: unique users and unique buyers
+   * are distinct counts, and summing per-day distinct counts over a week gives
+   * a larger, wrong number.
+   */
   days?: number;
 }
 
@@ -49,8 +57,14 @@ export interface OverviewTotals {
   conversionPct: number | null;
 }
 
-const DEFAULT_DAYS = 30;
 const MAX_DAYS = 365;
+const SERIES_DAYS = 90;
+
+function startOfDayUtcDaysAgo(days: number): Date {
+  const d = new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
 
 function round2(value: number): number {
   return Number(value.toFixed(2));
@@ -65,9 +79,11 @@ function scopeCondition(projectIds?: number[], since?: Date) {
 }
 
 export async function getOverview(params: OverviewParams = {}) {
-  const days = Math.min(MAX_DAYS, Math.max(1, params.days ?? DEFAULT_DAYS));
+  const requestedDays = params.days ?? 0;
+  const windowDays =
+    requestedDays > 0 ? Math.min(MAX_DAYS, Math.max(1, Math.floor(requestedDays))) : null;
   const projectIds = params.projectIds?.length ? params.projectIds : undefined;
-  const where = scopeCondition(projectIds);
+  const where = scopeCondition(projectIds, windowDays ? startOfDayUtcDaysAgo(windowDays) : undefined);
 
   const projectList = await db
     .select({ id: projects.id, name: projects.name, type: projects.type })
@@ -162,8 +178,7 @@ export async function getOverview(params: OverviewParams = {}) {
   const bySource = [...bySourceMap.values()];
 
   // --- daily series ---------------------------------------------------------
-  const since = new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000);
-  since.setUTCHours(0, 0, 0, 0);
+  const since = startOfDayUtcDaysAgo(SERIES_DAYS);
 
   const dailyRows = await db
     .select({
@@ -184,7 +199,7 @@ export async function getOverview(params: OverviewParams = {}) {
 
   const dailyByDate = new Map(dailyRows.map((r) => [r.date, r]));
   const daily = [];
-  for (let i = days - 1; i >= 0; i--) {
+  for (let i = SERIES_DAYS - 1; i >= 0; i--) {
     const key = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const row = dailyByDate.get(key);
     daily.push({
@@ -240,7 +255,8 @@ export async function getOverview(params: OverviewParams = {}) {
     scope: {
       projectIds: projectIds ?? projectList.map((p) => p.id),
       allProjects: !projectIds,
-      days,
+      windowDays,
+      seriesDays: SERIES_DAYS,
     },
     projects: projectList,
     totals,

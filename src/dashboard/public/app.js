@@ -6,7 +6,7 @@ import {
   last21Dates, seriesForCampaign, windowDates, prevWindowDates, sumDates, countActiveCampaigns, windowArrays,
   computeLinkStats, allocatePrice, computeLinkRows, linkDisplayUrl, state, CAMP_PAGE_SIZE,
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
-  fillCampaignOptions,
+  fillCampaignOptions, saveProjectScope,
   daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
 } from './shared.js';
 
@@ -40,45 +40,118 @@ function confirmDialog({ title, text, okLabel = 'Удалить', danger = true 
 let chart = null;
 
 /* ================= ОБЗОР ================= */
-function renderKPIs() {
-  const period = state.period;
-  const dates = windowDates(period);
-  const cur = sumDates(dates);
-  const prevDates = prevWindowDates(period);
-  const prev = prevDates ? sumDates(prevDates) : null;
-  const cps = cur.subs ? cur.revenue / cur.subs : 0;
-  const prevCps = prev && prev.subs ? prev.revenue / prev.subs : 0;
+/* Селектор проектов — «Все» либо произвольный набор. */
+const PROJECT_TYPE_SHORT = { channel: 'канал', bot_subscription: 'приватка', bot_direct: 'бот' };
 
-  const totalCampaigns = DATA.extended.campaigns.length;
-  const totalPrice = DATA.extended.campaigns.reduce((s, c) => s + (c.price || 0), 0);
-  const activeInCur = countActiveCampaigns(dates);
-  const activeInPrev = prevDates ? countActiveCampaigns(prevDates) : null;
+function projectScopeLabel() {
+  const ids = state.projectIds;
+  if (!ids.length) return 'Все проекты';
+  if (ids.length === 1) return DATA.projectsById[ids[0]]?.name || ('Проект #' + ids[0]);
+  return 'Проектов: ' + ids.length;
+}
+
+function renderProjectPicker() {
+  const lbl = $('#projSelLbl');
+  if (lbl) lbl.textContent = projectScopeLabel();
+
+  const pop = $('#projSelPop');
+  if (!pop) return;
+  const ids = state.projectIds;
+  const tick = '<svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+  const rows = (DATA.projects || []).map(p => `
+    <button class="projsel-it ${ids.includes(p.id) ? 'on' : ''}" data-pid="${p.id}" type="button">
+      ${tick}<span>${escapeHtml(p.name)}</span>
+      <span class="ptype">${PROJECT_TYPE_SHORT[p.type] || escapeHtml(p.type)}</span>
+    </button>`).join('');
+
+  pop.innerHTML = `
+    <button class="projsel-it ${ids.length ? '' : 'on'}" data-pid="all" type="button">
+      ${tick}<span>Все проекты</span>
+    </button>
+    <div class="projsel-sep"></div>${rows}`;
+
+  pop.querySelectorAll('.projsel-it').forEach(b => b.addEventListener('click', async () => {
+    if (b.dataset.pid === 'all') {
+      state.projectIds = [];
+    } else {
+      const id = +b.dataset.pid;
+      state.projectIds = state.projectIds.includes(id)
+        ? state.projectIds.filter(v => v !== id)
+        : [...state.projectIds, id];
+    }
+    saveProjectScope(state.projectIds);
+    renderProjectPicker();
+    await reloadScoped();
+  }));
+}
+
+// Выбор проектов и период меняют только то, что считает сервер, поэтому
+// перезагружаем данные и перерисовываем текущий экран, а не всю страницу.
+async function reloadScoped() {
+  try {
+    await afterMutation();
+    renderProjectPicker();
+    await renderCurrentScreen();
+  } catch (err) {
+    toast('Не удалось применить фильтр: ' + err.message, 'warn');
+  }
+}
+
+/* ================= ОБЗОР ================= */
+function overviewDaily() {
+  return (DATA.overview && DATA.overview.daily) || [];
+}
+
+// Для окна 7/14/30 дней сравниваем с предыдущим таким же окном. Считаем только
+// суммируемые величины: уникальных пользователей по дням складывать нельзя,
+// поэтому у них дельты нет — лучше без числа, чем с неверным.
+function prevWindowSums() {
+  const period = state.period;
+  if (period === 'all') return null;
+  const d = overviewDaily();
+  if (d.length < period * 2) return null;
+  const prev = d.slice(d.length - period * 2, d.length - period);
+  return {
+    revenue: prev.reduce((a, r) => a + r.revenue, 0),
+    payments: prev.reduce((a, r) => a + r.payments, 0),
+  };
+}
+
+function renderKPIs() {
+  const ov = DATA.overview;
+  if (!ov) return;
+  const t = ov.totals;
+  const period = state.period;
+  const prev = prevWindowSums();
+  const sales = t.payments + t.renewals;
+  const arpu = t.uniqueUsers ? t.revenue / t.uniqueUsers : 0;
 
   const dl = (curVal, prevVal, goodUp = true) => {
-    if (prevVal === null || prevVal === undefined) return '<span class="delta flat">нет пред. периода</span>';
+    if (prevVal === null || prevVal === undefined) return '<span class="delta flat">за весь период</span>';
     if (!prevVal) return '<span class="delta flat">новый период</span>';
-    const p = (curVal - prevVal) / prevVal * 100, up = p >= 0, good = goodUp ? up : !up;
-    return `<span class="delta ${good ? 'up' : 'dn'}">${up ? '+' : '−'}${fmt1(Math.abs(p))}%</span>`;
+    const pc = (curVal - prevVal) / prevVal * 100, up = pc >= 0, good = goodUp ? up : !up;
+    return `<span class="delta ${good ? 'up' : 'dn'}">${up ? '+' : '−'}${fmt1(Math.abs(pc))}%</span>`;
   };
 
-  const sparkDates = dates.length ? dates : DATA.dateList;
-  const sparkSubs = sparkDates.map(d => (DATA.byDate.get(d) || { subs: 0 }).subs);
-  const sparkRev = sparkDates.map(d => (DATA.byDate.get(d) || { revenue: 0 }).revenue);
-  const sparkCps = sparkDates.map(d => { const v = DATA.byDate.get(d) || { subs: 0, revenue: 0 }; return v.subs ? v.revenue / v.subs : 0; });
+  const tail = period === 'all' ? overviewDaily() : overviewDaily().slice(-period);
+  const sparkUsers = tail.map(r => r.uniqueEntries);
+  const sparkRev = tail.map(r => r.revenue);
+  const sparkPay = tail.map(r => r.payments);
+  const periodNote = period === 'all' ? 'весь период' : period + ' дн';
 
   const cards = [
-    { lbl: 'Всего кампаний', icon: IC.target, c: '#57B6FF', val: totalCampaigns, fmt: fmtN,
-      delta: prevDates ? dl(activeInCur, activeInPrev) : '<span class="delta flat">за весь период</span>',
-      sub: `закупки на ${fmtM(totalPrice)}`, sparkV: sparkSubs },
-    { lbl: 'Подписчики', icon: IC.users, c: '#9B8CFF', val: cur.subs, fmt: fmtN,
-      delta: dl(cur.subs, prev ? prev.subs : null),
-      sub: prev ? `${fmtN(prev.subs)} за пред. период` : 'за выбранный период', sparkV: sparkSubs },
-    { lbl: 'Выручка', icon: IC.rub, c: '#3DDC97', val: cur.revenue, fmt: fmtM,
-      delta: dl(cur.revenue, prev ? prev.revenue : null),
-      sub: prev ? `${fmtM(prev.revenue)} за пред. период` : 'за выбранный период', sparkV: sparkRev },
-    { lbl: 'Доход/подписчик', icon: IC.cps, c: '#FFB454', val: cps, fmt: v => fmt1(v) + ' ₽',
-      delta: dl(cps, prev ? prevCps : null, false),
-      sub: `выручка / подписчики · ${period === 'all' ? 'весь период' : period + ' дн'}`, sparkV: sparkCps },
+    { lbl: 'Пользователи', icon: IC.users, c: '#9B8CFF', val: t.uniqueUsers, fmt: fmtN,
+      delta: '<span class="delta flat">уникальные</span>',
+      sub: 'входов в воронку: ' + fmtN(t.uniqueEntries), sparkV: sparkUsers },
+    { lbl: 'Выручка', icon: IC.rub, c: '#3DDC97', val: t.revenue, fmt: fmtM,
+      delta: dl(t.revenue, prev ? prev.revenue : null),
+      sub: projectScopeLabel().toLowerCase() + ' · ' + periodNote, sparkV: sparkRev },
+    { lbl: 'Покупки', icon: IC.target, c: '#57B6FF', val: sales, fmt: fmtN,
+      delta: dl(sales, prev ? prev.payments : null),
+      sub: 'первичных ' + fmtN(t.payments) + ' · продлений ' + fmtN(t.renewals), sparkV: sparkPay },
+    { lbl: 'Доход/пользователь', icon: IC.cps, c: '#FFB454', val: arpu, fmt: v => fmt1(v) + ' ₽',
+      delta: '<span class="delta flat">' + (t.avgCheck !== null ? 'чек ' + fmt1(t.avgCheck) + ' ₽' : 'нет покупок') + '</span>',
+      sub: 'конверсия ' + (t.conversionPct !== null ? fmtPct(t.conversionPct) : '—'), sparkV: sparkRev },
   ];
   $('#kpis').innerHTML = cards.map((k, i) => `
     <article class="card kpi rv" style="--i:${i}">
@@ -90,43 +163,105 @@ function renderKPIs() {
   cards.forEach((k, i) => countUp($('#kpiv-' + i), k.val, k.fmt));
 }
 
-function renderTop5() {
-  const top = [...DATA.extended.campaigns].sort((a, b) => b.totalRevenue - a.totalRevenue).slice(0, 5);
-  if (!top.length) {
-    $('#top5').innerHTML = '<div style="padding:16px 18px;font-size:12px;color:var(--dim)">Нет кампаний с выручкой</div>';
+const SOURCE_META = {
+  link: { l: 'По ссылкам', c: '#57B6FF', hint: 'пришли по отслеживаемой ссылке кампании' },
+  utm: { l: 'По UTM', c: '#9B8CFF', hint: 'пришли по UTM-метке' },
+  organic: { l: 'Без метки', c: '#FFB454', hint: 'метки не было — органика либо ссылка, которую не отследили' },
+};
+
+// Три доли, которые обязаны складываться в общую выручку. Если «без метки»
+// внезапно разрослась — это и есть сигнал, что где-то перестали приходить метки.
+function renderSources() {
+  const ov = DATA.overview;
+  const box = $('#srcBody');
+  if (!box || !ov) return;
+  const rows = ov.bySource || [];
+  const total = rows.reduce((a, r) => a + r.revenue, 0);
+
+  if (!total) {
+    box.innerHTML = '<div style="padding:16px 18px;font-size:12px;color:var(--dim)">Выручки за период нет</div>';
     return;
   }
-  const mx = Math.max(...top.map(c => c.totalRevenue), 1);
-  $('#top5').innerHTML = top.map((c, i) => {
-    const proj = DATA.projectsById[c.projectId];
-    return `<div class="t5-row" data-c="${c.id}" style="cursor:pointer">
-      <span class="t5-rank">0${i + 1}</span>
-      <div style="min-width:0"><div class="t5-name">#${c.id} · ${escapeHtml(c.advertiser)}</div><div class="t5-adv">${escapeHtml(proj?.name || '—')}</div></div>
-      <span class="t5-val">${fmtM(c.totalRevenue)}</span>
-      <div class="t5-bar" style="grid-column:1/-1"><i style="--w:${Math.round(c.totalRevenue / mx * 100)}%"></i></div>
+
+  box.innerHTML = rows.map(r => {
+    const m = SOURCE_META[r.source] || { l: r.source, c: '#8A94A6', hint: '' };
+    const pct = r.revenueSharePct || 0;
+    return `<div class="src-row" title="${escapeHtml(m.hint)}">
+      <span class="src-lbl" style="color:${m.c}">${m.l}</span>
+      <span class="src-bar"><i style="--w:${Math.min(100, pct)}%;--c:${m.c}"></i></span>
+      <span class="src-val">${fmtM(r.revenue)}</span>
+      <span class="src-sub">${fmt1(pct)}% выручки · покупок ${fmtN(r.payments)} · вошло ${fmtN(r.uniqueEntries)}</span>
     </div>`;
   }).join('');
-  $$('#top5 .t5-row').forEach(r => r.addEventListener('click', () => openCampaign(+r.dataset.c)));
-  requestAnimationFrame(() => $('#top5').closest('.card').classList.add('in'));
+  requestAnimationFrame(() => box.closest('.card').classList.add('in'));
 }
 
+// Лидеры по выручке из обоих миров сразу: кампанийная ссылка и UTM-метка
+// конкурируют за одни и те же деньги, и раздельные топы это скрывали.
+function renderTop5() {
+  const ov = DATA.overview;
+  const box = $('#top5');
+  if (!box) return;
+
+  const items = [
+    ...((ov && ov.topCampaigns) || []).map(c => ({
+      kind: 'camp', id: c.campaignId, revenue: c.revenue,
+      name: '#' + c.campaignId + ' · ' + c.advertiser,
+      sub: DATA.projectsById[c.projectId]?.name || '—',
+    })),
+    ...((ov && ov.topUtmLinks) || []).map(u => ({
+      kind: 'utm', id: u.utmLinkId, revenue: u.revenue,
+      name: u.label || (u.utmSource + ' / ' + u.utmCampaign),
+      sub: 'UTM · ' + (DATA.projectsById[u.projectId]?.name || '—'),
+    })),
+  ].filter(x => x.revenue > 0).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+
+  if (!items.length) {
+    box.innerHTML = '<div style="padding:16px 18px;font-size:12px;color:var(--dim)">Нет источников с выручкой за период</div>';
+    return;
+  }
+
+  const mx = Math.max(...items.map(c => c.revenue), 1);
+  box.innerHTML = items.map((c, i) => `<div class="t5-row" data-kind="${c.kind}" data-id="${c.id}" style="cursor:pointer">
+      <span class="t5-rank">0${i + 1}</span>
+      <div style="min-width:0"><div class="t5-name">${escapeHtml(c.name)}</div><div class="t5-adv">${escapeHtml(c.sub)}</div></div>
+      <span class="t5-val">${fmtM(c.revenue)}</span>
+      <div class="t5-bar" style="grid-column:1/-1"><i style="--w:${Math.round(c.revenue / mx * 100)}%"></i></div>
+    </div>`).join('');
+
+  $$('#top5 .t5-row').forEach(r => r.addEventListener('click', () => {
+    if (r.dataset.kind === 'utm') openUtmLink(+r.dataset.id);
+    else openCampaign(+r.dataset.id);
+  }));
+  requestAnimationFrame(() => box.closest('.card').classList.add('in'));
+}
+
+// Конверсию берём из обзора — она считается по выбранным проектам и по всем
+// покупателям, включая тех, кто пришёл без метки. Удержание остаётся средним
+// по кампаниям: посчитать его по проекту нельзя, пока оно определено через
+// первое касание ссылки, поэтому строка честно подписана как общая.
 function renderQuality() {
   const camps = DATA.extended.campaigns;
   const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
   const r24vals = camps.map(c => c.retention24h).filter(v => v !== null && v !== undefined);
   const r48vals = camps.map(c => c.retention48h).filter(v => v !== null && v !== undefined);
-  const convvals = camps.map(c => c.purchaseConversion?.conversionPct).filter(v => v !== null && v !== undefined);
-  const r24 = avg(r24vals) ?? 0, r48 = avg(r48vals) ?? 0, conv = avg(convvals) ?? 0;
-  $('#convVal').textContent = convvals.length ? fmtPct(conv) : '—';
+  const r24 = avg(r24vals) ?? 0, r48 = avg(r48vals) ?? 0;
+
+  const conv = DATA.overview?.totals?.conversionPct;
+  const hasConv = conv !== null && conv !== undefined;
+  $('#convVal').textContent = hasConv ? fmtPct(conv) : '—';
+
   $('#retCol').innerHTML = [
-    ['Retention 24ч', r24, '#57B6FF', r24vals.length],
-    ['Retention 48ч', r48, '#9B8CFF', r48vals.length],
-    ['Конверсия в покупку', conv, '#3DDC97', convvals.length],
+    ['Retention 24ч', r24, '#57B6FF', r24vals.length, 'среднее по кампаниям, без учёта фильтра проектов'],
+    ['Retention 48ч', r48, '#9B8CFF', r48vals.length, 'среднее по кампаниям, без учёта фильтра проектов'],
+    ['Конверсия в покупку', hasConv ? conv : 0, '#3DDC97', hasConv ? 1 : 0, 'покупатели / все увиденные пользователи'],
   ].map(x => `
-    <div class="ret-row"><div class="ret-lbl"><span>${x[0]}</span><b>${x[3] ? fmtPct(x[1]) : '—'}</b></div>
+    <div class="ret-row" title="${escapeHtml(x[4])}"><div class="ret-lbl"><span>${x[0]}</span><b>${x[3] ? fmtPct(x[1]) : '—'}</b></div>
     <div class="ret-bar"><i style="--w:${Math.min(100, x[1])}%;background:${x[2]}"></i></div></div>`).join('');
+
   const card = $('#retCol').closest('.card');
-  requestAnimationFrame(() => { card.classList.add('in'); $('#convFg').style.strokeDashoffset = 238 - (238 * Math.min(conv, 100) / 100); });
+  const ringPct = hasConv ? Math.min(conv, 100) : 0;
+  requestAnimationFrame(() => { card.classList.add('in'); $('#convFg').style.strokeDashoffset = 238 - (238 * ringPct / 100); });
 }
 
 function renderFeed() {
@@ -135,10 +270,19 @@ function renderFeed() {
     $('#feed').innerHTML = '<div style="padding:16px 18px;font-size:12px;color:var(--dim)">Событий пока нет</div>';
     return;
   }
+  // Событие больше не обязано иметь кампанию: органическое не имеет ни ссылки,
+  // ни рекламодателя, а UTM-событие — своей метки вместо них. Раньше такие
+  // строки просто не доходили до ленты, потому что запрос их отбрасывал.
   $('#feed').innerHTML = all.map(e => {
     const ev = eventMeta(e.eventType);
+    const who = e.advertiser
+      || e.utmLabel
+      || (e.utmSource ? e.utmSource + ' / ' + e.utmCampaign : '')
+      || 'без метки';
+    const detail = e.linkLabel || e.telegramRef || (e.source === 'utm' ? 'UTM' : 'органика');
+    const proj = e.projectName ? escapeHtml(e.projectName) + ' · ' : '';
     return `<div class="feed-it"><span class="f-ic" style="${hueBox(ev.c)}">${ev.i}</span>
-    <div class="f-tx"><b>${ev.l}</b> · ${escapeHtml(e.advertiser)}<span>${escapeHtml(e.linkLabel || e.telegramRef || '')} · ID ${escapeHtml(e.tgUserId)}${e.amount ? ` · ${fmt1(e.amount)} ₽` : ''}</span></div>
+    <div class="f-tx"><b>${ev.l}</b> · ${escapeHtml(who)}<span>${proj}${escapeHtml(detail)} · ID ${escapeHtml(e.tgUserId)}${e.amount ? ` · ${fmt1(e.amount)} ₽` : ''}</span></div>
     <span class="f-time">${dStamp(e.ts)}</span></div>`;
   }).join('');
 }
@@ -150,7 +294,7 @@ function ensureChart() {
   const cv = $('#mainChart'), ctx = cv.getContext('2d');
   const gA = ctx.createLinearGradient(0, 0, 0, 300); gA.addColorStop(0, 'rgba(87,182,255,.4)'); gA.addColorStop(1, 'rgba(87,182,255,.02)');
   const gG = ctx.createLinearGradient(0, 0, 0, 300); gG.addColorStop(0, 'rgba(61,220,151,.22)'); gG.addColorStop(1, 'rgba(61,220,151,0)');
-  const w = windowArrays();
+  const w = chartArrays();
   chart = new Chart(ctx, { data: { labels: w.labels, datasets: [
     { type: 'bar', label: 'Подписки', data: w.subs, backgroundColor: gA, borderRadius: 3, barPercentage: .55, categoryPercentage: .72, yAxisID: 'y', order: 3 },
     { type: 'line', label: 'Выручка', data: w.rev, borderColor: '#3DDC97', backgroundColor: gG, fill: true, tension: .35, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, yAxisID: 'y1', order: 1 },
@@ -169,9 +313,24 @@ function ensureChart() {
     },
   } });
 }
+// Ряды графика — из /api/overview, то есть с учётом выбранных проектов и
+// периода. Раньше он читал dailyStats, который ключуется по кампании: на
+// фильтр по проектам такой источник не реагирует вовсе, а органику не видит
+// в принципе, и график расходился с KPI прямо над ним.
+function chartArrays() {
+  const d = overviewDaily();
+  const tail = state.period === 'all' ? d : d.slice(-state.period);
+  return {
+    labels: tail.map(r => dShort(r.date)),
+    subs: tail.map(r => r.uniqueEntries),
+    rev: tail.map(r => r.revenue),
+    cps: tail.map(r => (r.uniqueEntries ? +(r.revenue / r.uniqueEntries).toFixed(1) : 0)),
+  };
+}
+
 function refreshChart() {
   if (!chart) return;
-  const w = windowArrays();
+  const w = chartArrays();
   chart.data.labels = w.labels;
   chart.data.datasets[0].data = w.subs; chart.data.datasets[1].data = w.rev; chart.data.datasets[2].data = w.cps;
   chart.update();
@@ -356,7 +515,12 @@ function syncCampSearchPlaceholder() {
 syncCampSearchPlaceholder();
 
 segInit($('#modeSeg'), b => { state.mode = b.dataset.m; state.campPage = 1; syncCampSearchPlaceholder(); renderCampaigns(); });
-segInit($('#periodSeg'), b => { state.period = b.dataset.p === 'all' ? 'all' : +b.dataset.p; renderKPIs(); refreshChart(); });
+// Окно считает сервер: уникальных пользователей и покупателей нельзя получить
+// складыванием дневных значений, поэтому смена периода — это новый запрос.
+segInit($('#periodSeg'), async b => {
+  state.period = b.dataset.p === 'all' ? 'all' : +b.dataset.p;
+  await reloadScoped();
+});
 let campSearchDebounce = null;
 $('#campSearch').addEventListener('input', e => {
   state.q = e.target.value;
@@ -1178,7 +1342,7 @@ async function renderPromo() {
 }
 
 async function renderCurrentScreen() {
-  if (state.screen === 'overview') { renderKPIs(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
+  if (state.screen === 'overview') { renderKPIs(); refreshChart(); renderTop5(); renderSources(); renderQuality(); renderFeed(); }
   else if (state.screen === 'campaigns') await renderCampaigns();
   else if (state.screen === 'utm') await renderUtm();
   else if (state.screen === 'promo') await renderPromo();
@@ -1194,7 +1358,10 @@ async function go(scr) {
   const m = SCREENS[scr];
   $('#tb-title').textContent = m.t; $('#tb-sub').textContent = m.s;
   $('#periodSeg').hidden = !m.c.p; $('#searchWrap').hidden = !m.c.s; $('#exportBtn').hidden = !m.c.e;
-  if (scr === 'overview') { renderKPIs(); ensureChart(); refreshChart(); renderTop5(); renderQuality(); renderFeed(); }
+  // Селектор показываем только там, где он на что-то влияет — иначе он обещает
+  // фильтрацию, которой на экране нет.
+  $('#projSel').hidden = !m.c.p;
+  if (scr === 'overview') { renderKPIs(); ensureChart(); refreshChart(); renderTop5(); renderSources(); renderQuality(); renderFeed(); }
   if (scr === 'campaigns') await renderCampaigns();
   if (scr === 'utm') await renderUtm();
   if (scr === 'promo') await renderPromo();
@@ -1202,6 +1369,24 @@ async function go(scr) {
   if (scr === 'projects') await renderProjects();
 }
 $$('#nav .nav-it').forEach(b => b.addEventListener('click', () => go(b.dataset.scr)));
+
+/* Раскрытие селектора проектов. Закрывается по клику снаружи и по Escape —
+   выпадающий список в шапке иначе легко забыть открытым. */
+(function initProjectPicker() {
+  const btn = document.getElementById('projSelBtn');
+  const pop = document.getElementById('projSelPop');
+  if (!btn || !pop) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    pop.hidden = !pop.hidden;
+  });
+  document.addEventListener('click', (e) => {
+    if (!pop.hidden && !pop.contains(e.target)) pop.hidden = true;
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') pop.hidden = true;
+  });
+})();
 $('#refreshBtn').addEventListener('click', async () => {
   const b = $('#refreshBtn'); b.classList.add('spin'); setTimeout(() => b.classList.remove('spin'), 750);
   try {
@@ -1226,6 +1411,7 @@ $$('.ds-chip').forEach(b => b.addEventListener('click', () => {
   const t = new Date(); $('#liveTime').textContent = pad2(t.getHours()) + ':' + pad2(t.getMinutes());
   try {
     await loadCore();
+    renderProjectPicker();
     await go('overview');
   } catch (err) {
     console.error('[dashboard] Failed to load initial data:', err);

@@ -1,14 +1,38 @@
 -- Attribution becomes optional; the project becomes mandatory.
 --
--- Hand-written, because drizzle-kit cannot know three things: that project_id
--- is derived through link -> campaign -> project, that utm_links must gain a
--- project before events can borrow it, and that the contents of utm_events
--- belong in events. Statements are ordered so each one only reads columns that
--- already exist at that point.
+-- Hand-written, for two reasons drizzle-kit cannot know about.
+--
+-- First, the data: project_id is derived through link -> campaign -> project,
+-- utm_links must gain a project before events can borrow it, and the contents
+-- of utm_events belong in events.
+--
+-- Second, the order. `PRAGMA foreign_keys=OFF` does nothing inside a
+-- transaction, and that is exactly where drizzle runs migrations — so a table
+-- cannot be dropped while anything still references it. utm_events therefore
+-- has to lose its foreign key BEFORE utm_links is rebuilt, not after.
 
-PRAGMA foreign_keys=OFF;--> statement-breakpoint
+-- 1. utm_events becomes a free-standing archive.
+--
+-- Nothing will read it again: its rows are copied into `events` in step 4. It
+-- survives this migration untouched so the merge can be checked against its
+-- source, and it sheds its foreign key so that step 2 becomes possible at all.
+CREATE TABLE `__new_utm_events` (
+	`id` integer PRIMARY KEY NOT NULL,
+	`utm_link_id` integer NOT NULL,
+	`tg_user_id` text NOT NULL,
+	`event_type` text NOT NULL,
+	`amount` real DEFAULT 0 NOT NULL,
+	`language_code` text,
+	`ts` integer NOT NULL
+);
+--> statement-breakpoint
+INSERT INTO `__new_utm_events`("id", "utm_link_id", "tg_user_id", "event_type", "amount", "language_code", "ts")
+SELECT "id", "utm_link_id", "tg_user_id", "event_type", "amount", "language_code", "ts" FROM `utm_events`;
+--> statement-breakpoint
+DROP TABLE `utm_events`;--> statement-breakpoint
+ALTER TABLE `__new_utm_events` RENAME TO `utm_events`;--> statement-breakpoint
 
--- 1. utm_links gains a project.
+-- 2. utm_links gains a project.
 --
 -- SQLite rejects ALTER TABLE ADD COLUMN NOT NULL without a default on a table
 -- that already has rows, so the table is rebuilt. The project is matched by bot
@@ -48,7 +72,7 @@ DROP TABLE `utm_links`;--> statement-breakpoint
 ALTER TABLE `__new_utm_links` RENAME TO `utm_links`;--> statement-breakpoint
 CREATE UNIQUE INDEX `utm_links_slug_unique` ON `utm_links` (`slug`);--> statement-breakpoint
 
--- 2. events: link_id becomes optional, project_id/utm_link_id/source arrive.
+-- 3. events: link_id becomes optional, project_id/utm_link_id/source arrive.
 -- Every existing row came in through a link, so it keeps source 'link'.
 CREATE TABLE `__new_events` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -82,10 +106,11 @@ FROM `events` e;
 DROP TABLE `events`;--> statement-breakpoint
 ALTER TABLE `__new_events` RENAME TO `events`;--> statement-breakpoint
 
--- 3. utm_events moves in. 'start' becomes 'lead': both mean "pressed start in
--- the bot", and only 'lead' is a funnel entry type, so leaving it as 'start'
--- would keep every UTM arrival out of every conversion rate. Ids are left to
--- AUTOINCREMENT so they cannot collide with the rows copied above.
+-- 4. The archived UTM events move in. 'start' becomes 'lead': both mean
+-- "pressed start in the bot", and only 'lead' is a funnel entry type, so
+-- leaving it as 'start' would keep every UTM arrival out of every conversion
+-- rate. Ids are left to AUTOINCREMENT so they cannot collide with the rows
+-- copied above.
 INSERT INTO `events` ("project_id", "link_id", "utm_link_id", "source", "tg_user_id", "event_type", "amount", "promo_code", "discount_amount", "language_code", "ts")
 SELECT
 	ul."project_id", NULL, ue."utm_link_id", 'utm', ue."tg_user_id",
@@ -95,7 +120,7 @@ FROM `utm_events` ue
 JOIN `utm_links` ul ON ul."id" = ue."utm_link_id";
 --> statement-breakpoint
 
--- 4. The new deduplication key is stricter than the old one: it no longer
+-- 5. The new deduplication key is stricter than the old one: it no longer
 -- includes link_id, so two rows that differed only by which link they were
 -- attributed to now collide. Those are duplicates in substance — one user
 -- cannot arrive from two links in the same second — and the oldest row wins,
@@ -109,5 +134,4 @@ CREATE INDEX `events_user_ts_idx` ON `events` (`tg_user_id`,`ts`);--> statement-
 CREATE INDEX `events_project_ts_idx` ON `events` (`project_id`,`ts`);--> statement-breakpoint
 CREATE INDEX `events_link_idx` ON `events` (`link_id`);--> statement-breakpoint
 CREATE INDEX `events_utm_link_idx` ON `events` (`utm_link_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `events_project_user_type_ts_unique` ON `events` (`project_id`,`tg_user_id`,`event_type`,`ts`);--> statement-breakpoint
-PRAGMA foreign_keys=ON;
+CREATE UNIQUE INDEX `events_project_user_type_ts_unique` ON `events` (`project_id`,`tg_user_id`,`event_type`,`ts`);

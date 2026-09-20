@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "9bac3204-9854-4b90-b80c-d50b74242bc3",
+  "id": "f8bf8e41-c3de-4a63-b00e-484c4e334d9e",
   "prevId": "0d1e2826-999e-4a0d-89df-c3bf5a30a610",
   "tables": {
     "admin_actions": {
@@ -629,7 +629,7 @@
           "type": "integer",
           "primaryKey": true,
           "notNull": true,
-          "autoincrement": true
+          "autoincrement": false
         },
         "utm_link_id": {
           "name": "utm_link_id",
@@ -672,52 +672,11 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
+          "autoincrement": false
         }
       },
-      "indexes": {
-        "utm_events_user_ts_idx": {
-          "name": "utm_events_user_ts_idx",
-          "columns": [
-            "tg_user_id",
-            "ts"
-          ],
-          "isUnique": false
-        },
-        "utm_events_link_idx": {
-          "name": "utm_events_link_idx",
-          "columns": [
-            "utm_link_id"
-          ],
-          "isUnique": false
-        },
-        "utm_events_link_user_type_ts_unique": {
-          "name": "utm_events_link_user_type_ts_unique",
-          "columns": [
-            "utm_link_id",
-            "tg_user_id",
-            "event_type",
-            "ts"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "utm_events_utm_link_id_utm_links_id_fk": {
-          "name": "utm_events_utm_link_id_utm_links_id_fk",
-          "tableFrom": "utm_events",
-          "tableTo": "utm_links",
-          "columnsFrom": [
-            "utm_link_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
