@@ -1031,6 +1031,7 @@ async function renderUtm() {
   renderUtmKpis(links);
   renderUtmSources(sources);
   renderUtmLinksTable(links);
+  populateUtmProjectSelect();
   populateUtmBotSelect();
 }
 
@@ -1039,10 +1040,28 @@ async function renderUtm() {
 // bot username by hand every time — that's exactly what produced deep-link-less
 // UTM links before this fix. Falls back to a manual text field for bots that
 // aren't registered as a project yet.
+// UTM-метка обязана принадлежать проекту: без этого дашборд не может сказать,
+// чей это трафик, — ровно та дыра, из-за которой вкладка UTM жила отдельной
+// жизнью от остальной аналитики.
+const SELLING_PROJECT_TYPES = ['bot_subscription', 'bot_direct'];
+
+function populateUtmProjectSelect() {
+  const sel = $('#u-project');
+  if (!sel) return;
+  const list = (DATA.projects || []).filter(p => SELLING_PROJECT_TYPES.includes(p.type));
+  const prev = sel.value;
+  sel.innerHTML = list.length
+    ? list.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')
+    : '<option value="">— нет проектов, продающих через бота —</option>';
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+}
+
 function populateUtmBotSelect() {
   const sel = $('#u-bot-select');
   if (!sel) return;
-  const bots = (DATA.projects || []).filter(p => p.type === 'bot_subscription' && p.botUsername);
+  // bot_direct тоже продаёт через бота — просто без канала за спиной, и его
+  // диплинки нужны ровно так же.
+  const bots = (DATA.projects || []).filter(p => SELLING_PROJECT_TYPES.includes(p.type) && p.botUsername);
   const prevValue = sel.value;
 
   const opts = [`<option value="">${bots.length ? '— без диплинка —' : '— нет зарегистрированных ботов —'}</option>`];
@@ -1091,7 +1110,10 @@ $('#utmForm').addEventListener('submit', async e => {
   if (botUsername.startsWith('@')) botUsername = botUsername.slice(1);
   if (!utmSource || !utmMedium || !utmCampaign) { toast('Заполните источник, канал и кампанию', 'warn'); return; }
 
-  const body = { utmSource, utmMedium, utmCampaign };
+  const projectId = Number($('#u-project').value);
+  if (!projectId) { toast('Выберите проект, которому принадлежит метка', 'warn'); return; }
+
+  const body = { projectId, utmSource, utmMedium, utmCampaign };
   if (utmContent) body.utmContent = utmContent;
   if (label) body.label = label;
   if (spendRaw) {

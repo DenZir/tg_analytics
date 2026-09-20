@@ -121,7 +121,7 @@ function renderFeed() {
   $('#feed').innerHTML = all.map(e => {
     const ev = eventMeta(e.eventType);
     return `<div class="feed-it"><span class="f-ic" style="${hueBox(ev.c)}">${ev.i}</span>
-    <div class="f-tx"><b>${ev.l}</b> · ${escapeHtml(e.advertiser)}<span>${escapeHtml(e.linkLabel || e.telegramRef || '')} · ID ${escapeHtml(e.tgUserId)}${e.amount ? ` · ${fmt1(e.amount)} ₽` : ''}</span></div>
+    <div class="f-tx"><b>${ev.l}</b> · ${escapeHtml(e.advertiser || e.utmLabel || (e.utmSource ? e.utmSource + ' / ' + e.utmCampaign : '') || 'без метки')}<span>${escapeHtml(e.linkLabel || e.telegramRef || (e.source === 'utm' ? 'UTM' : 'органика'))} · ID ${escapeHtml(e.tgUserId)}${e.amount ? ` · ${fmt1(e.amount)} ₽` : ''}</span></div>
     <span class="f-time">${dStamp(e.ts)}</span></div>`;
   }).join('');
 }
@@ -723,13 +723,29 @@ async function renderUtm() {
   renderUtmKpis(links);
   renderUtmSources(sources);
   renderUtmLinksCards(links);
+  populateUtmProjectSelect();
   populateUtmBotSelect();
+}
+
+// Метка обязана принадлежать проекту — иначе её трафик некуда отнести.
+// bot_direct продаёт через бота так же, как приватка, просто без канала.
+const SELLING_PROJECT_TYPES = ['bot_subscription', 'bot_direct'];
+
+function populateUtmProjectSelect() {
+  const sel = $('#u-project');
+  if (!sel) return;
+  const list = (DATA.projects || []).filter(p => SELLING_PROJECT_TYPES.includes(p.type));
+  const prev = sel.value;
+  sel.innerHTML = list.length
+    ? list.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')
+    : '<option value="">— нет проектов, продающих через бота —</option>';
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
 }
 
 function populateUtmBotSelect() {
   const sel = $('#u-bot-select');
   if (!sel) return;
-  const bots = (DATA.projects || []).filter(p => p.type === 'bot_subscription' && p.botUsername);
+  const bots = (DATA.projects || []).filter(p => SELLING_PROJECT_TYPES.includes(p.type) && p.botUsername);
   const prevValue = sel.value;
 
   const opts = [`<option value="">${bots.length ? '— без диплинка —' : '— нет зарегистрированных ботов —'}</option>`];
@@ -778,7 +794,10 @@ $('#utmForm').addEventListener('submit', async e => {
   if (botUsername.startsWith('@')) botUsername = botUsername.slice(1);
   if (!utmSource || !utmMedium || !utmCampaign) { toast('Заполните источник, канал и кампанию', 'warn'); return; }
 
-  const body = { utmSource, utmMedium, utmCampaign };
+  const projectId = Number($('#u-project').value);
+  if (!projectId) { toast('Выберите проект, которому принадлежит метка', 'warn'); return; }
+
+  const body = { projectId, utmSource, utmMedium, utmCampaign };
   if (utmContent) body.utmContent = utmContent;
   if (label) body.label = label;
   if (spendRaw) {
