@@ -52,6 +52,8 @@ import {
   buildDeepLink,
 } from "./services/utm.js";
 import { getCampaignGeoBreakdown } from "./services/geo.js";
+import { getOverview } from "./services/overview.js";
+import { isProjectType, PROJECT_TYPE_VALUES } from "./db/projectTypes.js";
 import { eq } from "drizzle-orm";
 import {
   redeemAndRotateToken,
@@ -328,6 +330,13 @@ app.post("/api/projects", async (req, res) => {
     const { name, type, telegramChatId, botUsername } = req.body;
     if (!name || !type) {
       return res.status(400).json({ error: "Missing required fields (name, type)" });
+    }
+    // The column is free text, so a typo used to create a whole new kind of
+    // project that no query would ever match again.
+    if (!isProjectType(String(type))) {
+      return res
+        .status(400)
+        .json({ error: `Unknown project type "${type}". Must be one of: ${PROJECT_TYPE_VALUES.join(", ")}` });
     }
 
     const project = await createProject({
@@ -742,6 +751,33 @@ app.post("/api/payments/webhook", async (req, res) => {
 
     res.status(200).json({ success: true, event });
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/overview?projectIds=1,2&days=30
+// Everything the main screen needs, scoped to a selection of projects. Omitting
+// projectIds means every project, which is the "Все" option in the picker.
+app.get("/api/overview", async (req, res) => {
+  try {
+    const { projectIds, days } = req.query;
+    const parsedProjectIds =
+      typeof projectIds === "string" && projectIds.trim() !== ""
+        ? projectIds
+            .split(",")
+            .map((v) => Number(v.trim()))
+            .filter((v) => Number.isInteger(v) && v > 0)
+        : undefined;
+    const parsedDays = days !== undefined ? Number(days) : undefined;
+
+    res.json(
+      await getOverview({
+        projectIds: parsedProjectIds,
+        days: parsedDays !== undefined && !Number.isNaN(parsedDays) ? parsedDays : undefined,
+      })
+    );
+  } catch (error: any) {
+    console.error("[api] Failed to build overview:", error);
     res.status(500).json({ error: error.message });
   }
 });
