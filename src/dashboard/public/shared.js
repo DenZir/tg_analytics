@@ -543,10 +543,17 @@ export function daysUntilPurge(deletedAt) {
 // bot_direct — бот, продающий свой продукт без канала за спиной (VPN).
 // До его появления любой не-канал автоматически считался приваткой, из-за чего
 // такой проект подписывался чужим типом.
-const PROJECT_TYPE_LABELS = { channel: 'Канал', bot_subscription: 'Бот-подписка', bot_direct: 'Бот без канала' };
+// Тип выводится из состава проекта на сервере; здесь только подпись к нему.
+const PROJECT_TYPE_LABELS = { channel: 'Канал', bot_subscription: 'Канал + бот', bot_direct: 'Бот без канала' };
 export function typeLabel(t) { return PROJECT_TYPE_LABELS[t] || t; }
 export function typeChipClass(t) { return t === 'channel' ? 't-proj' : 't-bot'; }
-export function identOf(p) { return p.type === 'channel' ? (p.telegramChatId || '—') : (p.botUsername || '—'); }
+// У проекта может быть и канал, и бот — показываем то, что есть.
+export function identOf(p) {
+  const parts = [];
+  if (p.telegramChatId) parts.push(p.telegramChatId);
+  if (p.botUsername) parts.push('@' + p.botUsername);
+  return parts.join(' · ') || '—';
+}
 
 /* ================= UTM ================= */
 export function roiCls(v) { if (v === null || v === undefined) return ''; return v >= 100 ? 'r-good' : v >= 70 ? 'r-mid' : 'r-bad'; }

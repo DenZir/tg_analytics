@@ -874,6 +874,42 @@ function renderTrashModal(rows) {
 // диалог всё равно открывается только для того проекта, по которому кликнули.
 let avatarTargetProjectId = null;
 
+// Подключение бота к каналу — это слияние двух проектов в один, и отменить его
+// нельзя: всё, что записал бот, переезжает в проект канала, а проект бота
+// исчезает. Поэтому только через подтверждение.
+function bindAttachBotControls() {
+  $$('#projBody .attach-bot').forEach(sel => sel.addEventListener('change', async () => {
+    const chanId = Number(sel.dataset.chan);
+    const botId = Number(sel.value);
+    if (!botId) return;
+    const chan = DATA.projectsById[chanId];
+    const bot = DATA.projectsById[botId];
+    const ok = await confirmDialog({
+      title: `Подключить @${bot?.botUsername || 'бота'} к «${chan?.name || 'каналу'}»?`,
+      text: 'Бот и канал станут одним проектом: подписки и продажи будут считаться вместе, а покупки — засчитываться кампаниям, что привели человека в канал. ' +
+        `Всё, что успел записать бот, переедет сюда, а проект «${bot?.name || ''}» перестанет существовать. Разделить их обратно будет нельзя.`,
+      okLabel: 'Подключить',
+      danger: false,
+    });
+    if (!ok) { sel.value = ''; return; }
+    try {
+      await fetchJSON(`/api/projects/${chanId}/attach-bot`, { method: 'POST', body: JSON.stringify({ botProjectId: botId }) });
+      // Выбор проектов в шапке мог содержать исчезнувший проект бота.
+      if (state.projectIds.includes(botId)) {
+        state.projectIds = [...new Set(state.projectIds.map(v => (v === botId ? chanId : v)))];
+        saveProjectScope(state.projectIds);
+      }
+      await afterMutation();
+      renderProjectPicker();
+      await renderProjects();
+      toast('Бот подключён — теперь это один проект', 'info');
+    } catch (err) {
+      sel.value = '';
+      toast(`Не удалось подключить: ${err.message}`, 'warn');
+    }
+  }));
+}
+
 function bindAvatarControls() {
   $$('#projBody .pava-edit').forEach(b => b.addEventListener('click', () => {
     avatarTargetProjectId = Number(b.dataset.ava);
@@ -920,15 +956,28 @@ function bindAvatarControls() {
 
 async function renderProjects() {
   const list = DATA.projects;
-  $('#projSub').textContent = `${list.length} ${plural(list.length, 'проект', 'проекта', 'проектов')} · каналы и боты-приватки`;
+  $('#projSub').textContent = `${list.length} ${plural(list.length, 'проект', 'проекта', 'проектов')} · канал, бот или оба`;
 
   const campCountByProject = {};
   for (const c of DATA.extended.campaigns) campCountByProject[c.projectId] = (campCountByProject[c.projectId] || 0) + 1;
 
   function paint(linkCounts) {
     $('#projBody').innerHTML = list.map((p, i) => {
-      const linked = p.linkedProjectId ? DATA.projectsById[p.linkedProjectId] : null;
       const linksCount = linkCounts ? (linkCounts[p.id] ?? 0) : '…';
+      // Подключить можно только бота, который пока стоит отдельно: у бота с
+      // каналом уже есть свой проект.
+      const freeBots = (DATA.projects || []).filter(b => b.botUsername && !b.telegramChatId && b.id !== p.id);
+      let botCell;
+      if (p.botUsername) {
+        botCell = `<span class="mono" style="font-size:12px">@${escapeHtml(p.botUsername)}</span>`;
+      } else if (p.telegramChatId && freeBots.length) {
+        botCell = `<select class="inp attach-bot" data-chan="${p.id}" style="padding:4px 8px;font-size:12px;max-width:190px">
+          <option value="">＋ подключить бота…</option>
+          ${freeBots.map(b => `<option value="${b.id}">${escapeHtml(b.name)} (@${escapeHtml(b.botUsername)})</option>`).join('')}
+        </select>`;
+      } else {
+        botCell = '<span style="color:var(--dim)">—</span>';
+      }
       return `<tr style="--i:${i}">
         <td><div class="cell-main" style="display:flex;align-items:center;gap:9px">
           <button class="pava-edit" data-ava="${p.id}" type="button" title="Загрузить свою аватарку">${projectAvatarHtml(p)}<span class="pava-pen">✎</span></button>
@@ -936,16 +985,16 @@ async function renderProjects() {
           ${p.hasCustomAvatar ? `<button class="pava-reset" data-ava-reset="${p.id}" type="button" title="Убрать загруженную аватарку и вернуться к телеграмовской">×</button>` : ''}
         </div></td>
         <td><span class="chip ${typeChipClass(p.type)}">${typeLabel(p.type)}</span></td>
-        <td class="mono" style="font-size:12px">${escapeHtml(identOf(p))}</td>
-        <td style="font-size:12px;color:var(--muted)">${linked ? escapeHtml(linked.name) : '—'}</td>
+        <td class="mono" style="font-size:12px">${p.telegramChatId ? escapeHtml(p.telegramChatId) : '<span style="color:var(--dim)">—</span>'}</td>
+        <td>${botCell}</td>
         <td class="num">${campCountByProject[p.id] || 0}</td><td class="num">${linksCount}</td>
       </tr>`;
     }).join('');
   }
   paint(null);
   bindAvatarControls();
+  bindAttachBotControls();
 
-  $('#f-link').innerHTML = '<option value="">— без связи —</option>' + list.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
 
   try {
     const histories = await getCampaignHistories();
@@ -956,47 +1005,33 @@ async function renderProjects() {
     }
     paint(linkCounts);
     bindAvatarControls();
+    bindAttachBotControls();
   } catch (err) {
     console.error('[dashboard] Failed to load link counts for projects:', err);
   }
 }
 
-$('#f-type').addEventListener('change', e => {
-  $('#fldChat').hidden = e.target.value !== 'channel';
-  $('#fldBot').hidden = e.target.value === 'channel';
-});
+// Тип проекта не выбирается: сервер выводит его из того, что заполнено.
+// Канал + бот — приватка, только бот — бот без канала, только канал — канал.
 $('#projForm').addEventListener('submit', async e => {
   e.preventDefault();
   const name = $('#f-name').value.trim();
-  const type = $('#f-type').value;
   const chatId = $('#f-chat').value.trim();
-  const botUsername = $('#f-bot').value.trim();
-  const linkTarget = $('#f-link').value;
+  const botUsername = $('#f-bot').value.trim().replace(/^@/, '');
   if (!name) { toast('Укажите название проекта', 'warn'); return; }
-  if (type === 'channel' && !chatId) { toast('Укажите Chat ID канала', 'warn'); return; }
-  if (type === 'bot_subscription' && !botUsername) { toast('Укажите username бота', 'warn'); return; }
+  if (!chatId && !botUsername) { toast('Укажите Chat ID канала, username бота или оба', 'warn'); return; }
 
   try {
-    const body = { name, type };
-    if (type === 'channel') body.telegramChatId = chatId; else body.botUsername = botUsername;
+    const body = { name };
+    if (chatId) body.telegramChatId = chatId;
+    if (botUsername) body.botUsername = botUsername;
     const project = await fetchJSON('/api/projects', { method: 'POST', body: JSON.stringify(body) });
 
-    let linkMsg = '';
-    if (linkTarget) {
-      try {
-        await fetchJSON(`/api/projects/${project.id}/link-privatka`, { method: 'PATCH', body: JSON.stringify({ linkedProjectId: Number(linkTarget) }) });
-        const lp = DATA.projectsById[Number(linkTarget)];
-        linkMsg = lp ? ` и связан с «${lp.name}»` : '';
-      } catch (err) {
-        toast(`Проект создан, но связка не удалась: ${err.message}`, 'warn');
-      }
-    }
-
     e.target.reset();
-    $('#fldChat').hidden = false; $('#fldBot').hidden = true;
     await loadCore();
+    renderProjectPicker();
     await renderProjects();
-    toast(`Проект «${name}» добавлен${linkMsg}`);
+    toast(`Проект «${name}» добавлен · ${typeLabel(project.type).toLowerCase()}`);
   } catch (err) {
     toast(`Не удалось создать проект: ${err.message}`, 'warn');
   }
@@ -1368,7 +1403,7 @@ const SCREENS = {
   utm: { t: 'UTM-метки', s: 'Независимый трекинг источников трафика: старты, покупки, CAC/ROI по utm-меткам', c: { p: 0, s: 0, e: 1 } },
   privatkas: { t: 'Приватки', s: 'Финансы подписочных ботов: доход, средний чек, ARPPU', c: { p: 0, s: 0, e: 1 } },
   promo: { t: 'Промокоды', s: 'Какие коды приводят к оплате: применения, выручка и размер отданных скидок', c: { p: 0, s: 0, e: 0 } },
-  projects: { t: 'Проекты', s: 'Реестр каналов и ботов-приваток, связывание проектов', c: { p: 0, s: 0, e: 0 } },
+  projects: { t: 'Проекты', s: 'Проект — это канал, бот продаж или оба сразу', c: { p: 0, s: 0, e: 0 } },
 };
 
 // Промокоды: одна строка на код, самые ходовые сверху.

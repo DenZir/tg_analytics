@@ -974,13 +974,11 @@ async function renderProjects() {
 
   function paint(linkCounts) {
     $('#projCards').innerHTML = list.map((p, i) => {
-      const linked = p.linkedProjectId ? DATA.projectsById[p.linkedProjectId] : null;
       const linksCount = linkCounts ? (linkCounts[p.id] ?? 0) : '…';
       return `<article class="card prow" style="--i:${i}">
         <div class="prow-top"><b>${escapeHtml(p.name)}</b><span class="chip ${typeChipClass(p.type)}">${typeLabel(p.type)}</span></div>
         <div class="prow-id">${escapeHtml(identOf(p))}</div>
         <div class="prow-meta">
-          <span>Связь: <b>${linked ? escapeHtml(linked.name) : '—'}</b></span>
           <span>Кампаний: <b>${campCountByProject[p.id] || 0}</b></span>
           <span>Ссылок: <b>${linksCount}</b></span>
         </div>
@@ -989,7 +987,6 @@ async function renderProjects() {
   }
   paint(null);
 
-  $('#f-link').innerHTML = '<option value="">— без связи —</option>' + list.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
 
   try {
     const histories = await getCampaignHistories();
@@ -1004,42 +1001,24 @@ async function renderProjects() {
   }
 }
 
-$('#f-type').addEventListener('change', e => {
-  $('#fldChat').hidden = e.target.value !== 'channel';
-  $('#fldBot').hidden = e.target.value === 'channel';
-});
+// Тип проекта выводится на сервере из заполненных полей.
 $('#projForm').addEventListener('submit', async e => {
   e.preventDefault();
   const name = $('#f-name').value.trim();
-  const type = $('#f-type').value;
   const chatId = $('#f-chat').value.trim();
-  const botUsername = $('#f-bot').value.trim();
-  const linkTarget = $('#f-link').value;
+  const botUsername = $('#f-bot').value.trim().replace(/^@/, '');
   if (!name) { toast('Укажите название проекта', 'warn'); return; }
-  if (type === 'channel' && !chatId) { toast('Укажите Chat ID канала', 'warn'); return; }
-  if (type === 'bot_subscription' && !botUsername) { toast('Укажите username бота', 'warn'); return; }
+  if (!chatId && !botUsername) { toast('Укажите Chat ID канала, username бота или оба', 'warn'); return; }
 
   try {
-    const body = { name, type };
-    if (type === 'channel') body.telegramChatId = chatId; else body.botUsername = botUsername;
-    const project = await fetchJSON('/api/projects', { method: 'POST', body: JSON.stringify(body) });
-
-    let linkMsg = '';
-    if (linkTarget) {
-      try {
-        await fetchJSON(`/api/projects/${project.id}/link-privatka`, { method: 'PATCH', body: JSON.stringify({ linkedProjectId: Number(linkTarget) }) });
-        const lp = DATA.projectsById[Number(linkTarget)];
-        linkMsg = lp ? ` и связан с «${lp.name}»` : '';
-      } catch (err) {
-        toast(`Проект создан, но связка не удалась: ${err.message}`, 'warn');
-      }
-    }
-
+    const body = { name };
+    if (chatId) body.telegramChatId = chatId;
+    if (botUsername) body.botUsername = botUsername;
+    await fetchJSON('/api/projects', { method: 'POST', body: JSON.stringify(body) });
     e.target.reset();
-    $('#fldChat').hidden = false; $('#fldBot').hidden = true;
     await loadCore();
     await renderProjects();
-    toast(`Проект «${name}» добавлен${linkMsg}`);
+    toast(`Проект «${name}» добавлен`);
   } catch (err) {
     toast(`Не удалось создать проект: ${err.message}`, 'warn');
   }

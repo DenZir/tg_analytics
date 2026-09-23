@@ -495,20 +495,16 @@ tr.flash,.flash{animation:flash 1.6s ease}
   <div class="scr-head rv" style="--i:0">
     <div class="eyebrow">project registry</div>
     <h1>Проекты</h1>
-    <div class="scr-sub">Каналы и боты-приватки, связывание проектов</div>
+    <div class="scr-sub">Каналы, боты продаж и их связки</div>
   </div>
   <article class="card rv" style="--i:1;margin-bottom:14px">
     <div class="card-h"><span class="card-idx">01 / новый</span><div><div class="card-t">Добавить проект</div></div></div>
     <form class="form-body" id="projForm" novalidate>
       <div class="fld"><label>Название</label><input class="inp" id="f-name" placeholder="Например: Крипто Инсайд"></div>
-      <div class="fld"><label>Тип проекта</label>
-        <select class="inp" id="f-type"><option value="channel">Telegram-канал</option><option value="bot_subscription">Бот-подписка</option><option value="bot_direct">Бот без канала</option></select>
-      </div>
-      <div class="fld" id="fldChat"><label>Chat ID канала</label><input class="inp mono" id="f-chat" placeholder="-100…"></div>
-      <div class="fld" id="fldBot" hidden><label>Username бота</label><input class="inp mono" id="f-bot" placeholder="@my_private_bot"></div>
-      <div class="fld"><label>Связать с проектом</label><select class="inp" id="f-link"><option value="">— без связи —</option></select></div>
+      <div class="fld"><label>Chat ID канала</label><input class="inp mono" id="f-chat" placeholder="-100… — если есть канал"></div>
+      <div class="fld"><label>Username бота</label><input class="inp mono" id="f-bot" placeholder="@my_bot — если продаёт бот"></div>
       <button class="btn btn-primary" type="submit" style="width:100%"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Добавить проект</button>
-      <div class="form-note">Связка «канал ↔ приватка» позволяет боту выдавать комбинированные ссылки и корректно атрибутировать оплаты.</div>
+      <div class="form-note">Канал и бот в одном проекте — это одна воронка: подписки и продажи считаются вместе, а покупка засчитывается кампании, что привела человека в канал. Уже существующий канал можно соединить с ботом в реестре ниже.</div>
     </form>
   </article>
   <article class="card rv" style="--i:2;padding:14px">
