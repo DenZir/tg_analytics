@@ -46,10 +46,13 @@ async function main() {
 
   let finalProject = project;
   if (channelId || botUsername) {
-    finalProject = await updateProjectConfig(project.id, {
-      telegramChatId: channelId,
-      botUsername: botUsername,
-    });
+    // Also re-derives the type from what the project now contains, which is why
+    // this goes through updateProjectConfig rather than a direct UPDATE.
+    finalProject =
+      (await updateProjectConfig(project.id, {
+        telegramChatId: channelId,
+        botUsername: botUsername,
+      })) ?? project;
   }
 
   console.log("\n=== Project Created Successfully ===");

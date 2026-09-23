@@ -85,6 +85,13 @@
       "when": 1789941179546,
       "tag": "0011_crazy_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1790182857326,
+      "tag": "0012_unique_clint_barton",
+      "breakpoints": true
     }
   ]
 }

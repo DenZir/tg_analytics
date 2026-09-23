@@ -4,7 +4,6 @@ import { db } from "../db/index.js";
 import { projects } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { channelBot } from "../bots/channelBot.js";
-import { PROJECT_TYPES } from "../db/projectTypes.js";
 
 /**
  * Project avatars, taken from Telegram.
@@ -12,9 +11,9 @@ import { PROJECT_TYPES } from "../db/projectTypes.js";
  * What is and isn't possible here is set by the Bot API, not by us. A channel
  * the bot administers answers `getChat` with a photo; another *bot* does not —
  * there is no call that returns a second bot's profile picture, and a username
- * alone is not enough. So a bot-backed project borrows the avatar of the
- * channel it sells access to, and anything left over falls back to a monogram
- * drawn by the dashboard.
+ * alone is not enough. So a project with a channel shows that channel's
+ * picture, and a bot-only project falls back to a monogram drawn by the
+ * dashboard.
  *
  * Which is why an avatar can also be uploaded by hand. A manual picture wins
  * over anything Telegram would give us and never expires — it is a decision,
@@ -103,24 +102,13 @@ function freshEnough(file: string, ttlMs: number): boolean {
 }
 
 /**
- * Which Telegram chat's picture represents this project.
- *
- * A channel speaks for itself. A bot project has no chat of its own, so it
- * borrows from the channel that points at it — the link the admin already drew
- * on the Проекты screen, read backwards.
+ * Which Telegram chat's picture represents this project: its own channel, if
+ * it has one. A project that is channel and bot at once has exactly one chat
+ * to show, so there is nothing to choose between.
  */
 async function resolveChatId(projectId: number): Promise<string | null> {
   const project = await db.select().from(projects).where(eq(projects.id, projectId)).get();
-  if (!project) return null;
-  if (project.telegramChatId) return project.telegramChatId;
-
-  const linkedChannel = await db
-    .select({ telegramChatId: projects.telegramChatId })
-    .from(projects)
-    .where(eq(projects.linkedProjectId, projectId))
-    .get();
-
-  return linkedChannel?.telegramChatId ?? null;
+  return project?.telegramChatId ?? null;
 }
 
 async function downloadFromTelegram(chatId: string): Promise<Buffer | null> {
@@ -199,7 +187,3 @@ export async function getProjectAvatar(projectId: number): Promise<AvatarImage |
   }
 }
 
-/** True for projects whose own chat can have a picture at all. */
-export function canHaveOwnAvatar(projectType: string): boolean {
-  return projectType === PROJECT_TYPES.CHANNEL;
-}

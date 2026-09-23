@@ -52,9 +52,7 @@ async function main() {
     console.log("  (No projects found)");
   } else {
     allProjectsList.forEach((p) => {
-      const extraInfo = p.type === "channel"
-        ? `ChatID: ${p.telegramChatId || "-"}, LinkedPrivatkaID: ${p.linkedProjectId || "none"}`
-        : `BotUsername: @${p.botUsername || "-"}`;
+      const extraInfo = `ChatID: ${p.telegramChatId || "-"}, BotUsername: ${p.botUsername ? "@" + p.botUsername : "-"}`;
       console.log(`  • [ID: ${p.id}] "${p.name}" (type: ${p.type}) | ${extraInfo}`);
     });
   }

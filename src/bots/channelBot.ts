@@ -7,7 +7,7 @@ import {
   createCampaign,
   createCampaignWithLinks,
   updateProjectConfig,
-  linkProjects,
+  attachBotProject,
   deleteProjectCascade,
   getDistinctTagValues,
   getProjectByChatId,
@@ -20,6 +20,7 @@ import {
 import { logEvent } from "../services/events.js";
 import { getMetrics } from "../services/metrics.js";
 import { EVENT_TYPES } from "../db/eventTypes.js";
+import { hasBot, hasChannel } from "../db/projectTypes.js";
 import { getAdminIds, isAdmin } from "../config/admins.js";
 import { createLoginToken } from "../services/dashboardAuth.js";
 
@@ -265,7 +266,9 @@ async function renderDraftCard(ctx: any, userId: number, editMode = true) {
 
 async function renderChannelsMenu(ctx: any) {
   const projectsList = await getAllProjects();
-  const channels = projectsList.filter((p) => p.type === "channel");
+  // By composition, not type: a channel that also has a bot is a privatka, and
+  // filtering on type === "channel" used to hide exactly the busiest channels.
+  const channels = projectsList.filter(hasChannel);
 
   if (channels.length === 0) {
     const text = "📢 <b>Зарегистрированные каналы:</b>\n\nНет зарегистрированных каналов.";
@@ -277,11 +280,11 @@ async function renderChannelsMenu(ctx: any) {
   }
 
   const buttons = channels.map((c) => [
-    Markup.button.callback(`📢 ${c.name}`, `chan_card_${c.id}`),
+    Markup.button.callback(`📢 ${c.name}${hasBot(c) ? " 🤖" : ""}`, `chan_card_${c.id}`),
   ]);
   buttons.push([Markup.button.callback("⬅️ В главное меню", "menu_main")]);
 
-  const msg = "📢 <b>Выберите канал для просмотра и настройки:</b>";
+  const msg = "📢 <b>Выберите канал для просмотра и настройки:</b>\n\n🤖 — к каналу подключён бот продаж";
   if (ctx.callbackQuery) {
     return ctx.editMessageText(msg, {
       parse_mode: "HTML",
@@ -296,9 +299,11 @@ async function renderChannelsMenu(ctx: any) {
 
 async function renderPrivatkasMenu(ctx: any) {
   const projectsList = await getAllProjects();
-  const privatkas = projectsList.filter((p) => p.type === "bot_subscription");
+  // Every project that sells through a bot — with a channel in front of it or
+  // without one (the VPN kind).
+  const privatkas = projectsList.filter(hasBot);
 
-  let msg = "🔒 <b>Выберите приватку для просмотра и настройки:</b>\n\n";
+  let msg = "🔒 <b>Выберите бота для просмотра и настройки:</b>\n\n📢 — бот подключён к каналу";
   const buttons: any[] = [];
 
   if (privatkas.length === 0) {
@@ -307,11 +312,12 @@ async function renderPrivatkasMenu(ctx: any) {
     privatkas.forEach((p) => {
       const safeName = escapeHtml(p.name);
       const usernameText = p.botUsername ? `@${escapeHtml(p.botUsername)}` : "без username";
-      buttons.push([Markup.button.callback(`🔒 ${safeName} (${usernameText})`, `priv_card_${p.id}`)]);
+      const channelMark = hasChannel(p) ? " 📢" : "";
+      buttons.push([Markup.button.callback(`🔒 ${safeName} (${usernameText})${channelMark}`, `priv_card_${p.id}`)]);
     });
   }
 
-  buttons.push([Markup.button.callback("➕ Добавить приватку", "priv_add_new")]);
+  buttons.push([Markup.button.callback("➕ Добавить бота", "priv_add_new")]);
   buttons.push([Markup.button.callback("⬅️ В главное меню", "menu_main")]);
 
   const keyboard = Markup.inlineKeyboard(buttons);
@@ -338,21 +344,31 @@ async function renderPrivatkaCard(ctx: any, privatkaId: number) {
   const safeName = escapeHtml(privatka.name);
   const usernameText = privatka.botUsername ? `@${escapeHtml(privatka.botUsername)}` : "не указан";
 
-  const linkedChannels = projectsList.filter((p) => p.type === "channel" && p.linkedProjectId === privatkaId);
-  const linkedChannelsText = linkedChannels.length > 0
-    ? linkedChannels.map((c) => `• <b>${escapeHtml(c.name)}</b> (ID: <code>${c.id}</code>)`).join("\n")
-    : "нет привязанных каналов";
+  // The channel is not "linked" any more — it is the other half of the same
+  // project, so there is exactly one or none.
+  const channelText = hasChannel(privatka)
+    ? `<b>${safeName}</b> (<code>${escapeHtml(privatka.telegramChatId || "")}</code>) 🟢`
+    : "не подключён — бот продаёт сам по себе";
 
   const cardText =
-    `🔒 <b>Карточка приватки:</b> ${safeName}\n\n` +
+    `🔒 <b>Карточка бота:</b> ${safeName}\n\n` +
     `🆔 <b>Project ID:</b> <code>${privatka.id}</code>\n` +
     `🤖 <b>Bot Username:</b> <code>${usernameText}</code>\n\n` +
-    `📢 <b>Привязана к каналам:</b>\n${linkedChannelsText}`;
+    `📢 <b>Канал:</b> ${channelText}`;
 
-  const buttons = [
-    [Markup.button.callback("🗑️ Удалить приватку", `priv_del_confirm_${privatka.id}`)],
-    [Markup.button.callback("⬅️ К списку приваток", "menu_privatkas")],
-  ];
+  // Deleting from here is only offered for a bot that stands alone. When the bot
+  // is half of a channel project, "delete" would take the channel, its campaigns
+  // and every event with it — so the only action on offer is detaching the bot,
+  // and deleting the whole project lives on the channel card.
+  const buttons = hasChannel(privatka)
+    ? [
+        [Markup.button.callback("❌ Отключить бота от канала", `chan_unlink_${privatka.id}`)],
+        [Markup.button.callback("⬅️ К списку ботов", "menu_privatkas")],
+      ]
+    : [
+        [Markup.button.callback("🗑️ Удалить бота", `priv_del_confirm_${privatka.id}`)],
+        [Markup.button.callback("⬅️ К списку ботов", "menu_privatkas")],
+      ];
 
   if (ctx.callbackQuery) {
     try {
@@ -376,29 +392,21 @@ async function renderChannelCard(ctx: any, channelId: number) {
   const safeName = escapeHtml(channel.name);
   const chatIdText = channel.telegramChatId ? `<code>${escapeHtml(channel.telegramChatId)}</code>` : "не указан";
 
-  let privatkaStatusText = "не привязана 🔴";
-  let linkedProj: any = null;
-
-  if (channel.linkedProjectId) {
-    linkedProj = projectsList.find((p) => p.id === channel.linkedProjectId);
-    if (linkedProj) {
-      const safePrivName = escapeHtml(linkedProj.name);
-      const privUsernameText = linkedProj.botUsername ? `@${escapeHtml(linkedProj.botUsername)}` : "без username";
-      privatkaStatusText = `<b>${safePrivName}</b> (${privUsernameText}) 🟢`;
-    }
-  }
+  const botStatusText = hasBot(channel)
+    ? `<code>@${escapeHtml(channel.botUsername || "")}</code> 🟢`
+    : "не подключён 🔴";
 
   const cardText =
     `📢 <b>Карточка канала:</b> ${safeName}\n\n` +
     `🆔 <b>Project ID:</b> <code>${channel.id}</code>\n` +
     `📡 <b>Telegram Chat ID:</b> ${chatIdText}\n\n` +
-    `🔒 <b>Приватка:</b> ${privatkaStatusText}`;
+    `🤖 <b>Бот продаж:</b> ${botStatusText}`;
 
   const buttons: any[] = [];
-  if (channel.linkedProjectId) {
-    buttons.push([Markup.button.callback("❌ Отвязать приватку", `chan_unlink_${channel.id}`)]);
+  if (hasBot(channel)) {
+    buttons.push([Markup.button.callback("❌ Отключить бота", `chan_unlink_${channel.id}`)]);
   } else {
-    buttons.push([Markup.button.callback("🔗 Привязать приватку", `chan_link_menu_${channel.id}`)]);
+    buttons.push([Markup.button.callback("🔗 Подключить бота", `chan_link_menu_${channel.id}`)]);
   }
   buttons.push([Markup.button.callback("🗑️ Удалить канал", `chan_del_confirm_${channel.id}`)]);
   buttons.push([Markup.button.callback("⬅️ К списку каналов", "menu_channels")]);
@@ -555,7 +563,6 @@ if (channelBot) {
         try {
           const project = await createProject({
             name: finalName,
-            type: "bot_subscription",
             botUsername: username,
           });
 
@@ -564,7 +571,8 @@ if (channelBot) {
           userStates.set(userId, state);
 
           await ctx.reply(
-            `🎉 Приватный бот <b>${escapeHtml(finalName)}</b> (@${escapeHtml(username)}) успешно зарегистрирован! (ID: <code>${project.id}</code>)`,
+            `🎉 Бот <b>${escapeHtml(finalName)}</b> (@${escapeHtml(username)}) зарегистрирован! (ID: <code>${project.id}</code>)\n\n` +
+            `Если он продаёт доступ через канал — откройте карточку канала и нажмите «🔗 Подключить бота».`,
             { parse_mode: "HTML" }
           );
 
@@ -731,7 +739,12 @@ if (channelBot) {
 
         if (!privatka) return ctx.answerCbQuery("⚠️ Приватка не найдена");
 
-        const text = `⚠️ <b>Вы уверены, что хотите удалить бот приватки ${escapeHtml(privatka.name)}?</b>\n\nВсе привязанные каналы будут автоматически отвязаны.`;
+        // The card only offers this for a bot-only project; refuse here too, in
+        // case a stale button from an older message is pressed.
+        if (hasChannel(privatka)) {
+          return ctx.answerCbQuery("⚠️ Бот подключён к каналу — удалять нужно канал целиком");
+        }
+        const text = `⚠️ <b>Удалить бота ${escapeHtml(privatka.name)}?</b>\n\nВсе его события и UTM-метки будут удалены.`;
         const buttons = Markup.inlineKeyboard([
           [Markup.button.callback("💥 Да, удалить", `priv_del_do_${privId}`)],
           [Markup.button.callback("❌ Отмена", `priv_card_${privId}`)],
@@ -741,8 +754,13 @@ if (channelBot) {
 
       if (data.startsWith("priv_del_do_")) {
         const privId = Number(data.split("_")[3]);
+        const target = (await getAllProjects()).find((p) => p.id === privId);
+        if (target && hasChannel(target)) {
+          await ctx.answerCbQuery("⚠️ Бот подключён к каналу — удалять нужно канал целиком");
+          return renderPrivatkaCard(ctx, privId);
+        }
         await deleteProjectCascade(privId);
-        await ctx.answerCbQuery("Бот приватки успешно удалён!");
+        await ctx.answerCbQuery("Бот удалён");
         return renderPrivatkasMenu(ctx);
       }
 
@@ -761,7 +779,10 @@ if (channelBot) {
 
         if (!channel) return ctx.answerCbQuery("⚠️ Канал не найден");
 
-        const text = `⚠️ <b>Вы уверены, что хотите удалить канал ${escapeHtml(channel.name)}?</b>\n\nВсе связанные кампании, инвайт-ссылки и события будут каскадно удалены.`;
+        const botNote = hasBot(channel)
+          ? `\n\n🤖 Вместе с каналом удалится и подключённый бот <code>@${escapeHtml(channel.botUsername || "")}</code> — это один проект.`
+          : "";
+        const text = `⚠️ <b>Вы уверены, что хотите удалить канал ${escapeHtml(channel.name)}?</b>\n\nВсе связанные кампании, инвайт-ссылки и события будут каскадно удалены.${botNote}`;
         const buttons = Markup.inlineKeyboard([
           [Markup.button.callback("💥 Да, удалить", `chan_del_do_${chanId}`)],
           [Markup.button.callback("❌ Отмена", `chan_card_${chanId}`)],
@@ -780,37 +801,72 @@ if (channelBot) {
         await ctx.answerCbQuery();
         const chanId = Number(data.split("_")[3]);
         const projectsList = await getAllProjects();
-        const privatkas = projectsList.filter((p) => p.type === "bot_subscription");
+        // Only bots that stand alone can be attached: one that already has a
+        // channel belongs to that channel's project.
+        const bots = projectsList.filter((p) => hasBot(p) && !hasChannel(p));
 
-        if (privatkas.length === 0) {
-          return ctx.answerCbQuery("⚠️ Нет приваток. Сначала добавьте приватку в меню '🔒 Приватки'");
+        if (bots.length === 0) {
+          return ctx.answerCbQuery("⚠️ Нет свободных ботов. Сначала добавьте бота в меню «🔒 Приватки»");
         }
 
-        const buttons = privatkas.map((p) => [
-          Markup.button.callback(`🔒 ${p.name} (@${p.botUsername || "бот"})`, `do_link_chan_${chanId}_${p.id}`),
+        const buttons = bots.map((p) => [
+          Markup.button.callback(`🤖 ${p.name} (@${p.botUsername || "бот"})`, `link_bot_ask_${chanId}_${p.id}`),
         ]);
         buttons.push([Markup.button.callback("⬅️ Назад в карточку канала", `chan_card_${chanId}`)]);
 
-        return ctx.editMessageText("🔒 <b>Выберите бота приватки для привязки:</b>", {
+        return ctx.editMessageText("🤖 <b>Какого бота подключить к каналу?</b>", {
           parse_mode: "HTML",
           ...Markup.inlineKeyboard(buttons),
+        });
+      }
+
+      // Attaching is a merge and cannot be undone, so it asks first.
+      if (data.startsWith("link_bot_ask_")) {
+        await ctx.answerCbQuery();
+        const parts = data.split("_");
+        const chanId = Number(parts[3]);
+        const botId = Number(parts[4]);
+        const projectsList = await getAllProjects();
+        const channel = projectsList.find((p) => p.id === chanId);
+        const bot = projectsList.find((p) => p.id === botId);
+        if (!channel || !bot) return ctx.answerCbQuery("⚠️ Проект не найден");
+
+        const text =
+          `🤖 <b>Подключить @${escapeHtml(bot.botUsername || "")} к каналу ${escapeHtml(channel.name)}?</b>\n\n` +
+          `Бот и канал станут одним проектом: подписки и продажи будут считаться вместе, ` +
+          `а покупки — засчитываться тем кампаниям, что привели человека в канал.\n\n` +
+          `Всё, что бот успел записать, переедет в проект канала. ` +
+          `Проект «${escapeHtml(bot.name)}» перестанет существовать — разделить их обратно будет нельзя.`;
+
+        return ctx.editMessageText(text, {
+          parse_mode: "HTML",
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback("✅ Подключить", `do_link_chan_${chanId}_${botId}`)],
+            [Markup.button.callback("❌ Отмена", `chan_card_${chanId}`)],
+          ]),
         });
       }
 
       if (data.startsWith("do_link_chan_")) {
         const parts = data.split("_");
         const chanId = Number(parts[3]);
-        const privatkaId = Number(parts[4]);
+        const botId = Number(parts[4]);
 
-        await linkProjects(chanId, privatkaId);
-        await ctx.answerCbQuery("Приватка успешно привязана! 🟢");
+        try {
+          await attachBotProject(chanId, botId);
+        } catch (err: any) {
+          return ctx.answerCbQuery(`⚠️ ${err.message}`.slice(0, 190));
+        }
+        await ctx.answerCbQuery("Бот подключён 🟢");
         return renderChannelCard(ctx, chanId);
       }
 
+      // Detaching keeps every recorded event in the project; only future bot
+      // events stop being matched to this channel by username.
       if (data.startsWith("chan_unlink_")) {
         const chanId = Number(data.split("_")[2]);
-        await updateProjectConfig(chanId, { linkedProjectId: null });
-        await ctx.answerCbQuery("Приватка отвязана 🔴");
+        await updateProjectConfig(chanId, { botUsername: null });
+        await ctx.answerCbQuery("Бот отключён 🔴");
         return renderChannelCard(ctx, chanId);
       }
 
@@ -818,7 +874,9 @@ if (channelBot) {
       if (data === "card_select_channel") {
         await ctx.answerCbQuery();
         const projectsList = await getAllProjects();
-        const channels = projectsList.filter((p) => p.type === "channel");
+        // By composition: the channel of a privatka is exactly where campaign
+        // links should point, and type === "channel" would have hidden it.
+        const channels = projectsList.filter(hasChannel);
 
         if (channels.length === 0) {
           return ctx.answerCbQuery("⚠️ Нет каналов. Создайте через seedProject или Дашборд!");
@@ -1064,7 +1122,6 @@ if (channelBot) {
 
         const project = await createProject({
           name: title,
-          type: "channel",
           telegramChatId: chatId,
         });
 

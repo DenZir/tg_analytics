@@ -1,13 +1,14 @@
 import { sqliteTable, integer, text, real, unique, index } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
+// A project owns up to one channel and one bot; `type` is derived from which of
+// the two it has (see db/projectTypes.ts) and is never set independently.
 export const projects = sqliteTable("projects", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   type: text("type").notNull(),
   telegramChatId: text("telegram_chat_id"),
   botUsername: text("bot_username"),
-  linkedProjectId: integer("linked_project_id"),
 });
 
 export const campaigns = sqliteTable("campaigns", {

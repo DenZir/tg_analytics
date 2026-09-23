@@ -10,7 +10,7 @@ import {
   getAllProjects,
   createProject,
   updateProjectConfig,
-  linkProjects,
+  attachBotProject,
   getCampaignTags,
   upsertCampaignTag,
   deleteCampaignTag,
@@ -60,7 +60,6 @@ import {
   hasCustomAvatar,
   MAX_AVATAR_BYTES,
 } from "./services/avatars.js";
-import { isProjectType, PROJECT_TYPE_VALUES } from "./db/projectTypes.js";
 import { eq } from "drizzle-orm";
 import {
   redeemAndRotateToken,
@@ -336,21 +335,20 @@ app.get("/api/projects", async (_req, res) => {
 // POST /api/projects
 app.post("/api/projects", async (req, res) => {
   try {
-    const { name, type, telegramChatId, botUsername } = req.body;
-    if (!name || !type) {
-      return res.status(400).json({ error: "Missing required fields (name, type)" });
+    // `type` is accepted and ignored for older callers: it is derived from
+    // which of the two halves the project has, never chosen.
+    const { name, telegramChatId, botUsername } = req.body;
+    if (!name || String(name).trim() === "") {
+      return res.status(400).json({ error: "Missing required field (name)" });
     }
-    // The column is free text, so a typo used to create a whole new kind of
-    // project that no query would ever match again.
-    if (!isProjectType(String(type))) {
+    if (!telegramChatId && !botUsername) {
       return res
         .status(400)
-        .json({ error: `Unknown project type "${type}". Must be one of: ${PROJECT_TYPE_VALUES.join(", ")}` });
+        .json({ error: "A project needs a channel (telegramChatId), a bot (botUsername), or both" });
     }
 
     const project = await createProject({
-      name: String(name),
-      type: String(type),
+      name: String(name).trim(),
       telegramChatId: telegramChatId ? String(telegramChatId) : undefined,
       botUsername: botUsername ? String(botUsername) : undefined,
     });
@@ -446,12 +444,18 @@ app.delete("/api/projects/:id/avatar", async (req, res) => {
 app.patch("/api/projects/:id", async (req, res) => {
   try {
     const projectId = Number(req.params.id);
-    const { telegramChatId, botUsername } = req.body;
+    const { telegramChatId, botUsername, name } = req.body;
+
+    // null (or an empty string) removes that half of the project; a missing
+    // field leaves it untouched. The type is recomputed either way.
+    const toField = (v: unknown) => (v === undefined ? undefined : v === null ? null : String(v));
 
     const updated = await updateProjectConfig(projectId, {
-      telegramChatId: telegramChatId !== undefined ? String(telegramChatId) : undefined,
-      botUsername: botUsername !== undefined ? String(botUsername) : undefined,
+      telegramChatId: toField(telegramChatId),
+      botUsername: toField(botUsername),
+      name: name !== undefined ? String(name) : undefined,
     });
+    if (!updated) return res.status(404).json({ error: "Project not found" });
 
     res.json(updated);
   } catch (error: any) {
@@ -459,18 +463,21 @@ app.patch("/api/projects/:id", async (req, res) => {
   }
 });
 
-// PATCH /api/projects/:id/link-privatka
-app.patch("/api/projects/:id/link-privatka", async (req, res) => {
+// POST /api/projects/:id/attach-bot  { botProjectId }
+//
+// Folds a bot-only project into this channel project. Replaces the old
+// link-privatka endpoint: a link kept channel and bot as two projects, which is
+// exactly what split the funnel. Irreversible — the bot project stops existing.
+app.post("/api/projects/:id/attach-bot", async (req, res) => {
   try {
     const channelProjectId = Number(req.params.id);
-    const { linkedProjectId } = req.body;
-
-    if (!linkedProjectId) {
-      return res.status(400).json({ error: "Missing linkedProjectId in request body" });
+    const botProjectId = Number(req.body?.botProjectId);
+    if (!Number.isInteger(botProjectId) || botProjectId <= 0) {
+      return res.status(400).json({ error: "Missing botProjectId in request body" });
     }
 
-    const updatedProject = await linkProjects(channelProjectId, Number(linkedProjectId));
-    res.json(updatedProject);
+    const merged = await attachBotProject(channelProjectId, botProjectId);
+    res.json(merged);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

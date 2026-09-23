@@ -1,10 +1,11 @@
 import { db } from "../db/index.js";
-import { campaigns, campaignTags, links, projects, events, dailyStats } from "../db/schema.js";
+import { campaigns, campaignTags, links, projects, events, dailyStats, utmLinks } from "../db/schema.js";
 import { eq, and, inArray, desc, sql, isNull, isNotNull } from "drizzle-orm";
 import { aggregate } from "../jobs/dailyAggregate.js";
 import { getRetentionStats, getCohortLtv } from "./metrics.js";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 import { logAdminAction } from "./auditLog.js";
+import { deriveProjectType, hasBot, hasChannel } from "../db/projectTypes.js";
 
 export interface CreateCampaignInput {
   projectId: number;
@@ -17,37 +18,69 @@ export async function getAllProjects() {
   return await db.select().from(projects);
 }
 
+/** Empty strings from forms mean "not set", and a leading @ is decoration. */
+function normalizeBotUsername(value?: string | null): string | null {
+  const clean = (value ?? "").trim().replace(/^@/, "");
+  return clean || null;
+}
+
+function normalizeChatId(value?: string | null): string | null {
+  const clean = (value ?? "").trim();
+  return clean || null;
+}
+
+/**
+ * Creates a project from whatever halves it has — a channel, a bot, or both.
+ *
+ * There is no `type` parameter any more: the type is a consequence of the
+ * composition (see deriveProjectType), and letting callers pick it is how a
+ * channel with a bot used to end up labelled as a bare channel.
+ */
 export async function createProject(input: {
   name: string;
-  type: string;
-  telegramChatId?: string;
-  botUsername?: string;
-  linkedProjectId?: number;
+  telegramChatId?: string | null;
+  botUsername?: string | null;
 }) {
+  const telegramChatId = normalizeChatId(input.telegramChatId);
+  const botUsername = normalizeBotUsername(input.botUsername);
+
   const [project] = await db
     .insert(projects)
     .values({
       name: input.name,
-      type: input.type,
-      telegramChatId: input.telegramChatId || null,
-      botUsername: input.botUsername || null,
-      linkedProjectId: input.linkedProjectId || null,
+      type: deriveProjectType({ telegramChatId, botUsername }),
+      telegramChatId,
+      botUsername,
     })
     .returning();
 
   return project;
 }
 
+/**
+ * Changes a project's halves and re-derives its type in the same write, so the
+ * two can never disagree. Passing `null` removes a half; leaving a field
+ * undefined keeps it as it is.
+ */
 export async function updateProjectConfig(
   projectId: number,
-  config: { telegramChatId?: string; botUsername?: string; linkedProjectId?: number | null }
+  config: { telegramChatId?: string | null; botUsername?: string | null; name?: string }
 ) {
+  const current = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+  if (!current) return undefined;
+
+  const telegramChatId =
+    config.telegramChatId !== undefined ? normalizeChatId(config.telegramChatId) : current.telegramChatId;
+  const botUsername =
+    config.botUsername !== undefined ? normalizeBotUsername(config.botUsername) : current.botUsername;
+
   const [updatedProject] = await db
     .update(projects)
     .set({
-      ...(config.telegramChatId !== undefined && { telegramChatId: config.telegramChatId }),
-      ...(config.botUsername !== undefined && { botUsername: config.botUsername }),
-      ...(config.linkedProjectId !== undefined && { linkedProjectId: config.linkedProjectId }),
+      telegramChatId,
+      botUsername,
+      type: deriveProjectType({ telegramChatId, botUsername }),
+      ...(config.name !== undefined && config.name.trim() !== "" && { name: config.name.trim() }),
     })
     .where(eq(projects.id, projectId))
     .returning();
@@ -55,28 +88,75 @@ export async function updateProjectConfig(
   return updatedProject;
 }
 
-export async function linkProjects(channelProjectId: number, privatkaProjectId: number) {
-  const channelProj = await db.query.projects.findFirst({
-    where: eq(projects.id, channelProjectId),
-  });
-  if (!channelProj) {
-    throw new Error(`Project ${channelProjectId} not found`);
-  }
-  if (channelProj.type !== "channel") {
-    throw new Error(`Project "${channelProj.name}" (ID: ${channelProjectId}) must be of type 'channel'`);
-  }
-
-  const privatkaProj = await db.query.projects.findFirst({
-    where: eq(projects.id, privatkaProjectId),
-  });
-  if (!privatkaProj) {
-    throw new Error(`Project ${privatkaProjectId} not found`);
-  }
-  if (privatkaProj.type !== "bot_subscription") {
-    throw new Error(`Project "${privatkaProj.name}" (ID: ${privatkaProjectId}) must be of type 'bot_subscription'`);
+/**
+ * Folds a bot-only project into a channel project: the channel gains the bot,
+ * and everything the bot project had recorded moves across with it.
+ *
+ * This is the runtime twin of migration 0012 and does exactly what it does, in
+ * one transaction. It replaces "linking" a channel to a privatka: a link left
+ * the funnel split across two rows, and a merge is what makes a purchase land
+ * in the same project as the join that led to it.
+ *
+ * Not reversible in the sense of restoring the old split — once the rows are
+ * one, nothing records which event came from which half. Detaching the bot
+ * afterwards (updateProjectConfig with botUsername: null) keeps the history.
+ */
+export async function attachBotProject(channelProjectId: number, botProjectId: number) {
+  if (channelProjectId === botProjectId) {
+    throw new Error("A project cannot be merged into itself");
   }
 
-  return await updateProjectConfig(channelProjectId, { linkedProjectId: privatkaProjectId });
+  const channel = await db.query.projects.findFirst({ where: eq(projects.id, channelProjectId) });
+  if (!channel) throw new Error(`Project ${channelProjectId} not found`);
+  if (!hasChannel(channel)) {
+    throw new Error(`Project "${channel.name}" has no channel to attach a bot to`);
+  }
+  if (hasBot(channel)) {
+    throw new Error(`Project "${channel.name}" already has a bot (@${channel.botUsername})`);
+  }
+
+  const bot = await db.query.projects.findFirst({ where: eq(projects.id, botProjectId) });
+  if (!bot) throw new Error(`Project ${botProjectId} not found`);
+  if (!hasBot(bot)) throw new Error(`Project "${bot.name}" has no bot`);
+  if (hasChannel(bot)) {
+    throw new Error(`Project "${bot.name}" already has its own channel — it is not a bot-only project`);
+  }
+
+  db.transaction((tx) => {
+    // An event with an exact twin already in the channel project would collide
+    // on the unique key; it is the same event recorded twice, and the channel's
+    // copy stays.
+    tx.run(sql`
+      DELETE FROM events WHERE id IN (
+        SELECT e.id FROM events e
+        WHERE e.project_id = ${botProjectId}
+          AND EXISTS (
+            SELECT 1 FROM events k
+            WHERE k.project_id = ${channelProjectId}
+              AND k.tg_user_id = e.tg_user_id
+              AND k.event_type = e.event_type
+              AND k.ts = e.ts
+          )
+      )
+    `);
+    tx.update(events).set({ projectId: channelProjectId }).where(eq(events.projectId, botProjectId)).run();
+    tx.update(campaigns).set({ projectId: channelProjectId }).where(eq(campaigns.projectId, botProjectId)).run();
+    tx.update(utmLinks).set({ projectId: channelProjectId }).where(eq(utmLinks.projectId, botProjectId)).run();
+
+    // The bot row goes before the channel takes its username: bot_username is
+    // what incoming events are matched on, and for a moment two rows holding it
+    // would make that match ambiguous.
+    tx.delete(projects).where(eq(projects.id, botProjectId)).run();
+    tx.update(projects)
+      .set({
+        botUsername: bot.botUsername,
+        type: deriveProjectType({ telegramChatId: channel.telegramChatId, botUsername: bot.botUsername }),
+      })
+      .where(eq(projects.id, channelProjectId))
+      .run();
+  });
+
+  return await db.query.projects.findFirst({ where: eq(projects.id, channelProjectId) });
 }
 
 export async function deleteProjectCascade(projectId: number) {
@@ -124,11 +204,14 @@ export async function deleteProjectCascade(projectId: number) {
     await db.delete(campaigns).where(inArray(campaigns.id, campaignIds));
   }
 
-  // Clear references from channels linked to this privatka project
-  await db
-    .update(projects)
-    .set({ linkedProjectId: null })
-    .where(eq(projects.linkedProjectId, projectId));
+  // Events that belong to the project without going through a campaign link —
+  // organic ones and UTM ones. Before events carried a project of their own
+  // they did not exist; now they do, and left behind they would block the
+  // project row itself on the foreign key.
+  const delProjectEvents = await db.delete(events).where(eq(events.projectId, projectId)).returning();
+  deletedEventsCount += delProjectEvents.length;
+
+  await db.delete(utmLinks).where(eq(utmLinks.projectId, projectId));
 
   // Delete project itself
   const [deletedProject] = await db
@@ -368,7 +451,10 @@ export async function createCampaignWithLinks(
       await deleteCampaignCascade(campaign.id);
       throw error;
     }
-  } else if (project?.type === "channel" && project.telegramChatId && createInviteFn) {
+  } else if (project?.telegramChatId && createInviteFn) {
+    // By composition, not by type: a channel that also has a bot is still a
+    // channel people can be invited into, and that used to be refused here
+    // because its type was no longer "channel".
     // 1. Channel invite link
     const inviteName = `${advertiser} — ${linkName}`;
     channelLink = await createInviteFn(project.telegramChatId, campaign.id, inviteName, isClosedLink, linkName);
