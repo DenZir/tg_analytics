@@ -16,7 +16,11 @@ import { PROJECT_TYPES } from "../db/projectTypes.js";
  * channel it sells access to, and anything left over falls back to a monogram
  * drawn by the dashboard.
  *
- * Results are cached on disk next to the database, because a Telegram round
+ * Which is why an avatar can also be uploaded by hand. A manual picture wins
+ * over anything Telegram would give us and never expires — it is a decision,
+ * not a cache — and removing it falls straight back to the Telegram one.
+ *
+ * Telegram results are cached on disk next to the database, because a round
  * trip per avatar per page render would be absurd for a picture that changes
  * once a year. Failures are cached too, for a shorter time: without that, a
  * project that simply has no photo would re-ask Telegram on every render.
@@ -38,7 +42,56 @@ function cachePaths(projectId: number) {
   return {
     image: path.join(dir, `${projectId}.jpg`),
     miss: path.join(dir, `${projectId}.miss`),
+    custom: path.join(dir, `${projectId}.custom`),
   };
+}
+
+export interface AvatarImage {
+  buffer: Buffer;
+  contentType: string;
+  /** true когда картинку загрузили руками, а не взяли из Telegram */
+  custom: boolean;
+}
+
+/**
+ * Определяет формат по сигнатуре файла, а не по заявленному заголовку.
+ *
+ * Байты уходят обратно в браузер, поэтому верить присланному Content-Type
+ * нельзя: он проверяется при загрузке, но на диске уже ничем не подтверждён.
+ */
+function sniffImageType(buffer: Buffer): string | null {
+  if (buffer.length < 12) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return "image/png";
+  }
+  if (buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") {
+    return "image/webp";
+  }
+  return null;
+}
+
+export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+
+/** Сохраняет загруженную вручную аватарку. Возвращает false, если это не картинка. */
+export function setCustomAvatar(projectId: number, buffer: Buffer): boolean {
+  if (buffer.length === 0 || buffer.length > MAX_AVATAR_BYTES) return false;
+  if (!sniffImageType(buffer)) return false;
+  fs.writeFileSync(cachePaths(projectId).custom, buffer);
+  return true;
+}
+
+/** Убирает ручную аватарку — проект возвращается к телеграмовской или к монограмме. */
+export function clearCustomAvatar(projectId: number): void {
+  const { custom, miss } = cachePaths(projectId);
+  fs.rmSync(custom, { force: true });
+  // Промах мог быть записан до загрузки картинки; сбрасываем, чтобы Telegram
+  // спросили заново сразу, а не через час.
+  fs.rmSync(miss, { force: true });
+}
+
+export function hasCustomAvatar(projectId: number): boolean {
+  return fs.existsSync(cachePaths(projectId).custom);
 }
 
 function freshEnough(file: string, ttlMs: number): boolean {
@@ -95,12 +148,23 @@ async function downloadFromTelegram(chatId: string): Promise<Buffer | null> {
  * had. Never throws: a missing avatar is a cosmetic detail, and the dashboard
  * draws a monogram instead.
  */
-export async function getProjectAvatar(projectId: number): Promise<Buffer | null> {
-  const { image, miss } = cachePaths(projectId);
+export async function getProjectAvatar(projectId: number): Promise<AvatarImage | null> {
+  const { image, miss, custom } = cachePaths(projectId);
+
+  // Ручная картинка старше всего остального и не устаревает: её выбрал человек.
+  try {
+    if (fs.existsSync(custom)) {
+      const buffer = fs.readFileSync(custom);
+      const contentType = sniffImageType(buffer);
+      if (contentType) return { buffer, contentType, custom: true };
+    }
+  } catch (err) {
+    console.error(`[avatars] Failed to read the uploaded avatar for project ${projectId}:`, err);
+  }
 
   if (freshEnough(image, CACHE_TTL_MS)) {
     try {
-      return fs.readFileSync(image);
+      return { buffer: fs.readFileSync(image), contentType: "image/jpeg", custom: false };
     } catch {
       // Unreadable cache entry: fall through and fetch it again.
     }
@@ -118,7 +182,7 @@ export async function getProjectAvatar(projectId: number): Promise<Buffer | null
       } catch {
         /* ничего страшного */
       }
-      return buffer;
+      return { buffer, contentType: "image/jpeg", custom: false };
     }
 
     fs.writeFileSync(miss, "");
@@ -128,7 +192,7 @@ export async function getProjectAvatar(projectId: number): Promise<Buffer | null
     // A network blip shouldn't be remembered for an hour, but a stale picture
     // is better than none: serve whatever is on disk, however old.
     try {
-      return fs.readFileSync(image);
+      return { buffer: fs.readFileSync(image), contentType: "image/jpeg", custom: false };
     } catch {
       return null;
     }

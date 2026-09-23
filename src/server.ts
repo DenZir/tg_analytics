@@ -4,7 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { db, sqlite } from "./db/index.js";
-import { links } from "./db/schema.js";
+import { links, projects } from "./db/schema.js";
 import {
   createCampaign,
   getAllProjects,
@@ -53,7 +53,13 @@ import {
 } from "./services/utm.js";
 import { getCampaignGeoBreakdown } from "./services/geo.js";
 import { getOverview } from "./services/overview.js";
-import { getProjectAvatar } from "./services/avatars.js";
+import {
+  getProjectAvatar,
+  setCustomAvatar,
+  clearCustomAvatar,
+  hasCustomAvatar,
+  MAX_AVATAR_BYTES,
+} from "./services/avatars.js";
 import { isProjectType, PROJECT_TYPE_VALUES } from "./db/projectTypes.js";
 import { eq } from "drizzle-orm";
 import {
@@ -318,8 +324,10 @@ app.get("/api/export/full", async (_req, res) => {
 // GET /api/projects
 app.get("/api/projects", async (_req, res) => {
   try {
-    const projectsList = await getAllProjects();
-    res.json(projectsList);
+    const list = await getAllProjects();
+    // hasCustomAvatar — чтобы дашборд знал, у кого показывать «сбросить»:
+    // это свойство файла на диске, в таблице проектов его нет.
+    res.json(list.map((p) => ({ ...p, hasCustomAvatar: hasCustomAvatar(p.id) })));
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -363,17 +371,74 @@ app.get("/api/projects/:id/avatar", async (req, res) => {
       return res.status(400).json({ error: "Invalid project id" });
     }
 
-    const buffer = await getProjectAvatar(projectId);
-    if (!buffer) return res.status(404).end();
+    const avatar = await getProjectAvatar(projectId);
+    if (!avatar) return res.status(404).end();
 
-    // Cached hard on the client too: the service already refuses to re-ask
-    // Telegram more than once a day, and a re-render should not even reach us.
-    res.set("Content-Type", "image/jpeg");
-    res.set("Cache-Control", "private, max-age=86400");
-    res.end(buffer);
+    // Short client cache on purpose. The expensive part — asking Telegram — is
+    // already cached on disk for a day, so serving these bytes costs nothing,
+    // and a picture the admin just replaced by hand should not stay stale in
+    // everyone else's browser until tomorrow.
+    res.set("Content-Type", avatar.contentType);
+    res.set("Cache-Control", "private, max-age=300");
+    res.end(avatar.buffer);
   } catch (error: any) {
     console.error("[api] Failed to serve a project avatar:", error);
     res.status(404).end();
+  }
+});
+
+// POST /api/projects/:id/avatar — upload a picture by hand.
+//
+// Raw image bytes in the body rather than multipart: it needs no extra
+// dependency, and there is exactly one file. The global express.json() above
+// only claims application/json, so it leaves these bodies alone.
+app.post(
+  "/api/projects/:id/avatar",
+  express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: MAX_AVATAR_BYTES }),
+  async (req, res) => {
+    try {
+      const projectId = Number(req.params.id);
+      if (!Number.isInteger(projectId) || projectId <= 0) {
+        return res.status(400).json({ error: "Invalid project id" });
+      }
+
+      const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+      if (!project) return res.status(404).json({ error: "Project not found" });
+
+      const body: unknown = req.body;
+      if (!Buffer.isBuffer(body) || body.length === 0) {
+        return res
+          .status(400)
+          .json({ error: "Expected raw image bytes with Content-Type image/png, image/jpeg or image/webp" });
+      }
+
+      // setCustomAvatar checks the file's own signature, not the declared
+      // header — these bytes get served back to a browser later.
+      if (!setCustomAvatar(projectId, body)) {
+        return res.status(400).json({ error: "Not a valid PNG, JPEG or WebP image, or larger than 2 MB" });
+      }
+
+      res.json({ ok: true, custom: true });
+    } catch (error: any) {
+      console.error("[api] Failed to store a project avatar:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// DELETE /api/projects/:id/avatar — drop the manual picture and fall back to
+// whatever Telegram offers, or to the monogram.
+app.delete("/api/projects/:id/avatar", async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ error: "Invalid project id" });
+    }
+    clearCustomAvatar(projectId);
+    res.json({ ok: true, custom: false });
+  } catch (error: any) {
+    console.error("[api] Failed to remove a project avatar:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 

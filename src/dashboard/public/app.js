@@ -6,7 +6,7 @@ import {
   last21Dates, seriesForCampaign, windowDates, prevWindowDates, sumDates, countActiveCampaigns, windowArrays,
   computeLinkStats, allocatePrice, computeLinkRows, linkDisplayUrl, state, CAMP_PAGE_SIZE,
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
-  fillCampaignOptions, saveProjectScope, projectAvatarHtml,
+  fillCampaignOptions, saveProjectScope, projectAvatarHtml, uploadProjectAvatar, bumpAvatarVersion,
   daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
 } from './shared.js';
 
@@ -868,6 +868,56 @@ function renderTrashModal(rows) {
 }
 
 /* ================= ПРОЕКТЫ ================= */
+// Загрузка и сброс аватарки проекта.
+//
+// Один скрытый <input type="file"> на всю таблицу, а не по одному на строку:
+// диалог всё равно открывается только для того проекта, по которому кликнули.
+let avatarTargetProjectId = null;
+
+function bindAvatarControls() {
+  $$('#projBody .pava-edit').forEach(b => b.addEventListener('click', () => {
+    avatarTargetProjectId = Number(b.dataset.ava);
+    const input = $('#avaInput');
+    input.value = '';
+    input.click();
+  }));
+
+  $$('#projBody .pava-reset').forEach(b => b.addEventListener('click', async () => {
+    const id = Number(b.dataset.avaReset);
+    try {
+      await fetchJSON(`/api/projects/${id}/avatar`, { method: 'DELETE' });
+      bumpAvatarVersion(id);
+      await afterMutation();
+      renderProjectPicker();
+      await renderProjects();
+      toast('Аватарка сброшена', 'info');
+    } catch (err) {
+      toast(`Не удалось сбросить аватарку: ${err.message}`, 'warn');
+    }
+  }));
+}
+
+(function initAvatarInput() {
+  const input = $('#avaInput');
+  if (!input) return;
+  input.addEventListener('change', async () => {
+    const file = input.files && input.files[0];
+    if (!file || !avatarTargetProjectId) return;
+    try {
+      await uploadProjectAvatar(avatarTargetProjectId, file);
+      await afterMutation();
+      renderProjectPicker();
+      await renderProjects();
+      toast('Аватарка обновлена', 'info');
+    } catch (err) {
+      toast(`Не удалось загрузить: ${err.message}`, 'warn');
+    } finally {
+      avatarTargetProjectId = null;
+      input.value = '';
+    }
+  });
+})();
+
 async function renderProjects() {
   const list = DATA.projects;
   $('#projSub').textContent = `${list.length} ${plural(list.length, 'проект', 'проекта', 'проектов')} · каналы и боты-приватки`;
@@ -880,7 +930,11 @@ async function renderProjects() {
       const linked = p.linkedProjectId ? DATA.projectsById[p.linkedProjectId] : null;
       const linksCount = linkCounts ? (linkCounts[p.id] ?? 0) : '…';
       return `<tr style="--i:${i}">
-        <td><div class="cell-main" style="display:flex;align-items:center;gap:9px">${projectAvatarHtml(p)}<span>${escapeHtml(p.name)}</span></div></td>
+        <td><div class="cell-main" style="display:flex;align-items:center;gap:9px">
+          <button class="pava-edit" data-ava="${p.id}" type="button" title="Загрузить свою аватарку">${projectAvatarHtml(p)}<span class="pava-pen">✎</span></button>
+          <span>${escapeHtml(p.name)}</span>
+          ${p.hasCustomAvatar ? `<button class="pava-reset" data-ava-reset="${p.id}" type="button" title="Убрать загруженную аватарку и вернуться к телеграмовской">×</button>` : ''}
+        </div></td>
         <td><span class="chip ${typeChipClass(p.type)}">${typeLabel(p.type)}</span></td>
         <td class="mono" style="font-size:12px">${escapeHtml(identOf(p))}</td>
         <td style="font-size:12px;color:var(--muted)">${linked ? escapeHtml(linked.name) : '—'}</td>
@@ -889,6 +943,7 @@ async function renderProjects() {
     }).join('');
   }
   paint(null);
+  bindAvatarControls();
 
   $('#f-link').innerHTML = '<option value="">— без связи —</option>' + list.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
 
@@ -900,6 +955,7 @@ async function renderProjects() {
       linkCounts[c.projectId] = (linkCounts[c.projectId] || 0) + (hist?.links?.length || 0);
     }
     paint(linkCounts);
+    bindAvatarControls();
   } catch (err) {
     console.error('[dashboard] Failed to load link counts for projects:', err);
   }

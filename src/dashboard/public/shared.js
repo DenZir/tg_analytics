@@ -399,13 +399,52 @@ function loadProjectScope() {
  * Цвет выводится из названия, а не из id: так он переживает пересоздание
  * проекта и остаётся тем же самым кружком в глазах человека.
  */
+// Версия картинки проекта, чтобы только что загруженная аватарка появилась
+// сразу. Сервер отдаёт её с коротким кэшем, но у вкладки, которая её и
+// заменила, старая лежит в памяти — и без смены адреса она бы и осталась.
+const avatarVersions = new Map();
+
+export function bumpAvatarVersion(projectId) {
+  avatarVersions.set(Number(projectId), Date.now());
+}
+
 export function projectAvatarHtml(project, extraClass = '') {
   const name = String(project?.name || '');
   const initial = name.trim().charAt(0).toUpperCase() || '?';
   let hue = 0;
   for (const ch of name) hue = (hue * 31 + ch.codePointAt(0)) % 360;
+  const v = avatarVersions.get(Number(project.id));
+  const src = `/api/projects/${project.id}/avatar` + (v ? `?v=${v}` : '');
   return `<span class="pava ${extraClass}" style="--h:${hue}">${escapeHtml(initial)}` +
-    `<img src="/api/projects/${project.id}/avatar" alt="" loading="lazy" onerror="this.remove()"></span>`;
+    `<img src="${src}" alt="" loading="lazy" onerror="this.remove()"></span>`;
+}
+
+export const AVATAR_MIME = ['image/png', 'image/jpeg', 'image/webp'];
+export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Отправляет файл как есть, сырым телом: сервер ждёт именно байты картинки,
+ * а не multipart — одному файлу форма не нужна.
+ */
+export async function uploadProjectAvatar(projectId, file) {
+  if (!AVATAR_MIME.includes(file.type)) {
+    throw new Error('Нужен PNG, JPEG или WebP');
+  }
+  if (file.size > AVATAR_MAX_BYTES) {
+    throw new Error('Файл больше 2 МБ');
+  }
+  const res = await fetch(`/api/projects/${projectId}/avatar`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+  if (res.status === 401) { window.location.href = '/'; return; }
+  if (!res.ok) {
+    let msg = res.statusText || `HTTP ${res.status}`;
+    try { const b = await res.json(); if (b?.error) msg = b.error; } catch { /* не JSON */ }
+    throw new Error(msg);
+  }
+  bumpAvatarVersion(projectId);
 }
 
 export function saveProjectScope(ids) {
