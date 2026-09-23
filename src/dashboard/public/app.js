@@ -6,7 +6,7 @@ import {
   last21Dates, seriesForCampaign, windowDates, prevWindowDates, sumDates, countActiveCampaigns, windowArrays,
   computeLinkStats, allocatePrice, computeLinkRows, linkDisplayUrl, state, CAMP_PAGE_SIZE,
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
-  fillCampaignOptions, saveProjectScope,
+  fillCampaignOptions, saveProjectScope, projectAvatarHtml,
   daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
 } from './shared.js';
 
@@ -54,13 +54,21 @@ function renderProjectPicker() {
   const lbl = $('#projSelLbl');
   if (lbl) lbl.textContent = projectScopeLabel();
 
+  // Аватарка на самой кнопке имеет смысл только когда выбран один проект:
+  // для набора или для «всех» показывать чьё-то одно лицо — врать.
+  const btnAva = $('#projSelAva');
+  if (btnAva) {
+    const only = state.projectIds.length === 1 ? DATA.projectsById[state.projectIds[0]] : null;
+    btnAva.innerHTML = only ? projectAvatarHtml(only, 'sm') : '';
+  }
+
   const pop = $('#projSelPop');
   if (!pop) return;
   const ids = state.projectIds;
   const tick = '<svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
   const rows = (DATA.projects || []).map(p => `
     <button class="projsel-it ${ids.includes(p.id) ? 'on' : ''}" data-pid="${p.id}" type="button">
-      ${tick}<span>${escapeHtml(p.name)}</span>
+      ${tick}${projectAvatarHtml(p)}<span>${escapeHtml(p.name)}</span>
       <span class="ptype">${PROJECT_TYPE_SHORT[p.type] || escapeHtml(p.type)}</span>
     </button>`).join('');
 
@@ -872,7 +880,7 @@ async function renderProjects() {
       const linked = p.linkedProjectId ? DATA.projectsById[p.linkedProjectId] : null;
       const linksCount = linkCounts ? (linkCounts[p.id] ?? 0) : '…';
       return `<tr style="--i:${i}">
-        <td><div class="cell-main">${escapeHtml(p.name)}</div></td>
+        <td><div class="cell-main" style="display:flex;align-items:center;gap:9px">${projectAvatarHtml(p)}<span>${escapeHtml(p.name)}</span></div></td>
         <td><span class="chip ${typeChipClass(p.type)}">${typeLabel(p.type)}</span></td>
         <td class="mono" style="font-size:12px">${escapeHtml(identOf(p))}</td>
         <td style="font-size:12px;color:var(--muted)">${linked ? escapeHtml(linked.name) : '—'}</td>

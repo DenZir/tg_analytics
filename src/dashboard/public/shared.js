@@ -387,6 +387,27 @@ function loadProjectScope() {
   } catch { return []; }
 }
 
+/**
+ * Кружок проекта: настоящая аватарка из Telegram, а под ней — монограмма.
+ *
+ * Картинка грузится поверх монограммы и сама себя убирает, если её нет
+ * (`/api/projects/:id/avatar` отвечает 404 для проектов без чата — например,
+ * для бота, у которого нет связанного канала). Поэтому отдельный запрос
+ * «а есть ли аватарка» не нужен, и пустой кружок не мигает: буква на месте
+ * с первого кадра.
+ *
+ * Цвет выводится из названия, а не из id: так он переживает пересоздание
+ * проекта и остаётся тем же самым кружком в глазах человека.
+ */
+export function projectAvatarHtml(project, extraClass = '') {
+  const name = String(project?.name || '');
+  const initial = name.trim().charAt(0).toUpperCase() || '?';
+  let hue = 0;
+  for (const ch of name) hue = (hue * 31 + ch.codePointAt(0)) % 360;
+  return `<span class="pava ${extraClass}" style="--h:${hue}">${escapeHtml(initial)}` +
+    `<img src="/api/projects/${project.id}/avatar" alt="" loading="lazy" onerror="this.remove()"></span>`;
+}
+
 export function saveProjectScope(ids) {
   try { localStorage.setItem(PROJECT_SCOPE_KEY, JSON.stringify(ids)); } catch { /* приватный режим — не беда */ }
 }
@@ -480,7 +501,11 @@ export function daysUntilPurge(deletedAt) {
 }
 
 /* ================= ПРОЕКТЫ ================= */
-export function typeLabel(t) { return t === 'channel' ? 'Канал' : 'Бот-подписка'; }
+// bot_direct — бот, продающий свой продукт без канала за спиной (VPN).
+// До его появления любой не-канал автоматически считался приваткой, из-за чего
+// такой проект подписывался чужим типом.
+const PROJECT_TYPE_LABELS = { channel: 'Канал', bot_subscription: 'Бот-подписка', bot_direct: 'Бот без канала' };
+export function typeLabel(t) { return PROJECT_TYPE_LABELS[t] || t; }
 export function typeChipClass(t) { return t === 'channel' ? 't-proj' : 't-bot'; }
 export function identOf(p) { return p.type === 'channel' ? (p.telegramChatId || '—') : (p.botUsername || '—'); }
 

@@ -210,16 +210,23 @@ main{min-width:0;display:flex;flex-direction:column}
 .table-card{overflow:hidden}
 /* Селектор проектов: «Все» или произвольный набор. Выпадающий список, а не
    строка кнопок — проектов со временем станет больше, чем влезет в шапку. */
+/* Кружок проекта. Монограмма — фон, аватарка ложится поверх; если её нет,
+   <img> удаляет себя, и остаётся буква. */
+.pava{position:relative;flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;overflow:hidden;background:hsl(var(--h) 42% 34%);color:#fff;font:700 10px var(--body);line-height:1;user-select:none}
+.pava img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pava.sm{width:18px;height:18px;font-size:9px}
 .projsel{position:relative}
 .projsel>.btn{gap:8px}
-.projsel-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:60;min-width:250px;max-height:340px;overflow:auto;padding:6px;border:1px solid var(--line2);border-radius:12px;background:linear-gradient(180deg,#121824,#0D1219);box-shadow:0 18px 44px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06)}
+.projsel>.btn .pava{margin-right:-1px}
+.projsel-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:60;min-width:278px;max-height:340px;overflow:auto;padding:6px;border:1px solid var(--line2);border-radius:12px;background:linear-gradient(180deg,#121824,#0D1219);box-shadow:0 18px 44px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06)}
 .projsel-pop[hidden]{display:none}
 .projsel-it{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:8px;background:none;color:var(--muted);font:500 13px var(--body);text-align:left;cursor:pointer}
+.projsel-it>span:not(.ptype){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .projsel-it:hover{background:rgba(255,255,255,.05);color:var(--text)}
 .projsel-it.on{color:var(--text)}
 .projsel-it .tick{width:15px;flex:none;color:var(--accent);opacity:0}
 .projsel-it.on .tick{opacity:1}
-.projsel-it .ptype{margin-left:auto;font:600 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.projsel-it .ptype{margin-left:auto;padding-left:8px;flex:none;font:600 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .projsel-sep{height:1px;margin:5px 8px;background:var(--line)}
 /* Источники трафика */
 .src-row{display:grid;grid-template-columns:104px 1fr 92px;align-items:center;gap:12px;padding:9px 18px}
@@ -449,6 +456,7 @@ dialog#confirmDialog::backdrop{background:rgba(5,8,13,.62);backdrop-filter:blur(
     <div class="projsel" id="projSel" hidden>
       <button class="btn" id="projSelBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3.5 13 8.5 4.7L20.5 13"/></svg>
+        <span id="projSelAva"></span>
         <span id="projSelLbl">Все проекты</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px"><path d="m6 9 6 6 6-6"/></svg>
       </button>
@@ -614,7 +622,7 @@ dialog#confirmDialog::backdrop{background:rgba(5,8,13,.62);backdrop-filter:blur(
       <form class="form-body" id="projForm" novalidate>
         <div class="fld"><label>Название</label><input class="inp" id="f-name" placeholder="Например: Крипто Инсайд"></div>
         <div class="fld"><label>Тип проекта</label>
-          <select class="inp" id="f-type"><option value="channel">Telegram-канал</option><option value="bot_subscription">Бот-подписка</option></select>
+          <select class="inp" id="f-type"><option value="channel">Telegram-канал</option><option value="bot_subscription">Бот-подписка</option><option value="bot_direct">Бот без канала</option></select>
         </div>
         <div class="fld" id="fldChat"><label>Chat ID канала</label><input class="inp mono" id="f-chat" placeholder="-100…"></div>
         <div class="fld" id="fldBot" hidden><label>Username бота</label><input class="inp mono" id="f-bot" placeholder="@my_private_bot"></div>

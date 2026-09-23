@@ -53,6 +53,7 @@ import {
 } from "./services/utm.js";
 import { getCampaignGeoBreakdown } from "./services/geo.js";
 import { getOverview } from "./services/overview.js";
+import { getProjectAvatar } from "./services/avatars.js";
 import { isProjectType, PROJECT_TYPE_VALUES } from "./db/projectTypes.js";
 import { eq } from "drizzle-orm";
 import {
@@ -349,6 +350,30 @@ app.post("/api/projects", async (req, res) => {
     res.status(201).json(project);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/projects/:id/avatar — the project's Telegram picture, or 404 when
+// there is none. Served as an image so the dashboard can point an <img> at it
+// and fall back to a monogram on error, without a separate "does it exist" call.
+app.get("/api/projects/:id/avatar", async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ error: "Invalid project id" });
+    }
+
+    const buffer = await getProjectAvatar(projectId);
+    if (!buffer) return res.status(404).end();
+
+    // Cached hard on the client too: the service already refuses to re-ask
+    // Telegram more than once a day, and a re-render should not even reach us.
+    res.set("Content-Type", "image/jpeg");
+    res.set("Cache-Control", "private, max-age=86400");
+    res.end(buffer);
+  } catch (error: any) {
+    console.error("[api] Failed to serve a project avatar:", error);
+    res.status(404).end();
   }
 });
 
