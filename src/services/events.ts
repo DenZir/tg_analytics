@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { events, links, campaigns, projects, utmLinks } from "../db/schema.js";
-import { eq, desc, inArray } from "drizzle-orm";
+import { and, eq, desc, inArray, sql } from "drizzle-orm";
 import { EVENT_SOURCES, type EventSource } from "../db/eventTypes.js";
 import { aggregate } from "../jobs/dailyAggregate.js";
 
@@ -95,6 +95,17 @@ function place(tx: any, input: LogEventInput): Placement {
     }
   }
 
+  // Which project the caller is speaking for, if it says. A bot username is as
+  // good as an explicit id here: it names exactly one project.
+  const scopeProjectId = input.projectId ?? resolveProjectByBot(tx, input.botUsername);
+
+  // The user's history, looked up *inside* that project when it is known.
+  //
+  // Scoping in the query rather than checking the latest row afterwards matters:
+  // a buyer whose very last event happened in another project still has their
+  // history here, and a check on that one row would throw it away and book the
+  // purchase as organic. Scoping at all matters too — somebody who exists in two
+  // projects must not drag the first one's campaign into the second one's money.
   const lastTouch = tx
     .select({
       projectId: events.projectId,
@@ -103,15 +114,16 @@ function place(tx: any, input: LogEventInput): Placement {
       source: events.source,
     })
     .from(events)
-    .where(eq(events.tgUserId, input.tgUserId))
+    .where(
+      scopeProjectId !== undefined
+        ? and(eq(events.tgUserId, input.tgUserId), eq(events.projectId, scopeProjectId))
+        : eq(events.tgUserId, input.tgUserId)
+    )
     .orderBy(desc(events.ts), desc(events.id))
     .limit(1)
     .all();
 
-  // A user's history only carries over inside the project the caller means. A
-  // buyer who exists in two projects must not drag the first one's campaign
-  // into the second one's revenue.
-  if (lastTouch.length > 0 && (!input.projectId || lastTouch[0].projectId === input.projectId)) {
+  if (lastTouch.length > 0) {
     return {
       projectId: lastTouch[0].projectId,
       linkId: lastTouch[0].linkId,
@@ -120,34 +132,36 @@ function place(tx: any, input: LogEventInput): Placement {
     };
   }
 
-  if (input.projectId) {
+  if (scopeProjectId !== undefined) {
     return {
-      projectId: input.projectId,
+      projectId: scopeProjectId,
       linkId: null,
       utmLinkId: null,
       source: EVENT_SOURCES.ORGANIC,
     };
   }
 
-  if (input.botUsername) {
-    const row = tx
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.botUsername, input.botUsername.replace(/^@/, "")))
-      .orderBy(projects.id)
-      .limit(1)
-      .all();
-    if (row.length > 0) {
-      return {
-        projectId: row[0].id,
-        linkId: null,
-        utmLinkId: null,
-        source: EVENT_SOURCES.ORGANIC,
-      };
-    }
-  }
-
   throw new UnplaceableEventError(input.tgUserId);
+}
+
+/**
+ * The project a bot belongs to, found by its username.
+ *
+ * Case-insensitive, as Telegram usernames are: a bot learns its own name from
+ * getMe(), which returns the canonical casing, while the project may well have
+ * been registered in lower case by hand.
+ */
+function resolveProjectByBot(tx: any, botUsername?: string): number | undefined {
+  const clean = botUsername?.trim().replace(/^@/, "");
+  if (!clean) return undefined;
+  const row = tx
+    .select({ id: projects.id })
+    .from(projects)
+    .where(sql`lower(${projects.botUsername}) = lower(${clean})`)
+    .orderBy(projects.id)
+    .limit(1)
+    .all();
+  return row.length > 0 ? row[0].id : undefined;
 }
 
 export async function logEvent(input: LogEventInput) {
