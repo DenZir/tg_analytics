@@ -165,68 +165,65 @@ export async function deleteProjectCascade(projectId: number) {
   });
   if (!project) return null;
 
-  // 1. Find all campaigns for this project
-  const projectCampaigns = await db
-    .select()
-    .from(campaigns)
-    .where(eq(campaigns.projectId, projectId));
+  // One synchronous transaction — see deleteCampaignCascade for why. The same
+  // race hit here: deleting a project while an event arrived could fail on the
+  // foreign key half way, with events and links already gone.
+  return db.transaction((tx) => {
+    const campaignIds = tx
+      .select({ id: campaigns.id })
+      .from(campaigns)
+      .where(eq(campaigns.projectId, projectId))
+      .all()
+      .map((c) => c.id);
 
-  const campaignIds = projectCampaigns.map((c) => c.id);
+    let deletedEventsCount = 0;
+    let deletedLinksCount = 0;
+    let deletedTagsCount = 0;
+    let deletedStatsCount = 0;
 
-  let deletedEventsCount = 0;
-  let deletedLinksCount = 0;
-  let deletedTagsCount = 0;
-  let deletedStatsCount = 0;
+    if (campaignIds.length > 0) {
+      const linkIds = tx
+        .select({ id: links.id })
+        .from(links)
+        .where(inArray(links.campaignId, campaignIds))
+        .all()
+        .map((l) => l.id);
 
-  if (campaignIds.length > 0) {
-    // Find all links for these campaigns
-    const campaignLinks = await db
-      .select()
-      .from(links)
-      .where(inArray(links.campaignId, campaignIds));
-
-    const linkIds = campaignLinks.map((l) => l.id);
-
-    if (linkIds.length > 0) {
-      const delEvs = await db.delete(events).where(inArray(events.linkId, linkIds)).returning();
-      deletedEventsCount = delEvs.length;
+      if (linkIds.length > 0) {
+        deletedEventsCount += tx.delete(events).where(inArray(events.linkId, linkIds)).run().changes;
+      }
+      deletedLinksCount = tx.delete(links).where(inArray(links.campaignId, campaignIds)).run().changes;
+      deletedTagsCount = tx.delete(campaignTags).where(inArray(campaignTags.campaignId, campaignIds)).run().changes;
+      deletedStatsCount = tx.delete(dailyStats).where(inArray(dailyStats.campaignId, campaignIds)).run().changes;
+      tx.delete(campaigns).where(inArray(campaigns.id, campaignIds)).run();
     }
 
-    const delLinks = await db.delete(links).where(inArray(links.campaignId, campaignIds)).returning();
-    deletedLinksCount = delLinks.length;
+    // Events that belong to the project without going through a campaign link
+    // — organic and UTM ones — and anything still pointing at its UTM links.
+    // Left behind, they would block the project row on the foreign key.
+    const utmIds = tx
+      .select({ id: utmLinks.id })
+      .from(utmLinks)
+      .where(eq(utmLinks.projectId, projectId))
+      .all()
+      .map((u) => u.id);
+    if (utmIds.length > 0) {
+      deletedEventsCount += tx.delete(events).where(inArray(events.utmLinkId, utmIds)).run().changes;
+    }
+    deletedEventsCount += tx.delete(events).where(eq(events.projectId, projectId)).run().changes;
+    tx.delete(utmLinks).where(eq(utmLinks.projectId, projectId)).run();
 
-    const delTags = await db.delete(campaignTags).where(inArray(campaignTags.campaignId, campaignIds)).returning();
-    deletedTagsCount = delTags.length;
+    const [deletedProject] = tx.delete(projects).where(eq(projects.id, projectId)).returning().all();
 
-    const delStats = await db.delete(dailyStats).where(inArray(dailyStats.campaignId, campaignIds)).returning();
-    deletedStatsCount = delStats.length;
-
-    await db.delete(campaigns).where(inArray(campaigns.id, campaignIds));
-  }
-
-  // Events that belong to the project without going through a campaign link —
-  // organic ones and UTM ones. Before events carried a project of their own
-  // they did not exist; now they do, and left behind they would block the
-  // project row itself on the foreign key.
-  const delProjectEvents = await db.delete(events).where(eq(events.projectId, projectId)).returning();
-  deletedEventsCount += delProjectEvents.length;
-
-  await db.delete(utmLinks).where(eq(utmLinks.projectId, projectId));
-
-  // Delete project itself
-  const [deletedProject] = await db
-    .delete(projects)
-    .where(eq(projects.id, projectId))
-    .returning();
-
-  return {
-    deletedProject,
-    deletedCampaignsCount: campaignIds.length,
-    deletedTagsCount,
-    deletedLinksCount,
-    deletedEventsCount,
-    deletedStatsCount,
-  };
+    return {
+      deletedProject,
+      deletedCampaignsCount: campaignIds.length,
+      deletedTagsCount,
+      deletedLinksCount,
+      deletedEventsCount,
+      deletedStatsCount,
+    };
+  });
 }
 
 export async function createCampaign(input: CreateCampaignInput) {
@@ -755,28 +752,37 @@ export async function deleteCampaignCascade(campaignId: number) {
   });
   if (!campaign) return null;
 
-  const campaignLinks = await db.select().from(links).where(eq(links.campaignId, campaignId));
-  const linkIds = campaignLinks.map((l) => l.id);
+  // One synchronous transaction, for two reasons. Atomicity: a failure half way
+  // used to leave the events and links gone and the campaign still there. And
+  // interleaving: this used to be a chain of awaits, and the daily aggregation —
+  // which runs after every incoming event — could slip in between them and
+  // write daily_stats rows back for this very campaign after they had been
+  // cleared, making the final DELETE fail on the foreign key. A synchronous
+  // better-sqlite3 transaction cannot be interrupted by other JavaScript.
+  return db.transaction((tx) => {
+    const linkIds = tx
+      .select({ id: links.id })
+      .from(links)
+      .where(eq(links.campaignId, campaignId))
+      .all()
+      .map((l) => l.id);
 
-  let deletedEventsCount = 0;
-  if (linkIds.length > 0) {
-    const delEvs = await db.delete(events).where(inArray(events.linkId, linkIds)).returning();
-    deletedEventsCount = delEvs.length;
-  }
+    const deletedEventsCount = linkIds.length
+      ? tx.delete(events).where(inArray(events.linkId, linkIds)).run().changes
+      : 0;
+    const deletedLinksCount = tx.delete(links).where(eq(links.campaignId, campaignId)).run().changes;
+    const deletedTagsCount = tx.delete(campaignTags).where(eq(campaignTags.campaignId, campaignId)).run().changes;
+    const deletedStatsCount = tx.delete(dailyStats).where(eq(dailyStats.campaignId, campaignId)).run().changes;
+    const [deletedCampaign] = tx.delete(campaigns).where(eq(campaigns.id, campaignId)).returning().all();
 
-  const delLinks = await db.delete(links).where(eq(links.campaignId, campaignId)).returning();
-  const delTags = await db.delete(campaignTags).where(eq(campaignTags.campaignId, campaignId)).returning();
-  const delStats = await db.delete(dailyStats).where(eq(dailyStats.campaignId, campaignId)).returning();
-
-  const [deletedCampaign] = await db.delete(campaigns).where(eq(campaigns.id, campaignId)).returning();
-
-  return {
-    deletedCampaign,
-    deletedLinksCount: delLinks.length,
-    deletedTagsCount: delTags.length,
-    deletedStatsCount: delStats.length,
-    deletedEventsCount,
-  };
+    return {
+      deletedCampaign,
+      deletedLinksCount,
+      deletedTagsCount,
+      deletedStatsCount,
+      deletedEventsCount,
+    };
+  });
 }
 
 // Soft-deletes a campaign into the trash. It disappears from all normal

@@ -35,23 +35,34 @@ export async function aggregate() {
       // day's subscriber count is not additive across days and isn't a valid
       // trend metric. Cost-per-buyer is computed correctly (cumulative, unique
       // buyers unioned across campaigns) in services/metrics.ts instead.
-      await db
-        .insert(dailyStats)
-        .values({
-          campaignId: row.campaignId,
-          date: row.date,
-          subs: subsCount,
-          revenue: totalRevenue,
-          cps: null,
-        })
-        .onConflictDoUpdate({
-          target: [dailyStats.campaignId, dailyStats.date],
-          set: {
-            subs: sql`excluded.subs`,
-            revenue: sql`excluded.revenue`,
-            cps: sql`excluded.cps`,
-          },
-        });
+      try {
+        await db
+          .insert(dailyStats)
+          .values({
+            campaignId: row.campaignId,
+            date: row.date,
+            subs: subsCount,
+            revenue: totalRevenue,
+            cps: null,
+          })
+          .onConflictDoUpdate({
+            target: [dailyStats.campaignId, dailyStats.date],
+            set: {
+              subs: sql`excluded.subs`,
+              revenue: sql`excluded.revenue`,
+              cps: sql`excluded.cps`,
+            },
+          });
+      } catch (error: any) {
+        // The rows above were read at the start of the pass; a campaign deleted
+        // since then no longer exists to hang its stats on. That is expected —
+        // this pass runs after every incoming event, deletions can land in the
+        // middle of it — and skipping the one row is right. Letting it throw
+        // used to abandon the whole pass, leaving every other campaign's stats
+        // stale until the next event.
+        if (error?.code === "SQLITE_CONSTRAINT_FOREIGNKEY") continue;
+        throw error;
+      }
     }
 
     console.log(`[CRON] Aggregation completed for ${aggregatedData.length} record(s).`);
