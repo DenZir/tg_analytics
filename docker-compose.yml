@@ -28,6 +28,12 @@ services:
       # host directory here) — persists the scheduled backups written by
       # src/jobs/backup.ts. Must match BACKUP_DIR in .env (default ./backups).
       - ./backups:/app/backups
+      # Project avatars: Telegram's are a cache, but ones uploaded by hand on
+      # the Проекты screen exist nowhere else. services/avatars.ts keeps them
+      # next to the database file, i.e. in /app/avatars — and since only the
+      # database *file* is mounted above, that directory would otherwise live in
+      # the container layer and vanish on every rebuild.
+      - ./avatars:/app/avatars
     healthcheck:
       # Hits GET /health, which checks sqlite connectivity and (if configured)
       # that the channel bot can still reach the Telegram API — replaces the
