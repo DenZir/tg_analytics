@@ -1,5 +1,7 @@
 import fs from "node:fs";
+import https from "node:https";
 import path from "node:path";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { db } from "../db/index.js";
 import { projects } from "../db/schema.js";
 import { eq } from "drizzle-orm";
@@ -111,6 +113,53 @@ async function resolveChatId(projectId: number): Promise<string | null> {
   return project?.telegramChatId ?? null;
 }
 
+/**
+ * GET over HTTPS through the same proxy the bot uses for the Telegram API.
+ *
+ * Plain fetch() cannot take a proxy agent, and on a server that reaches
+ * Telegram only through TELEGRAM_PROXY_URL the file download would fail while
+ * every other bot call worked — which is exactly how this broke before.
+ * The size cap is a guard against a runaway response, not the avatar limit.
+ */
+function httpsGetBuffer(url: string, maxBytes: number): Promise<Buffer> {
+  const proxy = process.env.TELEGRAM_PROXY_URL;
+  const agent = proxy ? new HttpsProxyAgent(proxy) : undefined;
+
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { agent, timeout: FETCH_TIMEOUT_MS }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`HTTP ${res.statusCode}`));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      let size = 0;
+      res.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > maxBytes) {
+          req.destroy(new Error(`file is larger than ${maxBytes} bytes`));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      res.on("end", () => resolve(Buffer.concat(chunks)));
+      res.on("error", reject);
+    });
+    req.on("timeout", () => req.destroy(new Error("timeout")));
+    req.on("error", reject);
+  });
+}
+
+/**
+ * Downloads a file the bot has seen, by its Telegram file id. The URL carries
+ * the bot token, so it is never logged.
+ */
+export async function downloadTelegramFile(fileId: string, maxBytes = MAX_AVATAR_BYTES): Promise<Buffer | null> {
+  if (!channelBot) return null;
+  const link = await channelBot.telegram.getFileLink(fileId);
+  return await httpsGetBuffer(link.toString(), maxBytes);
+}
+
 async function downloadFromTelegram(chatId: string): Promise<Buffer | null> {
   if (!channelBot) return null;
 
@@ -120,15 +169,7 @@ async function downloadFromTelegram(chatId: string): Promise<Buffer | null> {
   const fileId = (chat as { photo?: { small_file_id?: string } }).photo?.small_file_id;
   if (!fileId) return null;
 
-  const file = await channelBot.telegram.getFile(fileId);
-  if (!file.file_path) return null;
-
-  const token = process.env.CHANNEL_BOT_TOKEN;
-  const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (!res.ok) return null;
-
-  return Buffer.from(await res.arrayBuffer());
+  return await downloadTelegramFile(fileId);
 }
 
 /**

@@ -21,6 +21,13 @@ import { logEvent } from "../services/events.js";
 import { getMetrics } from "../services/metrics.js";
 import { EVENT_TYPES } from "../db/eventTypes.js";
 import { hasBot, hasChannel } from "../db/projectTypes.js";
+import {
+  setCustomAvatar,
+  clearCustomAvatar,
+  hasCustomAvatar,
+  downloadTelegramFile,
+  MAX_AVATAR_BYTES,
+} from "../services/avatars.js";
 import { getAdminIds, isAdmin } from "../config/admins.js";
 import { createLoginToken } from "../services/dashboardAuth.js";
 
@@ -69,7 +76,9 @@ export async function createInviteForCampaign(
 
 // --- User Interactive State for Form Card & Privatka Creation ---
 interface UserState {
-  awaitingField?: "advertiser" | "price" | "tags" | "creative" | "linkName" | "readyLink" | "privatka_username" | "privatka_name";
+  awaitingField?: "advertiser" | "price" | "tags" | "creative" | "linkName" | "readyLink" | "privatka_username" | "privatka_name" | "avatar";
+  // Which project the next photo becomes the avatar of, while awaitingField is "avatar".
+  avatarProjectId?: number;
   tempPrivatkaUsername?: string;
   tempCreativesList?: string[];
   // Draft Card State
@@ -362,10 +371,12 @@ async function renderPrivatkaCard(ctx: any, privatkaId: number) {
   // and deleting the whole project lives on the channel card.
   const buttons = hasChannel(privatka)
     ? [
+        [Markup.button.callback("🖼 Аватарка", `ava_ask_${privatka.id}`)],
         [Markup.button.callback("❌ Отключить бота от канала", `chan_unlink_${privatka.id}`)],
         [Markup.button.callback("⬅️ К списку ботов", "menu_privatkas")],
       ]
     : [
+        [Markup.button.callback("🖼 Аватарка", `ava_ask_${privatka.id}`)],
         [Markup.button.callback("🗑️ Удалить бота", `priv_del_confirm_${privatka.id}`)],
         [Markup.button.callback("⬅️ К списку ботов", "menu_privatkas")],
       ];
@@ -408,6 +419,7 @@ async function renderChannelCard(ctx: any, channelId: number) {
   } else {
     buttons.push([Markup.button.callback("🔗 Подключить бота", `chan_link_menu_${channel.id}`)]);
   }
+  buttons.push([Markup.button.callback("🖼 Аватарка", `ava_ask_${channel.id}`)]);
   buttons.push([Markup.button.callback("🗑️ Удалить канал", `chan_del_confirm_${channel.id}`)]);
   buttons.push([Markup.button.callback("⬅️ К списку каналов", "menu_channels")]);
 
@@ -438,6 +450,66 @@ if (channelBot) {
     return next();
   });
 
+  // Avatar upload: a photo — or an image sent as a file, which keeps it
+  // uncompressed — while the admin is in the avatar step. Anything else passes
+  // through untouched.
+  channelBot.on(["photo", "document"], async (ctx: any, next: any) => {
+    const userId = ctx.from?.id;
+    const state = userId ? userStates.get(userId) : undefined;
+    if (!state || state.awaitingField !== "avatar" || !state.avatarProjectId) return next();
+
+    const projectId = state.avatarProjectId;
+    let fileId: string | undefined;
+
+    if (ctx.message.photo) {
+      // Telegram sends every size it made; the largest that still fits the
+      // limit is the sharpest picture we are allowed to keep.
+      const sizes: Array<{ file_id: string; file_size?: number }> = ctx.message.photo;
+      const fitting = sizes.filter((p) => (p.file_size ?? 0) <= MAX_AVATAR_BYTES);
+      fileId = (fitting.length ? fitting : sizes)[(fitting.length ? fitting : sizes).length - 1]?.file_id;
+    } else if (ctx.message.document) {
+      const doc = ctx.message.document;
+      if (!["image/png", "image/jpeg", "image/webp"].includes(doc.mime_type)) {
+        await ctx.reply("⚠️ Нужна картинка — PNG, JPEG или WebP. Пришлите другой файл или нажмите «❌ Отмена».");
+        return;
+      }
+      if ((doc.file_size ?? 0) > MAX_AVATAR_BYTES) {
+        await ctx.reply("⚠️ Файл больше 2 МБ. Пришлите картинку поменьше или просто фото — Telegram его сам сожмёт.");
+        return;
+      }
+      fileId = doc.file_id;
+    }
+
+    if (!fileId) return next();
+
+    try {
+      const buffer = await downloadTelegramFile(fileId);
+      if (!buffer || !setCustomAvatar(projectId, buffer)) {
+        await ctx.reply("⚠️ Не получилось прочитать картинку. Попробуйте другую — PNG, JPEG или WebP до 2 МБ.");
+        return;
+      }
+    } catch (err: any) {
+      console.error(`[channelBot] Failed to store an avatar for project ${projectId}:`, err);
+      await ctx.reply("⚠️ Не удалось скачать картинку из Telegram. Попробуйте ещё раз.");
+      return;
+    }
+
+    delete state.awaitingField;
+    delete state.avatarProjectId;
+    userStates.set(userId, state);
+
+    const project = (await getAllProjects()).find((p) => p.id === projectId);
+    await ctx.reply(
+      `✅ Аватарка для <b>${escapeHtml(project?.name || "проекта")}</b> обновлена. В дашборде она появится в течение пяти минут.`,
+      {
+        parse_mode: "HTML",
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback("⬅️ К карточке", project && hasChannel(project) ? `chan_card_${projectId}` : `priv_card_${projectId}`)],
+        ]),
+      }
+    );
+  });
+
   // Text message listener for interactive inputs
   channelBot.on("text", async (ctx: any, next: any) => {
     const userId = ctx.from?.id;
@@ -447,6 +519,11 @@ if (channelBot) {
 
     if (state && state.awaitingField) {
       const text = ctx.message.text.trim();
+
+      if (state.awaitingField === "avatar") {
+        await ctx.reply("🖼 Жду картинку — фото или файл PNG, JPEG, WebP. Передумали — «❌ Отмена» под сообщением выше.");
+        return;
+      }
 
       // Form Card Fields
       if (state.awaitingField === "advertiser") {
@@ -762,6 +839,58 @@ if (channelBot) {
         await deleteProjectCascade(privId);
         await ctx.answerCbQuery("Бот удалён");
         return renderPrivatkasMenu(ctx);
+      }
+
+      // --- Project avatar ---
+      if (data.startsWith("ava_ask_")) {
+        await ctx.answerCbQuery();
+        const projectId = Number(data.split("_")[2]);
+        const project = (await getAllProjects()).find((p) => p.id === projectId);
+        if (!project) return ctx.answerCbQuery("⚠️ Проект не найден");
+
+        const state = userStates.get(userId) || {};
+        state.awaitingField = "avatar";
+        state.avatarProjectId = projectId;
+        userStates.set(userId, state);
+
+        const custom = hasCustomAvatar(projectId);
+        const buttons: any[] = [];
+        if (custom) {
+          buttons.push([Markup.button.callback("↩️ Вернуть аватарку канала", `ava_reset_${projectId}`)]);
+        }
+        buttons.push([Markup.button.callback("❌ Отмена", `ava_cancel_${projectId}`)]);
+
+        return ctx.reply(
+          `🖼 <b>Аватарка для «${escapeHtml(project.name)}»</b>\n\n` +
+            `Пришлите картинку следующим сообщением — фото или файл PNG, JPEG, WebP до 2 МБ. ` +
+            `Она заменит ${hasChannel(project) ? "аватарку канала" : "монограмму"} в дашборде.` +
+            (custom ? "\n\nСейчас стоит загруженная вручную." : ""),
+          { parse_mode: "HTML", ...Markup.inlineKeyboard(buttons) }
+        );
+      }
+
+      if (data.startsWith("ava_reset_")) {
+        const projectId = Number(data.split("_")[2]);
+        clearCustomAvatar(projectId);
+        const state = userStates.get(userId);
+        if (state) {
+          delete state.awaitingField;
+          delete state.avatarProjectId;
+        }
+        await ctx.answerCbQuery("Аватарка сброшена");
+        try { await ctx.deleteMessage(); } catch (_) {}
+        return;
+      }
+
+      if (data.startsWith("ava_cancel_")) {
+        const state = userStates.get(userId);
+        if (state) {
+          delete state.awaitingField;
+          delete state.avatarProjectId;
+        }
+        await ctx.answerCbQuery("Отменено");
+        try { await ctx.deleteMessage(); } catch (_) {}
+        return;
       }
 
       // --- Channel Details, Linking & Deletion Callback Actions ---
