@@ -911,14 +911,14 @@ function bindAttachBotControls() {
 }
 
 function bindAvatarControls() {
-  $$('#projBody .pava-edit').forEach(b => b.addEventListener('click', () => {
+  $$('#projBody [data-ava]').forEach(b => b.addEventListener('click', () => {
     avatarTargetProjectId = Number(b.dataset.ava);
     const input = $('#avaInput');
     input.value = '';
     input.click();
   }));
 
-  $$('#projBody .pava-reset').forEach(b => b.addEventListener('click', async () => {
+  $$('#projBody [data-ava-reset]').forEach(b => b.addEventListener('click', async () => {
     const id = Number(b.dataset.avaReset);
     try {
       await fetchJSON(`/api/projects/${id}/avatar`, { method: 'DELETE' });
@@ -982,7 +982,8 @@ async function renderProjects() {
         <td><div class="cell-main" style="display:flex;align-items:center;gap:9px">
           <button class="pava-edit" data-ava="${p.id}" type="button" title="Загрузить свою аватарку">${projectAvatarHtml(p)}<span class="pava-pen">✎</span></button>
           <span>${escapeHtml(p.name)}</span>
-          ${p.hasCustomAvatar ? `<button class="pava-reset" data-ava-reset="${p.id}" type="button" title="Убрать загруженную аватарку и вернуться к телеграмовской">×</button>` : ''}
+          <button class="btn tiny ava-btn" data-ava="${p.id}" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex:none"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 8"/></svg>Аватарка</button>
+          ${p.hasCustomAvatar ? `<button class="btn tiny ava-btn" data-ava-reset="${p.id}" type="button" title="Убрать загруженную аватарку и вернуться к телеграмовской">↩ Сбросить</button>` : ''}
         </div></td>
         <td><span class="chip ${typeChipClass(p.type)}">${typeLabel(p.type)}</span></td>
         <td class="mono" style="font-size:12px">${p.telegramChatId ? escapeHtml(p.telegramChatId) : '<span style="color:var(--dim)">—</span>'}</td>

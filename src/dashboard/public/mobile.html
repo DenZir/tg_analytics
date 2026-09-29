@@ -64,6 +64,13 @@ input,select{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .btn-primary{background:linear-gradient(180deg,#5FB9FF,#3795E6);border-color:rgba(120,195,255,.5);color:#04141F;box-shadow:0 4px 16px rgba(63,155,233,.3),inset 0 1px 0 rgba(255,255,255,.35)}
 .btn.ic{width:38px;height:38px;padding:0;flex:none}
 .btn.tiny{padding:8px 12px;font-size:12px;border-radius:9px}
+/* Кружок проекта. Монограмма — фон, аватарка ложится поверх; если её нет,
+   <img> удаляет себя, и остаётся буква. */
+.pava{position:relative;flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;overflow:hidden;background:hsl(var(--h) 42% 34%);color:#fff;font:700 10px var(--body);line-height:1;user-select:none}
+.pava img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pava.lg{width:34px;height:34px;font-size:13px}
+.ava-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+
 .btn.spin svg{animation:rot .7s var(--ease)}
 @keyframes rot{to{transform:rotate(360deg)}}
 
@@ -510,6 +517,7 @@ tr.flash,.flash{animation:flash 1.6s ease}
   <article class="card rv" style="--i:2;padding:14px">
     <div class="card-h" style="padding:0 0 4px"><span class="card-idx">02 / реестр</span><div><div class="card-t">Реестр</div><div class="card-s" id="projSub"></div></div></div>
     <div id="projCards" style="margin-top:10px"></div>
+    <input type="file" id="avaInput" accept="image/png,image/jpeg,image/webp" hidden>
   </article>
   <article class="card rv" style="--i:3;padding:14px">
     <div class="card-h" style="padding:0 0 4px"><span class="card-idx">03 / данные</span><div><div class="card-t">Полный экспорт</div><div class="card-s">Копия всей базы, не только текущей вкладки</div></div></div>

@@ -6,7 +6,7 @@ import {
   last21Dates, seriesForCampaign, windowDates, prevWindowDates, sumDates, countActiveCampaigns, windowArrays,
   computeLinkStats, allocatePrice, computeLinkRows, linkDisplayUrl, state, CAMP_PAGE_SIZE,
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
-  fillCampaignOptions,
+  fillCampaignOptions, projectAvatarHtml, uploadProjectAvatar, bumpAvatarVersion,
   daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
 } from './shared.js';
 
@@ -965,6 +965,51 @@ async function renderPrivatkas() {
 }
 
 /* ================= ПРОЕКТЫ ================= */
+// Аватарка проекта. Один скрытый <input type="file"> на весь список: диалог
+// всё равно открывается для того проекта, чья кнопка нажата.
+let avatarTargetProjectId = null;
+
+function bindAvatarControls() {
+  $$('#projCards [data-ava]').forEach(b => b.addEventListener('click', () => {
+    avatarTargetProjectId = Number(b.dataset.ava);
+    const input = $('#avaInput');
+    input.value = '';
+    input.click();
+  }));
+  $$('#projCards [data-ava-reset]').forEach(b => b.addEventListener('click', async () => {
+    const id = Number(b.dataset.avaReset);
+    try {
+      await fetchJSON(`/api/projects/${id}/avatar`, { method: 'DELETE' });
+      bumpAvatarVersion(id);
+      await afterMutation();
+      await renderProjects();
+      toast('Аватарка сброшена', 'info');
+    } catch (err) {
+      toast(`Не удалось сбросить: ${err.message}`, 'warn');
+    }
+  }));
+}
+
+(function initAvatarInput() {
+  const input = $('#avaInput');
+  if (!input) return;
+  input.addEventListener('change', async () => {
+    const file = input.files && input.files[0];
+    if (!file || !avatarTargetProjectId) return;
+    try {
+      await uploadProjectAvatar(avatarTargetProjectId, file);
+      await afterMutation();
+      await renderProjects();
+      toast('Аватарка обновлена', 'info');
+    } catch (err) {
+      toast(`Не удалось загрузить: ${err.message}`, 'warn');
+    } finally {
+      avatarTargetProjectId = null;
+      input.value = '';
+    }
+  });
+})();
+
 async function renderProjects() {
   const list = DATA.projects;
   $('#projSub').textContent = `${list.length} ${plural(list.length, 'проект', 'проекта', 'проектов')}`;
@@ -976,16 +1021,21 @@ async function renderProjects() {
     $('#projCards').innerHTML = list.map((p, i) => {
       const linksCount = linkCounts ? (linkCounts[p.id] ?? 0) : '…';
       return `<article class="card prow" style="--i:${i}">
-        <div class="prow-top"><b>${escapeHtml(p.name)}</b><span class="chip ${typeChipClass(p.type)}">${typeLabel(p.type)}</span></div>
+        <div class="prow-top" style="display:flex;align-items:center;gap:10px">${projectAvatarHtml(p, 'lg')}<b style="flex:1;min-width:0">${escapeHtml(p.name)}</b><span class="chip ${typeChipClass(p.type)}">${typeLabel(p.type)}</span></div>
         <div class="prow-id">${escapeHtml(identOf(p))}</div>
         <div class="prow-meta">
           <span>Кампаний: <b>${campCountByProject[p.id] || 0}</b></span>
           <span>Ссылок: <b>${linksCount}</b></span>
         </div>
+        <div class="ava-actions">
+          <button class="btn tiny" data-ava="${p.id}" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex:none"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 8"/></svg>Сменить аватарку</button>
+          ${p.hasCustomAvatar ? `<button class="btn tiny" data-ava-reset="${p.id}" type="button">↩ Сбросить</button>` : ''}
+        </div>
       </article>`;
     }).join('');
   }
   paint(null);
+  bindAvatarControls();
 
 
   try {
@@ -996,6 +1046,7 @@ async function renderProjects() {
       linkCounts[c.projectId] = (linkCounts[c.projectId] || 0) + (hist?.links?.length || 0);
     }
     paint(linkCounts);
+    bindAvatarControls();
   } catch (err) {
     console.error('[mobile] Failed to load link counts for projects:', err);
   }
