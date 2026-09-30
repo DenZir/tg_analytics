@@ -151,6 +151,11 @@ function place(tx: any, input: LogEventInput): Placement {
  * getMe(), which returns the canonical casing, while the project may well have
  * been registered in lower case by hand.
  */
+/** Same lookup outside a transaction — for read paths such as attribution. */
+export function findProjectIdByBotUsername(botUsername?: string): number | undefined {
+  return resolveProjectByBot(db, botUsername);
+}
+
 function resolveProjectByBot(tx: any, botUsername?: string): number | undefined {
   const clean = botUsername?.trim().replace(/^@/, "");
   if (!clean) return undefined;

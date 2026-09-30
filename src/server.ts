@@ -702,12 +702,17 @@ app.patch("/api/links/:id/campaign", async (req, res) => {
 // GET /api/attribution?tgUserId=<id>
 app.get("/api/attribution", async (req, res) => {
   try {
-    const { tgUserId } = req.query;
+    const { tgUserId, projectId, botUsername } = req.query;
     if (!tgUserId) {
       return res.status(400).json({ error: "Missing tgUserId query parameter" });
     }
 
-    const result = await getAttributionForUser(String(tgUserId));
+    // Optional scope: which project the caller is asking about. Without it the
+    // user's latest touch in any project is returned, as before.
+    const result = await getAttributionForUser(String(tgUserId), {
+      projectId: projectId ? Number(projectId) : undefined,
+      botUsername: typeof botUsername === "string" && botUsername.trim() ? botUsername : undefined,
+    });
     if (!result) {
       return res.status(404).json({ error: "No attribution found for this tgUserId" });
     }

@@ -1,11 +1,13 @@
 import { db } from "../db/index.js";
 import { campaigns, campaignTags, links, projects, events, dailyStats, utmLinks } from "../db/schema.js";
-import { eq, and, inArray, desc, sql, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, or, inArray, desc, sql, isNull, isNotNull } from "drizzle-orm";
 import { aggregate } from "../jobs/dailyAggregate.js";
 import { getRetentionStats, getCohortLtv } from "./metrics.js";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 import { logAdminAction } from "./auditLog.js";
 import { deriveProjectType, hasBot, hasChannel } from "../db/projectTypes.js";
+import { findProjectIdByBotUsername } from "./events.js";
+import { buildDeepLink } from "./utm.js";
 
 export interface CreateCampaignInput {
   projectId: number;
@@ -636,43 +638,80 @@ export async function getCampaignById(id: number) {
   };
 }
 
-export async function getAttributionForUser(tgUserId: string) {
-  const lastTouch = await db
-    .select({ linkId: events.linkId })
+/**
+ * Where a user came from, for the "new user" and "new purchase" notices the
+ * bots send their admins.
+ *
+ * Two things this used to get wrong. It looked at the user's latest event in
+ * *any* project, so someone whose last action was in the VPN had the VPN's
+ * source reported by the privatka bot. And it only understood campaign links:
+ * a user who arrived through a UTM link has no link on their events, so they
+ * were reported as organic. Now the lookup stays inside the caller's project
+ * when the caller says which one (projectId or botUsername), and a UTM touch is
+ * reported as such. The response keeps the old field names, so a bot that does
+ * not know about UTM still prints a sensible line: "UTM — <label>".
+ */
+export async function getAttributionForUser(
+  tgUserId: string,
+  scope: { projectId?: number; botUsername?: string } = {}
+) {
+  const projectId = scope.projectId ?? findProjectIdByBotUsername(scope.botUsername);
+
+  const [touch] = await db
+    .select({ linkId: events.linkId, utmLinkId: events.utmLinkId })
     .from(events)
-    .where(eq(events.tgUserId, tgUserId))
+    .where(
+      and(
+        eq(events.tgUserId, tgUserId),
+        or(isNotNull(events.linkId), isNotNull(events.utmLinkId)),
+        ...(projectId !== undefined ? [eq(events.projectId, projectId)] : [])
+      )
+    )
     .orderBy(desc(events.ts), desc(events.id))
     .limit(1);
 
-  if (lastTouch.length === 0 || !lastTouch[0].linkId) {
-    return null;
+  if (!touch) return null;
+
+  if (touch.linkId) {
+    const link = await db.query.links.findFirst({
+      where: eq(links.id, touch.linkId),
+    });
+    if (!link) return null;
+
+    const campaign = await getCampaignById(link.campaignId);
+    if (!campaign) return null;
+
+    const tags: Record<string, string> = {};
+    for (const t of campaign.tags) {
+      tags[t.tagKey] = t.tagValue;
+    }
+
+    return {
+      kind: "link" as const,
+      linkId: link.id,
+      campaignId: campaign.id,
+      advertiser: campaign.advertiser,
+      telegramRef: link.telegramRef,
+      label: link.label,
+      tags,
+    };
   }
 
-  const link = await db.query.links.findFirst({
-    where: eq(links.id, lastTouch[0].linkId),
+  const utm = await db.query.utmLinks.findFirst({
+    where: eq(utmLinks.id, touch.utmLinkId!),
   });
-
-  if (!link) {
-    return null;
-  }
-
-  const campaign = await getCampaignById(link.campaignId);
-  if (!campaign) {
-    return null;
-  }
-
-  const tags: Record<string, string> = {};
-  for (const t of campaign.tags) {
-    tags[t.tagKey] = t.tagValue;
-  }
+  if (!utm) return null;
 
   return {
-    linkId: link.id,
-    campaignId: campaign.id,
-    advertiser: campaign.advertiser,
-    telegramRef: link.telegramRef,
-    label: link.label,
-    tags,
+    kind: "utm" as const,
+    utmLinkId: utm.id,
+    advertiser: "UTM",
+    telegramRef: buildDeepLink(utm) ?? utm.slug,
+    label: utm.label || `${utm.utmSource} / ${utm.utmCampaign}`,
+    tags: {} as Record<string, string>,
+    utmSource: utm.utmSource,
+    utmMedium: utm.utmMedium,
+    utmCampaign: utm.utmCampaign,
   };
 }
 
