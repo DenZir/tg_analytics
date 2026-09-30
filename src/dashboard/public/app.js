@@ -1039,9 +1039,9 @@ $('#projForm').addEventListener('submit', async e => {
 });
 
 /* ================= UTM-МЕТКИ =================
-   Independent tracking mechanic — separate from campaigns/links (channel-invite
-   ad attribution). Do not conflate: a "UTM link" here has no relation to a
-   campaign link row, it's tracked purely by utm_source/medium/campaign/content. */
+   A UTM link is the second way an event gets attributed, next to a campaign's
+   invite link: /start with the link's slug records the arrival, later purchases
+   inherit it. Both live in the same events table and add up on the overview. */
 function convCell(pct) {
   if (pct === null || pct === undefined) return '<span style="color:var(--dim)">—</span>';
   return `<div class="convcell"><span class="mono" style="font-size:12px">${fmtPct(pct)}</span><div class="bar"><i style="width:${Math.min(100, pct)}%"></i></div></div>`;
@@ -1135,7 +1135,7 @@ async function renderUtm() {
   populateUtmBotSelect();
 }
 
-// Populate the "Бот приватки" select from registered bot_subscription projects
+// Populate the bot select from every project that sells through a bot
 // (see Проекты screen) instead of relying on the admin to remember/retype a
 // bot username by hand every time — that's exactly what produced deep-link-less
 // UTM links before this fix. Falls back to a manual text field for bots that
@@ -1399,9 +1399,9 @@ async function renderPrivatkas() {
 
 /* ================= НАВИГАЦИЯ / ЭКРАНЫ ================= */
 const SCREENS = {
-  overview: { t: 'Обзор', s: 'Сводка по закупкам, подпискам и выручке · данные из dailyStats и событий', c: { p: 1, s: 0, e: 0 } },
+  overview: { t: 'Обзор', s: 'Пользователи, выручка и источники трафика по выбранным проектам', c: { p: 1, s: 0, e: 0 } },
   campaigns: { t: 'Кампании', s: 'Эффективность закупок: режимы «по ссылкам», «по рекламодателям» и «по креативам»', c: { p: 0, s: 1, e: 1 } },
-  utm: { t: 'UTM-метки', s: 'Независимый трекинг источников трафика: старты, покупки, CAC/ROI по utm-меткам', c: { p: 0, s: 0, e: 1 } },
+  utm: { t: 'UTM-метки', s: 'Старты, покупки, CAC и ROI по UTM-меткам', c: { p: 0, s: 0, e: 1 } },
   privatkas: { t: 'Приватки', s: 'Финансы подписочных ботов: доход, средний чек, ARPPU', c: { p: 0, s: 0, e: 1 } },
   promo: { t: 'Промокоды', s: 'Какие коды приводят к оплате: применения, выручка и размер отданных скидок', c: { p: 0, s: 0, e: 0 } },
   projects: { t: 'Проекты', s: 'Проект — это канал, бот продаж или оба сразу', c: { p: 0, s: 0, e: 0 } },
