@@ -447,6 +447,13 @@ if (channelBot) {
         return;
       }
     }
+    // Every button of this bot is an admin control, wherever it was pressed.
+    // The check above covers private chats only, so a menu an admin opened in
+    // a group left its buttons — deletion included — to every member there.
+    if (ctx.callbackQuery && !isAdmin(ctx.from?.id)) {
+      await ctx.answerCbQuery("Not authorized").catch(() => {});
+      return;
+    }
     return next();
   });
 
