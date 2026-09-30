@@ -1247,7 +1247,26 @@ if (channelBot) {
       if (data.startsWith("reg_chan:")) {
         const parts = data.split(":");
         const chatId = parts[1];
-        const title = parts.slice(2).join(":");
+
+        // A second press, or a button left over from an older prompt.
+        const existing = await getProjectByChatId(chatId);
+        if (existing) {
+          await ctx.answerCbQuery("Этот канал уже зарегистрирован");
+          return renderChannelCard(ctx, existing.id);
+        }
+
+        // Buttons sent before the fix above still carry the title after the
+        // id; newer ones do not, and the name comes from Telegram itself.
+        let title = parts.slice(2).join(":");
+        if (!title) {
+          try {
+            const info: any = await channelBot.telegram.getChat(chatId);
+            title = info?.title || "";
+          } catch (err) {
+            console.warn(`[channelBot] Could not read the title of chat ${chatId}:`, err);
+          }
+        }
+        if (!title) title = `Канал ${chatId}`;
 
         const project = await createProject({
           name: title,
@@ -1394,9 +1413,19 @@ if (channelBot) {
       const adminIds = getAdminIds();
 
       if (newStatus === "administrator" && chat.type !== "private" && adminIds.length > 0) {
-        const title = "title" in chat ? chat.title : "Un-named Channel";
+        // Promoted again in a channel we already track (rights changed, bot
+        // re-added): nothing to register. Offering it anyway made a second
+        // click create a duplicate project for the same chat.
+        if (await getProjectByChatId(String(chat.id))) return;
+
+        const title = "title" in chat ? chat.title : "Канал без названия";
         const safeTitle = escapeHtml(title);
-        const callbackData = `reg_chan:${chat.id}:${title.slice(0, 30)}`;
+        // Only the chat id travels in the button. Telegram caps callback data
+        // at 64 *bytes*, and the title used to ride along: a Cyrillic name is
+        // two bytes a letter, so a Russian-named channel produced an invalid
+        // button and the whole prompt failed to send. The title is looked up
+        // again when the button is pressed.
+        const callbackData = `reg_chan:${chat.id}`;
 
         for (const adminId of adminIds) {
           try {
