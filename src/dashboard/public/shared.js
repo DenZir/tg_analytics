@@ -208,13 +208,30 @@ export function buildIndexes() {
 
 export async function loadCore() {
   const scope = projectScopeParam();
-  const [metrics, extended, projects, recentEvents, overview] = await Promise.all([
+  let [metrics, extended, projects, recentEvents, overview] = await Promise.all([
     fetchJSON('/api/metrics'),
     fetchJSON('/api/metrics/extended'),
     fetchJSON('/api/projects'),
     fetchJSON('/api/events/recent?limit=8' + (scope ? '&' + scope : '')),
     fetchJSON(`/api/overview?days=${state.period === 'all' ? 0 : state.period}` + (scope ? '&' + scope : '')),
   ]);
+
+  // Выбор проектов живёт в браузере и переживает удаление проекта: в шапке
+  // оставался «Проект #5», а цифры были нулевыми. Убираем исчезнувшие id и,
+  // если выбор от этого поменялся, перезапрашиваем всё, что зависит от выбора,
+  // уже по живым проектам. Если живых не осталось — это «Все», и лента,
+  // загруженная по одним удалённым, была бы пустой.
+  const known = new Set(projects.map(p => p.id));
+  const kept = state.projectIds.filter(id => known.has(id));
+  if (kept.length !== state.projectIds.length) {
+    state.projectIds = kept;
+    saveProjectScope(kept);
+    const fresh = projectScopeParam();
+    [overview, recentEvents] = await Promise.all([
+      fetchJSON(`/api/overview?days=${state.period === 'all' ? 0 : state.period}` + (fresh ? '&' + fresh : '')),
+      fetchJSON('/api/events/recent?limit=8' + (fresh ? '&' + fresh : '')),
+    ]);
+  }
   DATA.overview = overview;
   DATA.metrics = metrics;
   DATA.extended = extended;
