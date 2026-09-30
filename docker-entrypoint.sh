@@ -2,7 +2,7 @@
 set -e
 
 echo "[entrypoint] Running database migrations..."
-npx drizzle-kit migrate
+npm run db:migrate
 
 echo "[entrypoint] Starting application..."
 exec "$@"

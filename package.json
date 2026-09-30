@@ -10,7 +10,8 @@
     "dev": "tsx watch src/index.ts",
     "cli": "tsx src/cli/newCampaign.ts",
     "seed": "tsx src/cli/seedProject.ts",
-    "reset": "tsx src/cli/resetData.ts"
+    "reset": "tsx src/cli/resetData.ts",
+    "db:migrate": "tsx src/db/migrate.ts"
   },
   "keywords": [],
   "author": "",
