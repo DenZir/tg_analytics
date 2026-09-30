@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { db } from "../db/index.js";
 import { utmLinks, events } from "../db/schema.js";
-import { eq, isNotNull } from "drizzle-orm";
+import { and, eq, gte, isNotNull } from "drizzle-orm";
 import { EVENT_TYPES } from "../db/eventTypes.js";
-import { logEvent } from "./events.js";
+import { findProjectIdByBotUsername, logEvent } from "./events.js";
 
 // UTM events are ordinary events now — same table, same vocabulary. What this
 // mechanic used to call a "start" is what the rest of the system calls a lead:
@@ -419,12 +419,50 @@ export async function recordUtmHit(
  * unattributed case is recorded as organic against the project, and the return
  * value only reports which of the two happened.
  */
+/**
+ * How far back a legacy purchase is compared against purchases already on
+ * record. The bots call this endpoint right after /api/events, a few
+ * milliseconds apart, so a minute is generous; nobody pays the same sum for the
+ * same thing twice inside it.
+ */
+const LEGACY_PURCHASE_DEDUPE_MS = 60_000;
+
 export async function recordUtmPurchase(
   tgUserId: string,
   amount: number,
   eventType: "payment" | "renewal",
   context: { projectId?: number; botUsername?: string } = {}
 ) {
+  // This endpoint predates the merge of UTM events into `events`. Back then it
+  // wrote to a table of its own, and the bots called it *in addition to*
+  // /api/events for every purchase. Now both land in the same table, and the
+  // only thing keeping the second copy out was the unique key — which works to
+  // the second: a pair of requests straddling a second boundary recorded the
+  // purchase twice and doubled its revenue. Bots that still make both calls
+  // (any not yet redeployed) are covered here: the same purchase from the same
+  // user that /api/events already recorded a moment ago is not recorded again.
+  const since = new Date(Date.now() - LEGACY_PURCHASE_DEDUPE_MS);
+  // Bots send their username rather than a project id. Without resolving it
+  // the check spanned every project, and the same amount paid by the same
+  // person in another project's bot a minute earlier would pass for a copy.
+  const projectId = context.projectId ?? findProjectIdByBotUsername(context.botUsername);
+  const recent = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(
+      and(
+        eq(events.tgUserId, tgUserId),
+        eq(events.eventType, eventType),
+        eq(events.amount, amount),
+        gte(events.ts, since),
+        ...(projectId ? [eq(events.projectId, projectId)] : [])
+      )
+    )
+    .limit(1);
+  if (recent.length > 0) {
+    return { attributed: false as const, recorded: false as const, duplicateOf: recent[0].id };
+  }
+
   const event = await logEvent({
     tgUserId,
     eventType,
