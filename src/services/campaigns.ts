@@ -496,11 +496,33 @@ export async function reassignLinkCampaign(linkId: number, campaignId: number) {
     throw new Error(`Campaign ${campaignId} not found`);
   }
 
-  const [updated] = await db
-    .update(links)
-    .set({ campaignId })
-    .where(eq(links.id, linkId))
-    .returning();
+  // A link can be moved to a campaign of another project — the picker offers
+  // every campaign. Its events carry a project of their own, so they have to
+  // move with it: otherwise they would keep counting towards the old project
+  // while the link itself had left it. One transaction for both, and the same
+  // twin rule as a project merge — an exact copy already in the target project
+  // on the unique key is the same event, and it stays.
+  const updated = db.transaction((tx) => {
+    const [row] = tx.update(links).set({ campaignId }).where(eq(links.id, linkId)).returning().all();
+    if (!row) return null;
+
+    tx.run(sql`
+      DELETE FROM events WHERE id IN (
+        SELECT e.id FROM events e
+        WHERE e.link_id = ${linkId}
+          AND e.project_id <> ${campaign.projectId}
+          AND EXISTS (
+            SELECT 1 FROM events k
+            WHERE k.project_id = ${campaign.projectId}
+              AND k.tg_user_id = e.tg_user_id
+              AND k.event_type = e.event_type
+              AND k.ts = e.ts
+          )
+      )
+    `);
+    tx.update(events).set({ projectId: campaign.projectId }).where(eq(events.linkId, linkId)).run();
+    return row;
+  });
 
   if (!updated) {
     throw new Error(`Link ${linkId} not found`);
