@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { events, projects, links, campaigns, utmLinks } from "../db/schema.js";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { EVENT_TYPES, EVENT_SOURCES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
 
 /**
@@ -70,12 +70,22 @@ function round2(value: number): number {
   return Number(value.toFixed(2));
 }
 
+/**
+ * Events of campaigns sitting in the trash are left out, as they are
+ * everywhere else: a trashed campaign "disappears from all normal listings and
+ * stats immediately" (see softDeleteCampaign). Events with no link — organic
+ * and UTM ones — are never affected.
+ */
+const NOT_IN_TRASH = sql`NOT EXISTS (
+  SELECT 1 FROM links l JOIN campaigns c ON c.id = l.campaign_id
+  WHERE l.id = ${events.linkId} AND c.deleted_at IS NOT NULL
+)`;
+
 function scopeCondition(projectIds?: number[], since?: Date) {
-  const parts = [];
+  const parts = [NOT_IN_TRASH];
   if (projectIds && projectIds.length > 0) parts.push(inArray(events.projectId, projectIds));
   if (since) parts.push(gte(events.ts, since));
-  if (parts.length === 0) return undefined;
-  return parts.length === 1 ? parts[0] : and(...parts);
+  return and(...parts);
 }
 
 export async function getOverview(params: OverviewParams = {}) {
@@ -227,7 +237,7 @@ export async function getOverview(params: OverviewParams = {}) {
     .from(events)
     .innerJoin(links, eq(events.linkId, links.id))
     .innerJoin(campaigns, eq(links.campaignId, campaigns.id))
-    .where(where)
+    .where(and(where, isNull(campaigns.deletedAt)))
     .groupBy(campaigns.id);
 
   const topUtmRows = await db
