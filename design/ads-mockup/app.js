@@ -112,8 +112,8 @@ const randHandle = () => Array.from({ length: 12 }, () => 'abcdefghijkmnopqrstuv
 // каналов у одного админа обычно несколько, и важно, с кем договаривался.
 // Это тот же «рекламодатель», что во вкладке «Кампании» дашборда.
 const ADMINS = {
-  kot: { name: 'Кот', user: 'kot_tgg' },
-  farid: { name: 'Фарид', user: 'farid_promo' },
+  kot: { name: 'Кот', user: 'kot_tgg', old: ['kotik_ads'] },
+  farid: { name: 'Фарид', user: 'farid_promo', old: ['farid_ads'] },
   tenshi: { name: 'Тенши', user: 'tenshi' },
   max: { name: 'Макс', user: 'max_ads' },
   ira: { name: 'Ира', user: 'ira_reklama' },
@@ -424,16 +424,6 @@ const $ = s => document.querySelector(s);
 const ava = (p, cls = '') => `<span class="pava ${cls}" style="--h:${PJ[p].h}" aria-hidden="true">${esc(PJ[p].mono)}</span>`;
 // «Кот (@kot_tgg)»: имя главное, username — в скобках и потише
 const admHTML = id => (ADMINS[id] ? `<span class="adm"><b>${esc(ADMINS[id].name)}</b> <span class="u">(@${esc(ADMINS[id].user)})</span></span>` : '<span class="dash-v">—</span>');
-// поле «Админ» в карточке: знакомый — по username, новый — заводим из «Имя (@username)»
-function adminFromInput(v) {
-  const m = v.trim().match(/^(.+?)\s*\(@([A-Za-z0-9_]{4,32})\)$/);
-  if (!m) return null;
-  const user = m[2].toLowerCase();
-  const known = Object.keys(ADMINS).find(id => ADMINS[id].user.toLowerCase() === user);
-  if (known) return known;
-  ADMINS[user] = { name: m[1].trim(), user: m[2] };
-  return user;
-}
 const stChip = s => `<span class="st st-${s}">${ST[s].l}</span>`;
 const mkOf = d => (isPub(d.status) ? 'pub' : d.status === 'agreed' ? 'agreed' : 'plan');
 const ICON = {
@@ -1050,9 +1040,23 @@ function openDeal(id, prefill = {}) {
       <div class="fgrid">
         <div class="fld"><label for="fProj">${buy ? 'Проект — куда ведём' : 'Мой канал'}</label><select class="inp" id="fProj" name="project" required>${projOpts}</select></div>
         ${buy
-          ? `<div class="fld"><label for="fWho">У кого купил — админ</label><input class="inp" id="fWho" name="who" required list="adminList" autocomplete="off" value="${esc(d.admin ? admLabel(d.admin) : '')}" placeholder="Имя (@username)" pattern="[^\\(\\)]+ \\(@[A-Za-z0-9_]{4,32}\\)">
-              <datalist id="adminList">${Object.keys(ADMINS).map(id => `<option value="${esc(admLabel(id))}"></option>`).join('')}</datalist>
-              <div class="hint">${d.admin ? `<button class="adm-link" type="button" data-act="adv" data-adm="${d.admin}">Все кампании ${esc(ADMINS[d.admin].name)} ↗</button>` : 'Выберите из знакомых или впишите нового: Имя (@username)'}</div></div>`
+          ? `<div class="fld adm-fld"><label for="fWho" id="fWhoLbl">У кого купил — админ</label>
+              <div class="cbx">
+                <input class="inp" id="fWho" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="admList" aria-describedby="admHint" autocomplete="off" spellcheck="false" placeholder="Имя или @username" value="${esc(d.admin ? admLabel(d.admin) : '')}">
+                <input type="hidden" name="admin" value="${d.admin || ''}">
+                <ul class="cbx-list" id="admList" role="listbox" aria-labelledby="fWhoLbl" hidden></ul>
+              </div>
+              <div class="adm-sub" id="admNew" hidden>
+                <div class="frow"><div><label class="sr-only" for="fNewName">Имя нового админа</label><input class="inp" id="fNewName" placeholder="Имя"></div>
+                <div><label class="sr-only" for="fNewUser">Username нового админа</label><input class="inp mono" id="fNewUser" placeholder="username" pattern="@?[A-Za-z0-9_]{4,32}" autocapitalize="off" spellcheck="false"></div></div>
+              </div>
+              <div class="adm-sub" id="admRename" hidden>
+                <div class="frow"><div><label class="sr-only" for="fRenUser">Новый username</label><input class="inp mono" id="fRenUser" placeholder="новый username" pattern="@?[A-Za-z0-9_]{4,32}" autocapitalize="off" spellcheck="false"></div>
+                <div class="frow" style="flex:none"><button class="btn tiny" type="button" data-act="ren-ok">Сменить</button><button class="btn tiny" type="button" data-act="ren-cancel">Отмена</button></div></div>
+                <div class="hint">Поменяется сразу во всех закупах и кампаниях — они ссылаются на админа, а не на текст. Старый username останется в подсказках как прошлый. В рабочей версии смену заметит сессия аккаунта и обновит сама.</div>
+              </div>
+              <div class="hint" id="admHint"></div>
+              <span class="sr-only" aria-live="polite" id="admLive"></span></div>`
           : `<div class="fld"><label for="fWho">Покупатель — контакт</label><input class="inp" id="fWho" name="who" required value="${esc(d.buyer)}" placeholder="@username" pattern="@[A-Za-z0-9_]{4,32}"><div class="hint">Telegram-контакт в виде @username</div></div>`}
         <div class="fld"><label for="fDate">Дата выхода — план</label><input class="inp mono" type="date" id="fDate" name="date" required value="${d.date}"></div>
         <div class="fld"><label for="fFact">Дата выхода — факт</label><input class="inp mono" id="fFact" readonly value="${pub && d.checks ? `${dm(parseIso(d.date))}, ${d.checks.time.fact}` : pub ? `${dm(parseIso(d.date))}, ${SLOT[d.slot].t}` : ''}" placeholder="заполнится, когда пост выйдет"><div class="hint">Проставляет бот постинга, вручную не меняется</div></div>
@@ -1078,6 +1082,7 @@ function openDeal(id, prefill = {}) {
     <div class="m-foot">${isNew ? '' : `<button class="btn btn-ghost-danger" type="button" data-act="del">Удалить</button>`}<span class="sp"></span><button class="btn" type="button" data-close>Отмена</button><button class="btn btn-primary" type="submit">${isNew ? 'Добавить' : 'Сохранить'}</button></div>`;
   updateCalc();
   $('#dealDlg').showModal();
+  if (buy) admHint();
 }
 
 function updateCalc() {
@@ -1095,9 +1100,172 @@ function updateCalc() {
 }
 $('#dealForm').addEventListener('input', e => { if (e.target.name === 'pm' || e.target.name === 'rate') updateCalc(); });
 $('#dealForm').addEventListener('change', e => { if (e.target.name === 'pm') updateCalc(); });
+
+// ================= АВТОПОДБОР АДМИНА =================
+// Ищет по имени, по текущему и прошлым username; слово, набранное не в той
+// раскладке («rjn» вместо «кот»), тоже находит. Это ARIA-комбобокс: стрелки
+// двигают выбор, Enter выбирает, Escape закрывает список, не закрывая карточку.
+const EN = "qwertyuiop[]asdfghjkl;'zxcvbnm,.`";
+const RU = 'йцукенгшщзхъфывапролджэячсмитьбюё';
+const swapLayout = s => [...s].map(c => { let i = EN.indexOf(c); if (i >= 0) return RU[i]; i = RU.indexOf(c); return i >= 0 ? EN[i] : c; }).join('');
+const hl = (text, i, len) => `${esc(text.slice(0, i))}<mark>${esc(text.slice(i, i + len))}</mark>${esc(text.slice(i + len))}`;
+const hueOf = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+
+function admStats(id) {
+  const ds = DEALS.filter(d => d.side === 'buy' && d.admin === id && d.status !== 'cancel');
+  const today = iso(TODAY);
+  const past = ds.filter(d => d.date <= today);
+  return { n: past.length, planned: ds.length - past.length, last: past.reduce((m, d) => (d.date > m ? d.date : m), ''), projects: [...new Set(ds.map(d => d.project))].sort() };
+}
+function admSearch(raw) {
+  const q0 = raw.trim().toLowerCase().replace(/^@/, '');
+  const ids = Object.keys(ADMINS);
+  const withStats = id => ({ id, st: admStats(id) });
+  if (!q0) return ids.map(withStats).sort((a, b) => b.st.last.localeCompare(a.st.last)).slice(0, 8);
+  const qs = [...new Set([q0, swapLayout(q0)])];
+  const out = [];
+  for (const id of ids) {
+    const a = ADMINS[id], name = a.name.toLowerCase(), user = a.user.toLowerCase();
+    let best = null;
+    const hit = (score, field, text, i, len) => { if (i >= 0 && (!best || score > best.score)) best = { score, field, i, len }; };
+    for (const q of qs) {
+      if (user === q) hit(100, 'user', user, 0, q.length);
+      if (user.startsWith(q)) hit(80, 'user', user, 0, q.length);
+      if (name.startsWith(q)) hit(75, 'name', name, 0, q.length);
+      const ws = (' ' + name).indexOf(' ' + q); if (ws > 0) hit(65, 'name', name, ws, q.length);
+      hit(50, 'user', user, user.indexOf(q), q.length);
+      hit(45, 'name', name, name.indexOf(q), q.length);
+      for (const o of a.old || []) { const ol = o.toLowerCase(); hit(ol === q ? 42 : 32, `old:${o}`, ol, ol.indexOf(q), q.length); }
+    }
+    if (best) out.push({ ...withStats(id), ...best });
+  }
+  return out.sort((x, y) => y.score - x.score || y.st.last.localeCompare(x.st.last)).slice(0, 8);
+}
+
+const cbx = { items: [], active: -1, liveTimer: 0 };
+function admOpen(show) {
+  const inp = $('#fWho'), list = $('#admList');
+  if (!inp) return;
+  list.hidden = !show;
+  inp.setAttribute('aria-expanded', String(show));
+  if (!show) inp.removeAttribute('aria-activedescendant');
+}
+function admRender() {
+  const inp = $('#fWho'), list = $('#admList');
+  const q = inp.value.trim();
+  const found = admSearch(q);
+  const exact = found.some(r => r.score === 100 || admLabel(r.id).toLowerCase() === q.toLowerCase());
+  cbx.items = found.map(r => ({ kind: 'adm', ...r }));
+  if (q && !exact) cbx.items.push({ kind: 'new', q });
+  cbx.active = cbx.items.length ? 0 : -1;
+  list.innerHTML = cbx.items.map((it, k) => {
+    if (it.kind === 'new') return `<li role="option" id="admopt-${k}" class="cbx-opt new" data-k="${k}" aria-selected="false"><span class="cbx-plus" aria-hidden="true">＋</span><span class="cbx-main">Новый админ <b>«${esc(it.q)}»</b></span></li>`;
+    const a = ADMINS[it.id];
+    const nm = it.field === 'name' ? hl(a.name, it.i, it.len) : esc(a.name);
+    const us = it.field === 'user' ? hl(a.user, it.i, it.len) : esc(a.user);
+    const oldMatch = it.field?.startsWith('old:') ? it.field.slice(4) : null;
+    const old = oldMatch ? `<span class="cbx-old">раньше @${hl(oldMatch, it.i, it.len)}</span>` : a.old?.length ? `<span class="cbx-old dim">раньше @${esc(a.old[0])}</span>` : '';
+    const st = it.st;
+    return `<li role="option" id="admopt-${k}" class="cbx-opt" data-k="${k}" aria-selected="false">
+      <span class="cbx-ini" style="--h:${hueOf(a.user)}" aria-hidden="true">${esc(a.name.slice(0, 1).toUpperCase())}</span>
+      <span class="cbx-main"><span class="cbx-nm">${nm}</span> <span class="cbx-u">@${us}</span>${old}</span>
+      <span class="cbx-pj" aria-hidden="true">${st.projects.map(p => ava(p, 'sm')).join('')}</span>
+      <span class="cbx-meta">${st.n ? `${st.n} ${plural(st.n, 'закуп', 'закупа', 'закупов')} · последний ${dm(parseIso(st.last))}` : 'закупов ещё не было'}${st.planned ? ` · ещё ${st.planned} впереди` : ''}</span></li>`;
+  }).join('') || '<li class="cbx-empty" role="presentation">Пока ни одного админа</li>';
+  admActivate(cbx.active);
+  clearTimeout(cbx.liveTimer); // число вариантов — без спама на каждую букву
+  cbx.liveTimer = setTimeout(() => { const n = cbx.items.filter(x => x.kind === 'adm').length; $('#admLive') && ($('#admLive').textContent = n ? `${n} ${plural(n, 'вариант', 'варианта', 'вариантов')}` : 'Совпадений нет — можно добавить нового'); }, 600);
+}
+function admActivate(k) {
+  cbx.active = k;
+  document.querySelectorAll('#admList .cbx-opt').forEach((li, i) => { const on = i === k; li.classList.toggle('act', on); li.setAttribute('aria-selected', String(on)); });
+  const li = document.getElementById(`admopt-${k}`);
+  if (li) { $('#fWho').setAttribute('aria-activedescendant', li.id); li.scrollIntoView({ block: 'nearest' }); }
+}
+function admPick(k) {
+  const it = cbx.items[k]; if (!it) return;
+  const f = $('#dealForm');
+  $('#admRename').hidden = true;
+  if (it.kind === 'adm') {
+    f.elements.admin.value = it.id;
+    $('#fWho').value = admLabel(it.id);
+    $('#admNew').hidden = true; newRequired(false);
+  } else {
+    f.elements.admin.value = '';
+    const looksUser = /^@?[A-Za-z0-9_]+$/.test(it.q);
+    $('#admNew').hidden = false; newRequired(true);
+    $('#fNewName').value = looksUser ? '' : it.q;
+    $('#fNewUser').value = looksUser ? it.q.replace(/^@/, '') : '';
+    (looksUser ? $('#fNewName') : $('#fNewUser')).focus();
+  }
+  $('#fWho').setCustomValidity('');
+  admOpen(false);
+  admHint();
+}
+function newRequired(on) { $('#fNewName').required = on; $('#fNewUser').required = on; }
+function admHint() {
+  const id = $('#dealForm').elements.admin?.value;
+  const h = $('#admHint'); if (!h) return;
+  h.innerHTML = id && ADMINS[id]
+    ? `<button class="adm-link" type="button" data-act="adv" data-adm="${id}">Все кампании ${esc(ADMINS[id].name)} ↗</button> · <button class="adm-link" type="button" data-act="ren">Сменил username</button>${ADMINS[id].old?.length ? ` · <span>раньше: ${ADMINS[id].old.map(o => `@${esc(o)}`).join(', ')}</span>` : ''}`
+    : !$('#admNew').hidden ? 'Новый админ сразу появится в подсказках и во вкладке «Кампании»' : 'Начните вводить имя или @username — подскажу из знакомых';
+}
+// новый админ: такой username уже у кого-то есть — это он и есть
+function adminFromForm(f) {
+  if (f.elements.admin.value) return f.elements.admin.value;
+  const name = $('#fNewName').value.trim(), user = $('#fNewUser').value.trim().replace(/^@/, '');
+  const ex = Object.keys(ADMINS).find(id => ADMINS[id].user.toLowerCase() === user.toLowerCase());
+  if (ex) return ex;
+  const id = user.toLowerCase();
+  ADMINS[id] = { name, user, old: [] };
+  return id;
+}
+function admValidate(f) {
+  const fw = $('#fWho'), nu = $('#fNewUser');
+  if (!fw) return;
+  fw.setCustomValidity(f.elements.admin.value || !$('#admNew').hidden ? '' : 'Выберите админа из подсказок или добавьте нового');
+  nu.setCustomValidity('');
+  if (!$('#admNew').hidden && nu.value) {
+    const u = nu.value.trim().replace(/^@/, '').toLowerCase();
+    const was = Object.keys(ADMINS).find(id => (ADMINS[id].old || []).some(o => o.toLowerCase() === u));
+    if (was) nu.setCustomValidity(`Так раньше звали ${admLabel(was)}. Если это он — выберите его в подсказках; если username занял другой человек — поправьте вручную в его карточке`);
+  }
+}
+
+$('#dealForm').addEventListener('focusin', e => { if (e.target.id === 'fWho') { admRender(); admOpen(true); } });
+$('#dealForm').addEventListener('focusout', e => { if (e.target.id === 'fWho') setTimeout(() => { if (document.activeElement?.id !== 'fWho') admOpen(false); }, 0); });
+$('#dealForm').addEventListener('input', e => {
+  if (e.target.id !== 'fWho') return;
+  const f = $('#dealForm');
+  if (f.elements.admin.value && e.target.value !== admLabel(f.elements.admin.value)) f.elements.admin.value = '';
+  $('#admNew').hidden = true; newRequired(false); $('#admRename').hidden = true;
+  e.target.setCustomValidity('');
+  admRender(); admOpen(true); admHint();
+});
+$('#dealForm').addEventListener('keydown', e => {
+  if (e.target.id === 'fRenUser' && e.key === 'Enter') { e.preventDefault(); $('[data-act="ren-ok"]').click(); return; }
+  if (e.target.id !== 'fWho') return;
+  const open = !$('#admList').hidden, n = cbx.items.length;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!open) { admRender(); admOpen(true); return; }
+    if (n) admActivate((cbx.active + (e.key === 'ArrowDown' ? 1 : -1) + n) % n);
+  } else if (e.key === 'Enter' && open && cbx.active >= 0) { e.preventDefault(); admPick(cbx.active); }
+  else if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); admOpen(false); }
+  else if (e.key === 'Tab') admOpen(false);
+});
+// mousedown не уводит фокус из поля — иначе список закрылся бы до клика
+$('#dealForm').addEventListener('mousedown', e => { if (e.target.closest('#admList')) e.preventDefault(); });
+$('#dealForm').addEventListener('click', e => {
+  const li = e.target.closest('#admList .cbx-opt');
+  if (li) admPick(Number(li.dataset.k));
+  else if (e.target.id === 'fWho' && $('#admList').hidden) { admRender(); admOpen(true); }
+});
+
 $('#dealForm').addEventListener('submit', e => {
   e.preventDefault();
   const f = e.currentTarget;
+  if (f.elements.admin) admValidate(f);
   if (!f.checkValidity()) { f.reportValidity(); return; }
   const { src, d } = editing;
   const buy = d.side === 'buy';
@@ -1108,7 +1276,7 @@ $('#dealForm').addEventListener('submit', e => {
     pm: el.pm.value, notes: el.notes.value.trim(), post: el.post.value.trim(),
   });
   if (d.pm === 'fix') { d.price = Number(el.price.value); delete d.rate; } else { d.rate = Number(el.rate.value); delete d.price; if (!d.cpmState) d.cpmState = 'wait'; }
-  if (buy) { d.admin = adminFromInput(el.who.value); d.creative = el.creative.value.trim(); d.track = el.track.value.trim(); } else d.buyer = el.who.value.trim();
+  if (buy) { d.admin = adminFromForm(f); d.creative = el.creative.value.trim(); d.track = el.track.value.trim(); } else d.buyer = el.who.value.trim();
   if (d.status !== prevStatus || !src) d.history = [...(d.history || []), { st: d.status, at: new Date(NOW) }];
   if (src) Object.assign(src, d);
   else {
@@ -1180,6 +1348,23 @@ document.addEventListener('click', async e => {
   } else if (act === 'adv') {
     e.preventDefault();
     toast(`Откроется вкладка «Кампании» → «Рекламодатели» с фильтром по ${admLabel(t.dataset.adm)}: все его кампании, ссылки, подписчики и выручка`, 'info');
+  } else if (act === 'ren') {
+    $('#admRename').hidden = false; $('#fRenUser').value = ''; $('#fRenUser').focus();
+  } else if (act === 'ren-cancel') {
+    $('#admRename').hidden = true; $('#fRenUser').setCustomValidity('');
+  } else if (act === 'ren-ok') {
+    const id = $('#dealForm').elements.admin.value, inp = $('#fRenUser');
+    const u = inp.value.trim().replace(/^@/, '');
+    const taken = Object.keys(ADMINS).find(x => x !== id && ADMINS[x].user.toLowerCase() === u.toLowerCase());
+    inp.setCustomValidity(!/^[A-Za-z0-9_]{4,32}$/.test(u) ? 'Username: 4–32 латинские буквы, цифры или _' : taken ? `@${u} уже у ${admLabel(taken)}` : u.toLowerCase() === ADMINS[id].user.toLowerCase() ? 'Это и есть текущий username' : '');
+    if (!inp.reportValidity()) return;
+    const a = ADMINS[id], was = a.user;
+    a.old = [was, ...(a.old || []).filter(o => o.toLowerCase() !== u.toLowerCase())];
+    a.user = u;
+    $('#fWho').value = admLabel(id);
+    $('#admRename').hidden = true; admHint();
+    render();
+    toast(`${a.name} теперь @${u} — обновлено во всех закупах сразу; по @${was} он по-прежнему находится`);
   } else if (act === 'proof') { e.preventDefault(); toast('Откроется сообщение в канале подтверждений: пересланный пост и замер просмотров', 'info'); }
   else if (act === 'retry') { setDemo('loading'); setTimeout(() => setDemo('data'), 900); }
 });
