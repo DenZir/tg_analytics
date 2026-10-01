@@ -108,11 +108,21 @@ const pick = a => a[Math.floor(R() * a.length)];
 const between = (a, b, step = 1) => a + Math.floor(R() * (Math.floor((b - a) / step) + 1)) * step;
 const randHandle = () => Array.from({ length: 12 }, () => 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(R() * 56)]).join('');
 
-const VENUES = {
-  1: ['Бункер 18+', 'Тёмная сторона', 'Игры без правил', 'Ночной Город', 'Мемы 24/7', 'Геймер ТВ'],
-  2: ['Свежак', 'Лайфхаки', 'IT-Курилка', 'Ночной Город', 'Мемы 24/7'],
-  3: ['Крипто Фид', 'Инсайды рынка', 'Трейдинг для всех', 'Финграмота'],
+// Закуп записывается на админа, у которого куплено место, а не на канал:
+// каналов у одного админа обычно несколько, и важно, с кем договаривался.
+// Это тот же «рекламодатель», что во вкладке «Кампании» дашборда.
+const ADMINS = {
+  kot: { name: 'Кот', user: 'kot_tgg' },
+  farid: { name: 'Фарид', user: 'farid_promo' },
+  tenshi: { name: 'Тенши', user: 'tenshi' },
+  max: { name: 'Макс', user: 'max_ads' },
+  ira: { name: 'Ира', user: 'ira_reklama' },
+  leha: { name: 'Лёха', user: 'leha_it' },
+  sasha: { name: 'Саша Трейдер', user: 'sasha_trade' },
+  pro: { name: 'Крипто PRO', user: 'cryptopro_ads' },
 };
+const ADMINS_BY_PROJECT = { 1: ['kot', 'farid', 'tenshi', 'max', 'ira'], 2: ['leha', 'kot', 'max'], 3: ['sasha', 'farid', 'ira'] };
+const admLabel = id => (ADMINS[id] ? `${ADMINS[id].name} (@${ADMINS[id].user})` : '—');
 const CREATIVES = { 1: ['Арт «Ночь»', 'Видео 15 с', 'Мем-подача'], 2: ['Скорость', 'Цена 99 ₽', 'Без логов'], 3: ['Сигнал дня', 'Разбор сделки'] };
 const BUYERS = ['@ad_manager_77', '@promo_hunter', '@crypto_sell', '@traffic_lab', '@media_buy_pro', '@reklama_tg', '@gamedev_ads'];
 const BUY_PROB = {
@@ -153,7 +163,7 @@ function makeBuy(p, date, slot) {
   const pm = R() < .25 ? 'cpm' : 'fix';
   const d = {
     side: 'buy', project: p, date, slot, format, status, pm,
-    venue: pick(VENUES[p]), creative: pick(CREATIVES[p]),
+    admin: pick(ADMINS_BY_PROJECT[p]), creative: pick(CREATIVES[p]),
     track: p === 2 ? `https://t.me/vpn_bot?start=${randHandle().slice(0, 8)}` : `https://t.me/+${randHandle()}`,
     post: '', notes: '', warns: [], checks: null, result: null,
   };
@@ -162,7 +172,7 @@ function makeBuy(p, date, slot) {
   const st = startOf(date, slot);
   const hours = hoursOf(format);
   if (isPub(status)) {
-    d.post = `https://t.me/${d.venue.replace(/[^A-Za-zА-Яа-я0-9]/g, '').toLowerCase().slice(0, 12)}/${between(800, 9800)}`;
+    d.post = `https://t.me/c/1874320511/${between(800, 9800)}`;
     const views = between(5000, 16000, 10);
     const late = NEUTRAL.has(slot) && R() < .22;
     d.factShift = late ? 25 : between(0, 5);
@@ -247,7 +257,7 @@ function generate() {
   const drop = (side, p, date, slot) => { for (let i = deals.length - 1; i >= 0; i--) { const x = deals[i]; if (x.side === side && x.project === p && x.date === date && x.slot === slot) deals.splice(i, 1); } };
   drop('buy', 1, '2026-10-06', 'n17');
   const cpmEx = makeBuy(1, '2026-10-06', 'n17');
-  Object.assign(cpmEx, { format: '1/24', status: 'done', pm: 'cpm', rate: 450, views: 12480, cpmState: 'fixed', venue: 'Игры без правил', price: undefined, warns: [] });
+  Object.assign(cpmEx, { format: '1/24', status: 'done', pm: 'cpm', rate: 450, views: 12480, cpmState: 'fixed', admin: 'tenshi', price: undefined, warns: [] });
   cpmEx.fixedAt = new Date(2026, 9, 7, 16, 58); // за 2 минуты до снятия в 17:00
   cpmEx.checks = { reach: { views: 12480, ago: 'перед снятием' }, time: { plan: '17:00', fact: '17:00', late: false }, top: { ok: true }, life: { ok: true, hours: 24 } };
   cpmEx.factShift = 0;
@@ -255,7 +265,7 @@ function generate() {
   deals.push(cpmEx);
 
   drop('buy', 3, '2026-10-14', 'evening');
-  deals.push({ side: 'buy', project: 3, date: '2026-10-14', slot: 'evening', format: '1/48', status: 'agreed', pm: 'fix', price: 150000, venue: 'Крипто Сигналы PRO · 1,2 млн', creative: 'Разбор сделки', track: 'https://t.me/+Kx4Lm2Pq8VwZ', post: '', notes: 'Большой канал, договорились через менеджера. Креатив согласовать до 12.10.', warns: [], checks: null, result: null });
+  deals.push({ side: 'buy', project: 3, date: '2026-10-14', slot: 'evening', format: '1/48', status: 'agreed', pm: 'fix', price: 150000, admin: 'pro', creative: 'Разбор сделки', track: 'https://t.me/+Kx4Lm2Pq8VwZ', post: '', notes: 'Сетка из трёх каналов, 1,2 млн подписчиков суммарно. Креатив согласовать до 12.10.', warns: [], checks: null, result: null });
 
   drop('sell', 1, '2026-10-08', 'evening');
   deals.push({ side: 'sell', project: 1, date: '2026-10-08', slot: 'evening', format: '1/24', status: 'agreed', pm: 'cpm', rate: 450, cpmState: 'wait', buyer: '@ad_manager_77', post: '', notes: '', warns: [] });
@@ -412,6 +422,18 @@ const agg = list => (state.mode === 'buy' ? aggBuy(list) : aggSell(list));
 // ================= РАЗМЕТКА: МЕЛОЧИ =================
 const $ = s => document.querySelector(s);
 const ava = (p, cls = '') => `<span class="pava ${cls}" style="--h:${PJ[p].h}" aria-hidden="true">${esc(PJ[p].mono)}</span>`;
+// «Кот (@kot_tgg)»: имя главное, username — в скобках и потише
+const admHTML = id => (ADMINS[id] ? `<span class="adm"><b>${esc(ADMINS[id].name)}</b> <span class="u">(@${esc(ADMINS[id].user)})</span></span>` : '<span class="dash-v">—</span>');
+// поле «Админ» в карточке: знакомый — по username, новый — заводим из «Имя (@username)»
+function adminFromInput(v) {
+  const m = v.trim().match(/^(.+?)\s*\(@([A-Za-z0-9_]{4,32})\)$/);
+  if (!m) return null;
+  const user = m[2].toLowerCase();
+  const known = Object.keys(ADMINS).find(id => ADMINS[id].user.toLowerCase() === user);
+  if (known) return known;
+  ADMINS[user] = { name: m[1].trim(), user: m[2] };
+  return user;
+}
 const stChip = s => `<span class="st st-${s}">${ST[s].l}</span>`;
 const mkOf = d => (isPub(d.status) ? 'pub' : d.status === 'agreed' ? 'agreed' : 'plan');
 const ICON = {
@@ -534,7 +556,7 @@ function renderWarns(list) {
     <div class="wbox-h"><span class="wic ${high ? 'high' : 'mid'}">${ICON.warn}</span>${ws.length} ${plural(ws.length, 'предупреждение', 'предупреждения', 'предупреждений')}<span class="cnt">${high ? `${high} ${plural(high, 'высокое', 'высоких', 'высоких')}` : 'все средние'}</span>
       ${ws.length > 3 ? `<button class="btn tiny" type="button" data-act="warns" aria-expanded="${state.warnsOpen}">${state.warnsOpen ? 'Свернуть' : `Показать все ${ws.length}`}</button>` : ''}</div>
     <ul class="wlist">${shown.map(w => {
-      const meta = w.d ? `${dm(parseIso(w.d.date))} · ${SLOT[w.d.slot].l} · ${esc(PJ[w.d.project].mono)}${w.d.side === 'buy' ? ` · ${esc(w.d.venue)}` : ` · ${esc(w.d.buyer)}`}` : `${esc(PJ[w.tomorrow.p].mono)} · продать`;
+      const meta = w.d ? `${dm(parseIso(w.d.date))} · ${SLOT[w.d.slot].l} · ${esc(PJ[w.d.project].mono)}${w.d.side === 'buy' ? ` · ${esc(admLabel(w.d.admin))}` : ` · ${esc(w.d.buyer)}`}` : `${esc(PJ[w.tomorrow.p].mono)} · продать`;
       const act = w.d ? `data-act="open" data-id="${w.d.id}"` : `data-act="new" data-date="${w.tomorrow.date}" data-slot="${w.tomorrow.slot}" data-proj="${w.tomorrow.p}"`;
       return `<li><button class="witem" type="button" ${act}><span class="wtag ${w.sev}">${w.sev === 'high' ? 'высокая' : 'средняя'}</span><span class="wtext">${w.html}</span><span class="wmeta">${meta}</span></button></li>`;
     }).join('')}</ul></div>`;
@@ -546,7 +568,7 @@ function renderList(list) {
   const rows = [...list].sort((a, b) => a.date.localeCompare(b.date) || SLOT[a.slot].i - SLOT[b.slot].i);
   const a = agg(list);
   const head = buy
-    ? ['Дата выхода', 'Место', 'Формат', 'Проект', 'Где вышел пост', 'Цена', 'Статус', 'Подп.', '₽ за подп.', 'ROI', '']
+    ? ['Дата выхода', 'Место', 'Формат', 'Проект', 'У кого купил', 'Цена', 'Статус', 'Подп.', '₽ за подп.', 'ROI', '']
     : ['Дата выхода', 'Место', 'Формат', 'Мой канал', 'Покупатель', 'Цена', 'Статус', 'Просмотры', ''];
   const numCols = buy ? new Set([5, 7, 8, 9]) : new Set([5, 7]);
   const body = rows.map(d => {
@@ -563,7 +585,7 @@ function renderList(list) {
       <td class="c-slot"><span class="chip slot">${SLOT[d.slot].l}${mand ? ' <span class="req" title="обязательное место">*</span>' : ''}</span><span class="chip fmt fmt-m">${d.format}</span></td>
       <td class="c-fmt"><span class="chip fmt">${d.format}</span></td>
       <td class="c-proj"><span class="c-prj">${ava(d.project)}<span class="nm">${esc(PJ[d.project].name)}</span></span></td>
-      <td class="c-venue">${esc(buy ? d.venue : d.buyer)}</td>
+      <td class="c-venue">${buy ? admHTML(d.admin) : esc(d.buyer)}</td>
       <td class="num c-price">${priceHTML(d)}</td>
       <td class="c-st">${stChip(d.status)}</td>
       ${metrics}
@@ -615,9 +637,9 @@ function renderWeek(r, list, ch, chPick) {
       let inner;
       if (ds.length) {
         inner = ds.slice(0, 2).map(d => {
-          const nm = buy ? `${PJ[d.project].mono} · ${d.venue}` : d.buyer;
-          const lbl = `${SLOT[d.slot].l}, ${dm(day)}: ${buy ? `${PJ[d.project].name}, ${d.venue}` : d.buyer}, ${ST[d.status].l}${d.warns.length ? ', есть предупреждение' : ''}`;
-          return `<button class="gdeal ${d.status === 'plan' ? 'plan' : ''} ${d.warns.length ? 'warn' : ''}" type="button" data-act="open" data-id="${d.id}" aria-label="${esc(lbl)}">${buy ? ava(d.project, 'sm') : ''}<span class="nm">${esc(nm)}</span><span class="mk ${mkOf(d)}"></span></button>`;
+          const nm = buy ? admHTML(d.admin) : esc(d.buyer);
+          const lbl = `${SLOT[d.slot].l}, ${dm(day)}: ${buy ? `${PJ[d.project].name}, ${admLabel(d.admin)}` : d.buyer}, ${ST[d.status].l}${d.warns.length ? ', есть предупреждение' : ''}`;
+          return `<button class="gdeal ${d.status === 'plan' ? 'plan' : ''} ${d.warns.length ? 'warn' : ''}" type="button" data-act="open" data-id="${d.id}" aria-label="${esc(lbl)}">${buy ? ava(d.project, 'sm') : ''}<span class="nm">${nm}</span><span class="mk ${mkOf(d)}"></span></button>`;
         }).join('') + (ds.length > 2 ? `<button class="gmore" type="button" data-act="cell" data-date="${date}" data-slot="${s.k}">+ ещё ${ds.length - 2}</button>` : '');
         if (!buy && isMand && !filled) inner += `<span class="sr-only">обязательное место ещё не продано</span>`;
       } else if (isMand) {
@@ -704,6 +726,7 @@ const DIMS = {
   week: { l: 'Неделя', key: d => iso(mondayOf(parseIso(d.date))), label: k => weekLabel(k), order: k => k },
   day: { l: 'День', key: d => d.date, label: k => { const x = parseIso(k); return `${DOW[x.getDay()]}, ${dm(x)}`; }, order: k => k },
   format: { l: 'Формат', key: d => d.format, label: k => k, order: k => k },
+  admin: { l: 'Админ', buyOnly: true, key: d => d.admin, label: k => admLabel(k), order: k => ADMINS[k]?.name || k },
   creative: { l: 'Креатив', buyOnly: true, key: d => d.creative || 'без креатива', label: k => k, order: k => k },
   buyer: { l: 'Покупатель', sellOnly: true, key: d => d.buyer, label: k => k, order: k => k },
 };
@@ -823,13 +846,15 @@ const tri = t => (t < .5 ? mix(GREEN, AMBER, t * 2) : mix(AMBER, RED, (t - .5) *
 function renderMatrix(r, list) {
   const buy = state.mode === 'buy';
   const metric = MX_METRICS[state.mode].find(m => m.k === state.mx[state.mode]) || MX_METRICS[state.mode][0];
+  if (state.mx.rows === 'admin' && !buy) state.mx.rows = 'project';
   const rowsDim = state.mx.rows;
   let rowKeys;
   if (rowsDim === 'project') rowKeys = sideIds();
+  else if (rowsDim === 'admin') rowKeys = [...new Set(list.filter(d => d.status !== 'cancel').map(d => d.admin))].sort((a, b) => ADMINS[a].name.localeCompare(ADMINS[b].name));
   else if (rowsDim === 'week') rowKeys = [...new Set(r.days.map(d => iso(mondayOf(d))))];
   else rowKeys = r.days.map(iso);
-  const inRow = (d, k) => (rowsDim === 'project' ? d.project === k : rowsDim === 'week' ? iso(mondayOf(parseIso(d.date))) === k : d.date === k);
-  const rowDays = k => (rowsDim === 'project' ? r.days : rowsDim === 'week' ? r.days.filter(d => iso(mondayOf(d)) === k) : [parseIso(k)]);
+  const inRow = (d, k) => (rowsDim === 'admin' ? d.admin === k : rowsDim === 'project' ? d.project === k : rowsDim === 'week' ? iso(mondayOf(parseIso(d.date))) === k : d.date === k);
+  const rowDays = k => (rowsDim === 'project' || rowsDim === 'admin' ? r.days : rowsDim === 'week' ? r.days.filter(d => iso(mondayOf(d)) === k) : [parseIso(k)]);
   const rowChannels = k => (rowsDim === 'project' ? [k] : channelIds());
   const live = list.filter(d => d.status !== 'cancel' && (buy || d.status !== 'plan'));
 
@@ -869,14 +894,14 @@ function renderMatrix(r, list) {
     const s = metric.f(v);
     return `<td class="${tot ? 'tot' : ''}"><span class="v" ${tot ? '' : `style="--bg-c:${bg(v)}"`}>${s}</span></td>`;
   };
-  const rowHead = k => (rowsDim === 'project' ? `<span class="c-prj">${ava(k, 'sm')}<span class="nm">${esc(PJ[k].name)}</span></span>` : rowsDim === 'week' ? weekLabel(k) : (() => { const x = parseIso(k); return `${DOW[x.getDay()]}, ${dm(x)}`; })());
+  const rowHead = k => (rowsDim === 'admin' ? admHTML(k) : rowsDim === 'project' ? `<span class="c-prj">${ava(k, 'sm')}<span class="nm">${esc(PJ[k].name)}</span></span>` : rowsDim === 'week' ? weekLabel(k) : (() => { const x = parseIso(k); return `${DOW[x.getDay()]}, ${dm(x)}`; })());
   const legends = {
     mono: `<span class="mx-legend"><span class="bar" style="background:linear-gradient(90deg,${rgba(ACCENT, .05)},${rgba(ACCENT, .45)})"></span>интенсивность = объём; «лучше» или «хуже» здесь нет</span>`,
     cheap: `<span class="mx-legend"><span class="bar" style="background:linear-gradient(90deg,${rgba(GREEN, .5)},${rgba(AMBER, .5)},${rgba(RED, .5)})"></span>дешевле — зеленее · от ${rub1(isFinite(min) ? min : null)} до ${rub1(max || null)}</span>`,
     div: `<span class="mx-legend"><span class="bar" style="background:linear-gradient(90deg,${rgba(RED, .45)},rgba(255,255,255,.06),${rgba(GREEN, .45)})"></span>минус — красный, плюс — зелёный, вокруг нуля</span>`,
     fill: `<span class="mx-legend"><span class="bar" style="background:linear-gradient(90deg,${rgba(RED, .5)},${rgba(AMBER, .5)},${rgba(GREEN, .5)})"></span>больше продано — зеленее</span>`,
   };
-  const rowsOpts = [['project', buy ? 'Проекты' : 'Каналы'], ['week', 'Недели'], ['day', 'Дни']];
+  const rowsOpts = [['project', buy ? 'Проекты' : 'Каналы'], ...(buy ? [['admin', 'Админы']] : []), ['week', 'Недели'], ['day', 'Дни']];
   return `<article class="card hero">
     <div class="card-h"><span class="card-idx">01 / матрица</span>
       <div><h2 class="card-t">${rowsOpts.find(o => o[0] === rowsDim)[1]} × места · ${metric.l}</h2><div class="card-s">${rangeLabel(r)} · «·» — ${buy ? 'не закупали' : 'не продавали'}, «—» — результата ещё нет</div></div>
@@ -969,7 +994,7 @@ function openDeal(id, prefill = {}) {
   const ids = buy ? scopeIds() : channelIds();
   const d = src ? structuredClone(src) : {
     side: buy ? 'buy' : 'sell', project: Number(prefill.proj) || ids[0] || 1, date: prefill.date || iso(addDays(TODAY, 1)), slot: prefill.slot || 'evening',
-    format: '1/24', status: 'plan', pm: 'fix', price: null, rate: null, venue: '', buyer: '', creative: '', track: '', post: '', notes: '', warns: [], history: [], result: null, checks: null,
+    format: '1/24', status: 'plan', pm: 'fix', price: null, rate: null, admin: null, buyer: '', creative: '', track: '', post: '', notes: '', warns: [], history: [], result: null, checks: null,
   };
   editing = { src, d };
   const isNew = !src;
@@ -1016,7 +1041,7 @@ function openDeal(id, prefill = {}) {
   $('#dealForm').innerHTML = `
     <div class="m-head"><div>
       <div class="m-eyebrow">${isNew ? `новый ${buy ? 'закуп' : 'продажа'}`.replace('новый продажа', 'новая продажа') : `${what} · ${d.id} · ${dmy(parseIso(d.date))}`}</div>
-      <h2 id="dealTitle">${isNew ? (buy ? 'Новый закуп' : 'Новая продажа') : esc(buy ? d.venue : d.buyer)}</h2>
+      <h2 id="dealTitle">${isNew ? (buy ? 'Новый закуп' : 'Новая продажа') : esc(buy ? admLabel(d.admin) : d.buyer)}</h2>
       ${isNew ? '' : `<div class="m-chips">${stChip(d.status)}<span class="chip slot">${SLOT[d.slot].l}</span><span class="chip fmt">${d.format}</span><span class="chip neutral">${ava(d.project, 'sm')}${esc(PJ[d.project].name)}</span>${warnIcons(d)}</div>`}
     </div><button class="x-btn" type="button" data-close aria-label="Закрыть">${ICON.x}</button></div>
     <div class="m-body">
@@ -1024,7 +1049,11 @@ function openDeal(id, prefill = {}) {
       <div class="m-sec"><div class="m-sec-h"><span class="card-idx">01 / сделка</span><h3>${buy ? 'Поля закупа' : 'Поля продажи'}</h3></div>
       <div class="fgrid">
         <div class="fld"><label for="fProj">${buy ? 'Проект — куда ведём' : 'Мой канал'}</label><select class="inp" id="fProj" name="project" required>${projOpts}</select></div>
-        <div class="fld"><label for="fWho">${buy ? 'Где выходит пост' : 'Покупатель — контакт'}</label><input class="inp" id="fWho" name="who" required value="${esc(buy ? d.venue : d.buyer)}" placeholder="${buy ? 'Название канала' : '@username'}" ${buy ? '' : 'pattern="@[A-Za-z0-9_]{4,32}"'}>${buy ? '' : '<div class="hint">Telegram-контакт в виде @username</div>'}</div>
+        ${buy
+          ? `<div class="fld"><label for="fWho">У кого купил — админ</label><input class="inp" id="fWho" name="who" required list="adminList" autocomplete="off" value="${esc(d.admin ? admLabel(d.admin) : '')}" placeholder="Имя (@username)" pattern="[^\\(\\)]+ \\(@[A-Za-z0-9_]{4,32}\\)">
+              <datalist id="adminList">${Object.keys(ADMINS).map(id => `<option value="${esc(admLabel(id))}"></option>`).join('')}</datalist>
+              <div class="hint">${d.admin ? `<button class="adm-link" type="button" data-act="adv" data-adm="${d.admin}">Все кампании ${esc(ADMINS[d.admin].name)} ↗</button>` : 'Выберите из знакомых или впишите нового: Имя (@username)'}</div></div>`
+          : `<div class="fld"><label for="fWho">Покупатель — контакт</label><input class="inp" id="fWho" name="who" required value="${esc(d.buyer)}" placeholder="@username" pattern="@[A-Za-z0-9_]{4,32}"><div class="hint">Telegram-контакт в виде @username</div></div>`}
         <div class="fld"><label for="fDate">Дата выхода — план</label><input class="inp mono" type="date" id="fDate" name="date" required value="${d.date}"></div>
         <div class="fld"><label for="fFact">Дата выхода — факт</label><input class="inp mono" id="fFact" readonly value="${pub && d.checks ? `${dm(parseIso(d.date))}, ${d.checks.time.fact}` : pub ? `${dm(parseIso(d.date))}, ${SLOT[d.slot].t}` : ''}" placeholder="заполнится, когда пост выйдет"><div class="hint">Проставляет бот постинга, вручную не меняется</div></div>
         <div class="fld wide"><span class="flbl" id="slotLbl">Место</span><div class="slot-pick" role="radiogroup" aria-labelledby="slotLbl">${slotPick}</div>${buy ? '' : '<div class="hint">* — обязательное место этого канала</div>'}</div>
@@ -1079,7 +1108,7 @@ $('#dealForm').addEventListener('submit', e => {
     pm: el.pm.value, notes: el.notes.value.trim(), post: el.post.value.trim(),
   });
   if (d.pm === 'fix') { d.price = Number(el.price.value); delete d.rate; } else { d.rate = Number(el.rate.value); delete d.price; if (!d.cpmState) d.cpmState = 'wait'; }
-  if (buy) { d.venue = el.who.value.trim(); d.creative = el.creative.value.trim(); d.track = el.track.value.trim(); } else d.buyer = el.who.value.trim();
+  if (buy) { d.admin = adminFromInput(el.who.value); d.creative = el.creative.value.trim(); d.track = el.track.value.trim(); } else d.buyer = el.who.value.trim();
   if (d.status !== prevStatus || !src) d.history = [...(d.history || []), { st: d.status, at: new Date(NOW) }];
   if (src) Object.assign(src, d);
   else {
@@ -1102,7 +1131,7 @@ function openDay(date, slot) {
   const buy = state.mode === 'buy';
   $('#dayDlg').innerHTML = `<div class="m-head"><div><div class="m-eyebrow">${buy ? 'закупы' : 'продажи'} дня</div><h2 id="dayTitle">${DOW_FULL[day.getDay()].replace(/^./, c => c.toUpperCase())}, ${day.getDate()} ${MON_GEN[day.getMonth()]}${slot ? ` · ${SLOT[slot].l}` : ''}</h2></div>
     <button class="x-btn" type="button" data-close aria-label="Закрыть">${ICON.x}</button></div>
-    ${ds.length ? `<ul class="daylist">${ds.map(d => `<li><button class="dl-it" type="button" data-act="open" data-id="${d.id}"><span class="when"><span class="chip slot">${SLOT[d.slot].l}</span></span><span class="who">${ava(d.project, 'sm')}<span>${esc(buy ? `${d.venue}` : `${d.buyer} · ${PJ[d.project].mono}`)}</span>${warnIcons(d)}</span><span class="rt">${priceHTML(d)}${stChip(d.status)}</span></button></li>`).join('')}</ul>` : `<p class="dl-empty">${buy ? 'В этот день закупов нет.' : 'В этот день продаж нет.'}</p>`}
+    ${ds.length ? `<ul class="daylist">${ds.map(d => `<li><button class="dl-it" type="button" data-act="open" data-id="${d.id}"><span class="when"><span class="chip slot">${SLOT[d.slot].l}</span></span><span class="who">${ava(d.project, 'sm')}<span>${buy ? admHTML(d.admin) : esc(`${d.buyer} · ${PJ[d.project].mono}`)}</span>${warnIcons(d)}</span><span class="rt">${priceHTML(d)}${stChip(d.status)}</span></button></li>`).join('')}</ul>` : `<p class="dl-empty">${buy ? 'В этот день закупов нет.' : 'В этот день продаж нет.'}</p>`}
     <div class="m-foot"><span class="sp"></span><button class="btn btn-primary" type="button" data-act="new" data-date="${date}" ${slot ? `data-slot="${slot}"` : ''} ${buy ? '' : `data-proj="${state.sellCh}"`}>${ICON.plus}Добавить на этот день</button></div>`;
   $('#dayDlg').showModal();
 }
@@ -1148,6 +1177,9 @@ document.addEventListener('click', async e => {
       DEALS = DEALS.filter(x => x !== src);
       $('#dealDlg').close(); render(); toast(`${src.id} удалён${src.side === 'buy' ? '' : 'а'}`);
     }, { once: true });
+  } else if (act === 'adv') {
+    e.preventDefault();
+    toast(`Откроется вкладка «Кампании» → «Рекламодатели» с фильтром по ${admLabel(t.dataset.adm)}: все его кампании, ссылки, подписчики и выручка`, 'info');
   } else if (act === 'proof') { e.preventDefault(); toast('Откроется сообщение в канале подтверждений: пересланный пост и замер просмотров', 'info'); }
   else if (act === 'retry') { setDemo('loading'); setTimeout(() => setDemo('data'), 900); }
 });

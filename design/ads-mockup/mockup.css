@@ -275,6 +275,11 @@ input[type="date"].inp{color-scheme:dark}
 .gdeal{display:flex;align-items:center;gap:6px;width:100%;padding:4px 6px;border-radius:7px;border:1px solid var(--line);background:rgba(255,255,255,.04);font:600 11px var(--body);color:var(--text);text-align:left;transition:border-color .15s,background .15s;min-width:0}
 .gdeal:hover{border-color:var(--line2);background:rgba(255,255,255,.07)}
 .gdeal .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.adm b{font-weight:600}
+.adm .u{color:var(--muted);font-weight:500}
+.gdeal .adm .u{font-size:10px}
+.adm-link{border:0;background:none;padding:0;color:var(--accent);font:600 11.5px var(--body);cursor:pointer}
+.adm-link:hover{text-decoration:underline}
 .gdeal .mk{margin-left:auto}
 .gdeal.plan{border-style:dashed;background:none;color:var(--muted)}
 .gdeal.warn{border-color:rgba(255,107,122,.45)}
@@ -603,8 +608,7 @@ input[type="date"].inp{color-scheme:dark}
   .grid-tbl td{height:58px}
   .gdeal{padding:3px 5px;font-size:10px}
   /* в узкой клетке закупа аватарка уже говорит, какой проект: оставляем её и статус */
-  .gdeal .pava+.nm{display:none}
-  .gdeal .pava+.nm+.mk{margin-left:auto}
+  .gdeal .adm .u{display:none}
   .gadd-t{display:none}
   .gadd{font-size:15px}
   .mx-tbl{min-width:600px}
