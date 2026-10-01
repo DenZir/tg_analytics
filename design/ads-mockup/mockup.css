@@ -315,6 +315,29 @@ input[type="date"].inp{color-scheme:dark}
 .grid-tbl tfoot td{text-align:center;font:600 12px var(--mono)}
 .grid-tbl tfoot td.full{color:var(--green)}
 .grid-tbl tfoot td.low{color:var(--red)}
+/* сводка по своим проектам над сеткой */
+.psum{list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;padding:0 18px 14px}
+.psum-it{width:100%;height:100%;display:flex;flex-direction:column;gap:9px;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025);text-align:left;color:var(--text);transition:border-color .15s,background .15s}
+.psum-it:hover{border-color:var(--line2);background:rgba(255,255,255,.045)}
+.psum-top{display:flex;align-items:center;gap:9px;min-width:0;font-weight:600;font-size:13px}
+.psum-top .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.psum-occ{margin-left:auto;font-size:11px;color:var(--muted);font-weight:600}
+.psum-nums{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:11px;color:var(--muted)}
+.psum-nums b{display:block;font:600 18px/1.15 var(--mono);color:var(--text)}
+.psum-bar{display:flex;height:5px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}
+.psum-bar i{display:block;height:100%;background:var(--c)}
+.psum-foot{font-size:10.5px;color:var(--dim)}
+/* полосы проектов в недельной сетке */
+.grid-tbl tr.lane-h th{position:static;background:rgba(255,255,255,.035);padding:9px 12px;border-top:1px solid var(--line2);border-bottom:1px solid var(--line);width:auto}
+.lane-in{position:sticky;left:12px;display:inline-flex;align-items:center;gap:10px;font-size:13px}
+.lane-s{font:500 11px var(--mono);color:var(--muted)}
+.grid-tbl tbody .lane-in b{display:inline;font:600 13px var(--body);color:var(--text)}
+.grid-tbl tbody .lane-in .pava{font:700 9px var(--body);color:#fff}
+.grid-tbl tbody .lane-in .lane-s{font:500 11px var(--mono);color:var(--muted)}
+.grid-tbl.lanes td{height:52px}
+.grid-tbl tr.lane-foot th,.grid-tbl tr.lane-foot td{padding:7px 12px;font:600 11.5px var(--mono);color:var(--muted);text-align:center;border-bottom:0;height:auto}
+.grid-tbl tr.lane-foot th{text-align:left;font-family:var(--body)}
+.grid-tbl tbody.lane+tbody.lane tr.lane-h th{border-top:6px solid #0D1219}
 .chan-pick{display:flex;gap:6px;flex-wrap:wrap}
 .chan-pick button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted);font:600 12px var(--body);padding:5px 10px 5px 6px;border-radius:9px}
 .chan-pick button[aria-pressed="true"]{color:var(--text);border-color:rgba(87,182,255,.45);background:rgba(87,182,255,.1)}
@@ -626,6 +649,8 @@ input[type="date"].inp{color-scheme:dark}
   .grid-tbl{min-width:640px}
   .grid-tbl thead th:first-child,.grid-tbl tbody th,.grid-tbl tfoot th{width:64px}
   .grid-tbl td{height:58px}
+  .psum{padding:0 12px 12px;grid-template-columns:1fr}
+  .lane-in{left:8px}
   .gdeal{padding:3px 5px;font-size:10px}
   /* в узкой клетке закупа аватарка уже говорит, какой проект: оставляем её и статус */
   .gdeal .adm .u{display:none}
