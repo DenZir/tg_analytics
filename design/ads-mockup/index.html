@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#090C11">
+<title>Реклама · макет | TG Analytics</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230E141D'/%3E%3Cpath d='M6 16.5L26 8l-6.5 17-3.8-7.2L6 16.5z' fill='%2357B6FF'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  Макет раздела «Реклама» по DESIGN_BRIEF_ADS.md.
+
+  Стили — токены и компоненты дашборда (src/dashboard/public/index.html) без
+  новых цветов и шрифтов; новое здесь только то, чего в дашборде нет: сетка
+  мест, календарь, сводка с уровнями, матрица, карточка сделки.
+
+  Все цифры на странице — из одного набора сделок через одни и те же функции
+  (aggBuy / aggSell в app.js), поэтому итоги периода, сводка и матрица сходятся
+  по построению.
+-->
+<link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+
+<div class="bg-glow"></div><div class="bg-grid"></div><div class="bg-noise"></div>
+
+<!-- Управление макетом — не часть продукта -->
+<div class="mockbar" role="region" aria-label="Управление макетом">
+  <span class="mb-tag">Макет</span>
+  <span class="mb-txt">раздел «Реклама» · сегодня в макете — <b>чт, 08.10.2026, 15:00</b></span>
+  <span class="mb-sp"></span>
+  <span class="mb-lbl" id="mbDevLbl">Экран</span>
+  <div class="seg sm" role="group" aria-labelledby="mbDevLbl" id="devSeg">
+    <button type="button" data-v="desktop" aria-pressed="true">Десктоп</button>
+    <button type="button" data-v="phone" aria-pressed="false">Телефон</button>
+  </div>
+  <span class="mb-lbl" id="mbStLbl">Состояние</span>
+  <div class="seg sm" role="group" aria-labelledby="mbStLbl" id="demoSeg">
+    <button type="button" data-v="data" aria-pressed="true">Данные</button>
+    <button type="button" data-v="empty" aria-pressed="false">Пусто</button>
+    <button type="button" data-v="loading" aria-pressed="false">Загрузка</button>
+    <button type="button" data-v="error" aria-pressed="false">Ошибка</button>
+  </div>
+</div>
+
+<div class="stage" id="stage" data-device="desktop">
+<div class="frame" id="frame">
+<div class="app">
+
+  <!-- ================= САЙДБАР ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 12.2 21 4.8l-5.7 14.9-3.3-6.3-8.5-1.2z" fill="url(#lg)"/><path d="m12 13.4 1.9 3.6" stroke="#0C1520" stroke-width="1.2"/><defs><linearGradient id="lg" x1="3" y1="5" x2="20" y2="19"><stop stop-color="#7CC6FF"/><stop offset="1" stop-color="#3D9BE9"/></linearGradient></defs></svg></div>
+      <div class="brand-t">TG Analytics<span class="brand-sub">ops-консоль · v2.0</span></div>
+    </div>
+    <div class="nav-cap">Разделы</div>
+    <nav aria-label="Разделы дашборда">
+      <button class="nav-it" type="button" data-nav="Обзор"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="lbl">Обзор</span></button>
+      <button class="nav-it" type="button" data-nav="Кампании"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 17 5v13L3 12.5v-2z"/><path d="M7 13.5V18a2 2 0 0 0 4 0v-3"/><path d="M17 8.5c1.7.6 2.5 1.7 2.5 3s-.8 2.4-2.5 3"/></svg><span class="lbl">Кампании</span><span class="nbadge">33</span></button>
+      <button class="nav-it on" type="button" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path d="M7.5 13.5h3M13.5 13.5h3M7.5 16.5h3"/></svg><span class="lbl">Реклама</span><span class="nbadge new">new</span></button>
+      <button class="nav-it" type="button" data-nav="UTM-метки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.7 3.3h6a2 2 0 0 1 2 2v6l-9.6 9.6a1.5 1.5 0 0 1-2.1 0l-5.9-5.9a1.5 1.5 0 0 1 0-2.1l9.6-9.6z"/><circle cx="16.8" cy="7.2" r="1.4"/></svg><span class="lbl">UTM-метки</span><span class="nbadge">12</span></button>
+      <button class="nav-it" type="button" data-nav="Приватки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg><span class="lbl">Приватки</span></button>
+      <button class="nav-it" type="button" data-nav="Промокоды"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4v-3z"/><path d="M12 8.5v11" stroke-dasharray="2 2.5"/></svg><span class="lbl">Промокоды</span><span class="nbadge">4</span></button>
+      <button class="nav-it" type="button" data-nav="Проекты"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3.5 13 8.5 4.7L20.5 13"/><path d="m3.5 17 8.5 4.7L20.5 17" opacity=".45"/></svg><span class="lbl">Проекты</span><span class="nbadge">3</span></button>
+    </nav>
+    <div class="side-spacer"></div>
+    <div class="syscard">
+      <div class="sysrow"><span class="pulse"></span> Live · сбор событий</div>
+      <div class="sysrow dim">проверка постов: каждые 5 мин</div>
+      <div class="sysrow dim">валюта: RUB · язык: RU</div>
+    </div>
+    <div class="admin-chip"><span class="ava">A</span><div>Администратор<span>Вход через Telegram-бота</span></div></div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main id="main">
+    <header class="topbar">
+      <div class="tb-title">
+        <div class="eyebrow" id="tbEyebrow">чт, 8 октября 2026 · tg-analytics</div>
+        <h1>Реклама</h1>
+        <div class="tb-sub" id="tbSub"></div>
+      </div>
+      <div class="tb-actions">
+        <button class="btn projsel-btn" id="projSelBtn" type="button" popovertarget="projPop" aria-describedby="projSelHint">
+          <span class="pava-stack" id="projSelAva" aria-hidden="true"></span>
+          <span id="projSelLbl">Все проекты</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="chev" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <span class="sr-only" id="projSelHint">Выбор проектов, по которым считаются все цифры раздела</span>
+        <button class="btn ic" id="refreshBtn" type="button" aria-label="Обновить данные"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3M4 13a8 8 0 0 0 14.9 3"/><path d="M20 4v4h-4M4 20v-4h4"/></svg></button>
+      </div>
+    </header>
+
+    <!-- Закуп · Продажа — самый заметный переключатель: меняет смысл всех цифр ниже -->
+    <div class="modebar">
+      <div class="modeseg" role="group" aria-label="Сторона" id="modeSeg">
+        <button type="button" data-v="buy" aria-pressed="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m0 0 5-5m-5 5-5-5"/><path d="M5 20h14"/></svg>
+          <span><b>Закуп</b><small>покупаю рекламу для своих проектов</small></span>
+        </button>
+        <button type="button" data-v="sell" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V8m0 0 5 5m-5-5-5 5"/><path d="M5 4h14"/></svg>
+          <span><b>Продажа</b><small>продаю места в своих каналах</small></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="toolbar">
+        <div class="period">
+          <button class="btn ic" type="button" id="prevBtn" aria-label="Предыдущий период"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+          <div class="seg" role="group" aria-label="Период" id="periodSeg">
+            <button type="button" data-v="week" aria-pressed="true">Неделя</button>
+            <button type="button" data-v="month" aria-pressed="false">Месяц</button>
+            <button type="button" data-v="custom" aria-pressed="false">Свой</button>
+          </div>
+          <button class="btn ic" type="button" id="nextBtn" aria-label="Следующий период"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+          <span class="range mono" id="rangeLbl" aria-live="polite"></span>
+          <span class="custom" id="customRange" hidden>
+            <label class="sr-only" for="cFrom">С</label><input class="inp mono" type="date" id="cFrom">
+            <span class="dash">—</span>
+            <label class="sr-only" for="cTo">По</label><input class="inp mono" type="date" id="cTo">
+          </span>
+        </div>
+        <span class="sp"></span>
+        <div class="seg" role="group" aria-label="Вид" id="viewSeg">
+          <button type="button" data-v="list" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>Список</button>
+          <button type="button" data-v="grid" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M3.5 9.5h17M3.5 15h17M9.5 3.5v17M15 3.5v17"/></svg>Сетка</button>
+          <button type="button" data-v="summary" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 5h16M8 10h12M12 15h8M12 20h8"/></svg>Сводка</button>
+          <button type="button" data-v="matrix" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" opacity=".5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" opacity=".3"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>Матрица</button>
+        </div>
+        <button class="btn btn-primary" type="button" id="newBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span id="newBtnLbl">Новый закуп</span></button>
+      </div>
+
+      <h2 class="sr-only">Итоги периода</h2>
+      <div class="kpis" id="kpis"></div>
+      <div class="warns" id="warns"></div>
+      <div id="view"></div>
+    </div>
+  </main>
+
+  <!-- Телефон: седьмой раздел не помещается в таб-бар на шесть пунктов, поэтому
+       три редко нужных уходят в «Ещё», а «Реклама» встаёт на их место. -->
+  <nav class="tabbar" aria-label="Разделы дашборда">
+    <button class="tab" type="button" data-nav="Обзор"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>Обзор</button>
+    <button class="tab" type="button" data-nav="Кампании"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 17 5v13L3 12.5v-2z"/><path d="M7 13.5V18a2 2 0 0 0 4 0v-3"/><path d="M17 8.5c1.7.6 2.5 1.7 2.5 3s-.8 2.4-2.5 3"/></svg>Кампании</button>
+    <button class="tab on" type="button" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg>Реклама</button>
+    <button class="tab" type="button" data-nav="Приватки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>Приватки</button>
+    <button class="tab" type="button" id="moreBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>Ещё</button>
+  </nav>
+</div>
+</div>
+</div>
+
+<!-- ================= ВЫБОР ПРОЕКТОВ ================= -->
+<div id="projPop" class="pop" popover>
+  <div id="projList"></div>
+  <div class="pop-foot"><button type="button" class="btn tiny" popovertarget="projPop" popovertargetaction="hide">Готово</button></div>
+</div>
+
+<!-- ================= КАРТОЧКА СДЕЛКИ ================= -->
+<dialog id="dealDlg" class="dlg" closedby="any" aria-labelledby="dealTitle">
+  <form method="dialog" id="dealForm" novalidate></form>
+</dialog>
+
+<!-- Сделки дня / клетки -->
+<dialog id="dayDlg" class="dlg narrow" closedby="any" aria-labelledby="dayTitle"></dialog>
+
+<!-- Подтверждение удаления -->
+<dialog id="confirmDlg" class="dlg confirm" aria-labelledby="confirmTitle">
+  <form method="dialog">
+    <div class="confirm-body">
+      <h2 class="confirm-title" id="confirmTitle">Удалить сделку?</h2>
+      <p class="confirm-text" id="confirmText"></p>
+    </div>
+    <div class="confirm-actions">
+      <button class="btn" value="cancel" autofocus>Отмена</button>
+      <button class="btn btn-danger" value="ok">Удалить</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- «Ещё» на телефоне -->
+<dialog id="moreDlg" class="dlg narrow" closedby="any" aria-labelledby="moreTitle">
+  <div class="m-head"><div><div class="m-eyebrow">разделы</div><h2 id="moreTitle">Ещё</h2></div>
+    <button class="x-btn" type="button" data-close aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <ul class="more-list">
+    <li><button type="button" data-nav="UTM-метки">UTM-метки<span>12</span></button></li>
+    <li><button type="button" data-nav="Промокоды">Промокоды<span>4</span></button></li>
+    <li><button type="button" data-nav="Проекты">Проекты<span>3</span></button></li>
+  </ul>
+</dialog>
+
+<div class="toast-root" id="toasts" role="status" aria-live="polite"></div>
+
+<script type="module">
+  // Popover — Baseline «newly available»: в старых браузерах подгружаем полифил,
+  // и только там, где своего нет.
+  if (!('popover' in HTMLElement.prototype)) {
+    import('https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js');
+  }
+</script>
+<script src="app.js"></script>
+</body>
+</html>
