@@ -265,7 +265,7 @@ app.get("/", async (req, res, next) => {
   next();
 });
 
-app.get(["/index.html", "/mobile.html"], async (req, res, next) => {
+app.get(["/index.html", "/mobile.html", "/ads.html"], async (req, res, next) => {
   if (!(await hasValidDashSession(req))) {
     return res.status(401).send(LOGIN_REQUIRED_HTML);
   }
@@ -952,10 +952,12 @@ app.get("/api/campaigns/page", async (req, res) => {
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
 
     if (mode === "advertisers") {
-      const { rows, total } = await getAdvertisersPage({ page, pageSize, q });
+      const contactId = Number(req.query.contactId) || undefined;
+      const { rows, total } = await getAdvertisersPage({ page, pageSize, q, contactId });
       res.json({ mode, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), advertisers: rows });
     } else if (mode === "creatives") {
-      const { rows, total } = await getCreativesPage({ page, pageSize, q });
+      const contactId = Number(req.query.contactId) || undefined;
+      const { rows, total } = await getCreativesPage({ page, pageSize, q, contactId });
       res.json({ mode, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), creatives: rows });
     } else {
       const contactId = Number(req.query.contactId) || undefined;

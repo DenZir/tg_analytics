@@ -8,6 +8,7 @@ import {
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
   fillCampaignOptions, projectAvatarHtml, uploadProjectAvatar, bumpAvatarVersion,
   daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
+  readStartParams, renderContactFilter,
 } from './shared.js';
 
 /* ================= СПАРКЛАЙН (мобильные размеры) ================= */
@@ -171,6 +172,7 @@ function toggleEmpty(show) {
 let campRenderToken = 0;
 
 async function renderCampaigns() {
+  renderContactFilter(() => renderCampaigns());
   const wrap = $('#campCards');
   wrap.innerHTML = `<div style="padding:20px 4px;color:var(--dim);font-size:12px;text-align:center">Загрузка…</div>`;
   const token = ++campRenderToken;
@@ -1125,7 +1127,8 @@ async function renderCurrentScreen() {
 const rendered = {};
 async function go(scr) {
   state.screen = scr;
-  $$('#tabbar .tab').forEach(b => b.classList.toggle('on', b.dataset.scr === scr));
+  const inMore = !!document.querySelector(`#moreSheet [data-scr="${scr}"]`);
+  $$('#tabbar .tab').forEach(b => b.classList.toggle('on', b.dataset.scr === scr || (inMore && b.hasAttribute('data-more'))));
   $$('.screen').forEach(s => s.classList.remove('active'));
   const el = $('#scr-' + scr); void el.offsetWidth; el.classList.add('active');
   scrollTo({ top: 0, behavior: 'auto' });
@@ -1136,7 +1139,11 @@ async function go(scr) {
   if (scr === 'privatkas') await renderPrivatkas();
   if (scr === 'projects') await renderProjects();
 }
-$$('#tabbar .tab').forEach(b => b.addEventListener('click', () => go(b.dataset.scr)));
+$$('#tabbar .tab[data-scr]').forEach(b => b.addEventListener('click', () => go(b.dataset.scr)));
+$$('#moreSheet [data-scr]').forEach(b => b.addEventListener('click', () => { $('#moreSheet').close(); go(b.dataset.scr); }));
+$('#tabbar [data-more]').addEventListener('click', () => $('#moreSheet').showModal());
+// тап по затемнению закрывает лист
+$('#moreSheet').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 $('#refreshBtn').addEventListener('click', async () => {
   const b = $('#refreshBtn'); b.classList.add('spin'); setTimeout(() => b.classList.remove('spin'), 750);
   try {
@@ -1161,7 +1168,8 @@ $$('.ds-chip').forEach(b => b.addEventListener('click', () => {
   const t = new Date(); $('#liveTime').textContent = pad2(t.getHours()) + ':' + pad2(t.getMinutes());
   try {
     await loadCore();
-    await go('overview');
+    const start = readStartParams();
+    await go(document.getElementById('scr-' + start) ? start : 'overview');
   } catch (err) {
     console.error('[mobile] Failed to load initial data:', err);
     toast('Не удалось загрузить данные. Обновите страницу.', 'warn');

@@ -309,6 +309,7 @@ export interface AdvertisersPageParams {
   page: number;
   pageSize: number;
   q?: string;
+  contactId?: number;
 }
 
 export interface AdvertiserPageRow {
@@ -336,9 +337,11 @@ export async function getAdvertisersPage(
   const q = params.q?.trim();
   const offset = (page - 1) * pageSize;
 
-  const searchCond = q
+  let searchCond = q
     ? and(isNull(campaigns.deletedAt), sql`lower_unicode(${campaigns.advertiser}) LIKE lower_unicode(${`%${q}%`})`)
     : isNull(campaigns.deletedAt);
+  // Only this contact's campaigns — the ad section's «Кампании ↗».
+  if (params.contactId) searchCond = and(searchCond, eq(campaigns.contactId, params.contactId));
 
   const [{ total }] = await db
     .select({ total: sql<number>`count(distinct ${campaigns.advertiser})` })
@@ -466,6 +469,7 @@ export interface CreativesPageParams {
   page: number;
   pageSize: number;
   q?: string;
+  contactId?: number;
 }
 
 export interface CreativePageRow {
@@ -502,12 +506,13 @@ export async function getCreativesPage(
     eq(campaignTags.tagKey, "creative")
   );
 
-  const searchCond = q
+  let searchCond = q
     ? and(
         isNull(campaigns.deletedAt),
         sql`lower_unicode(coalesce(${campaignTags.tagValue}, '')) LIKE lower_unicode(${`%${q}%`})`
       )
     : isNull(campaigns.deletedAt);
+  if (params.contactId) searchCond = and(searchCond, eq(campaigns.contactId, params.contactId));
 
   const [{ total }] = await db
     .select({ total: sql<number>`count(distinct ${creativeKey})` })

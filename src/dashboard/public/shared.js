@@ -468,7 +468,49 @@ export function saveProjectScope(ids) {
   try { localStorage.setItem(PROJECT_SCOPE_KEY, JSON.stringify(ids)); } catch { /* приватный режим — не беда */ }
 }
 
-export const state = { screen: 'overview', period: 30, mode: 'links', q: '', campPage: 1, campTotalPages: 1, projectIds: loadProjectScope() };
+export const state = { screen: 'overview', period: 30, mode: 'links', q: '', campPage: 1, campTotalPages: 1, projectIds: loadProjectScope(), contact: null };
+
+/**
+ * «Кампании ↗» из раздела «Реклама» открывает вкладку с фильтром по контакту:
+ * /index.html?scr=campaigns&contact=12 (или mobile.html). Возвращает экран,
+ * с которого начать, и запоминает контакт в state.contact.
+ */
+export function readStartParams() {
+  const sp = new URLSearchParams(location.search);
+  const scr = sp.get('scr');
+  const contact = Number(sp.get('contact'));
+  if (contact > 0) state.contact = { id: contact, label: null };
+  // адресную строку чистим: при обновлении страницы фильтр не должен «залипать»
+  if (sp.has('scr') || sp.has('contact')) history.replaceState(null, '', location.pathname);
+  return scr || 'overview';
+}
+
+/** Плашка над таблицей кампаний, пока включён фильтр по контакту. */
+export async function renderContactFilter(onClear) {
+  const host = document.getElementById('scr-campaigns');
+  if (!host) return;
+  let el = document.getElementById('contactFilter');
+  if (!state.contact) { el?.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'contactFilter';
+    el.className = 'contact-filter';
+    host.prepend(el);
+  }
+  if (state.contact.label == null) {
+    try {
+      const list = await fetchJSON('/api/ads/contacts');
+      const c = list.find(x => x.id === state.contact?.id);
+      if (state.contact) state.contact.label = c ? c.label : `контакт #${state.contact.id}`;
+    } catch {
+      if (state.contact) state.contact.label = `контакт #${state.contact.id}`;
+    }
+  }
+  if (!state.contact) return;
+  el.innerHTML = `<span>Только кампании: <b></b></span><button type="button" class="btn tiny">Показать все</button>`;
+  el.querySelector('b').textContent = state.contact.label;
+  el.querySelector('button').onclick = () => { state.contact = null; state.campPage = 1; el.remove(); onClear(); };
+}
 
 /** Кусок query-строки с текущим выбором проектов, либо пустая строка. */
 export function projectScopeParam() {
@@ -492,6 +534,7 @@ export async function fetchPromoStats() {
 export async function fetchCampaignsPage(mode, page) {
   const params = new URLSearchParams({ mode, page: String(page), pageSize: String(CAMP_PAGE_SIZE) });
   if (state.q.trim()) params.set('q', state.q.trim());
+  if (state.contact) params.set('contactId', String(state.contact.id));
   return fetchJSON(`/api/campaigns/page?${params}`);
 }
 
@@ -512,6 +555,7 @@ export async function fetchAllCampaignRowsForExport(mode) {
   do {
     const params = new URLSearchParams({ mode, page: String(page), pageSize: String(EXPORT_PAGE_SIZE) });
     if (state.q.trim()) params.set('q', state.q.trim());
+    if (state.contact) params.set('contactId', String(state.contact.id));
     const data = await fetchJSON(`/api/campaigns/page?${params}`);
     totalPages = data.totalPages;
     if (mode === 'links') {

@@ -8,6 +8,7 @@ import {
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
   fillCampaignOptions, saveProjectScope, projectAvatarHtml, uploadProjectAvatar, bumpAvatarVersion,
   daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
+  readStartParams, renderContactFilter,
 } from './shared.js';
 
 /* ================= СПАРКЛАЙН / АНИМАЦИИ (десктоп-специфичные размеры) ================= */
@@ -359,6 +360,7 @@ function toggleEmpty(show) {
 let campRenderToken = 0;
 
 async function renderCampaigns() {
+  renderContactFilter(() => renderCampaigns());
   const head = $('#campHead'), body = $('#campBody');
   const token = ++campRenderToken;
 
@@ -1490,7 +1492,7 @@ async function go(scr) {
   if (scr === 'privatkas') await renderPrivatkas();
   if (scr === 'projects') await renderProjects();
 }
-$$('#nav .nav-it').forEach(b => b.addEventListener('click', () => go(b.dataset.scr)));
+$$('#nav .nav-it[data-scr]').forEach(b => b.addEventListener('click', () => go(b.dataset.scr)));
 
 /* Раскрытие селектора проектов. Закрывается по клику снаружи и по Escape —
    выпадающий список в шапке иначе легко забыть открытым. */
@@ -1534,7 +1536,8 @@ $$('.ds-chip').forEach(b => b.addEventListener('click', () => {
   try {
     await loadCore();
     renderProjectPicker();
-    await go('overview');
+    const start = readStartParams();
+    await go(SCREENS[start] ? start : 'overview');
   } catch (err) {
     console.error('[dashboard] Failed to load initial data:', err);
     toast('Не удалось загрузить данные. Обновите страницу.', 'warn');
