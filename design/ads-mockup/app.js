@@ -388,11 +388,13 @@ const state = {
   expanded: null, sumSort: { col: null, dir: -1 },
   mx: { rows: 'project', buy: 'count', sell: 'count' },
   warnsOpen: false, demo: 'data', narrow: false, gridGroup: 'project',
+  day: TODAY, calMonth: new Date(TODAY.getFullYear(), TODAY.getMonth(), 1),
 };
 
 function range() {
   let from, to;
-  if (state.period === 'week') { from = mondayOf(state.anchor); to = addDays(from, 6); }
+  if (state.view === 'day') { from = to = state.day; }
+  else if (state.period === 'week') { from = mondayOf(state.anchor); to = addDays(from, 6); }
   else if (state.period === 'month') { from = new Date(state.anchor.getFullYear(), state.anchor.getMonth(), 1); to = new Date(state.anchor.getFullYear(), state.anchor.getMonth() + 1, 0); }
   else { from = state.cFrom; to = state.cTo < state.cFrom ? state.cFrom : state.cTo; }
   const days = [];
@@ -404,10 +406,11 @@ function prevRange(r) {
   const n = r.days.length; return { from: addDays(r.from, -n), to: addDays(r.from, -1) };
 }
 function rangeLabel(r) {
+  if (state.view === 'day') return `${DOW[r.from.getDay()]}, ${r.from.getDate()} ${MON_GEN[r.from.getMonth()]} ${r.from.getFullYear()}`;
   if (state.period === 'month') return `${MON_NOM[r.from.getMonth()]} ${r.from.getFullYear()}`;
   return `${dm(r.from)} – ${dm(r.to)}.${r.to.getFullYear()}`;
 }
-const prevLabel = () => (state.period === 'week' ? 'к прошлой неделе' : state.period === 'month' ? 'к прошлому месяцу' : 'к предыдущему периоду такой же длины');
+const prevLabel = () => (state.view === 'day' ? 'к предыдущему дню' : state.period === 'week' ? 'к прошлой неделе' : state.period === 'month' ? 'к прошлому месяцу' : 'к предыдущему периоду такой же длины');
 
 const scopeIds = () => (state.scope.length ? state.scope : PROJECTS.map(p => p.id));
 const channelIds = () => scopeIds().filter(id => PJ[id].channel);
@@ -467,7 +470,10 @@ function renderHeader(r) {
   $('#projSelAva').innerHTML = ids.map(id => ava(id, 'sm')).join('');
   $('#tbSub').textContent = `${state.mode === 'buy' ? 'Закуп рекламы в чужих каналах' : 'Продажа мест в моих каналах'} · ${rangeLabel(r)}`;
   $('#rangeLbl').textContent = rangeLabel(r);
-  $('#customRange').hidden = state.period !== 'custom';
+  $('#customRange').hidden = state.period !== 'custom' || state.view === 'day';
+  $('#periodSeg').hidden = state.view === 'day';
+  $('#prevBtn').setAttribute('aria-label', state.view === 'day' ? 'Предыдущий день' : 'Предыдущий период');
+  $('#nextBtn').setAttribute('aria-label', state.view === 'day' ? 'Следующий день' : 'Следующий период');
   $('#cFrom').value = iso(state.cFrom); $('#cTo').value = iso(state.cTo);
   $('#newBtnLbl').textContent = state.mode === 'buy' ? 'Новый закуп' : 'Новая продажа';
   for (const [id, v] of [['#modeSeg', state.mode], ['#periodSeg', state.period], ['#viewSeg', state.view]]) {
@@ -762,6 +768,95 @@ function renderMonth(r, list, ch, chPick) {
     ${buy ? projSummary(r, list) : ''}<div class="cal">${html}</div><div class="hint-row">${legend}</div></article>`;
 }
 
+
+// ================= ВИД: ДЕНЬ =================
+// Слева календарь месяца с итогом по проектам в каждом дне, справа выбранный
+// день: проекты × места. Всё за один день — и итоги наверху тоже.
+function renderDay(r, list) {
+  const buy = state.mode === 'buy';
+  const ids = sideIds();
+  const sel = iso(state.day), todayIso = iso(TODAY);
+  const counted = d => d.status !== 'cancel' && (buy || d.status !== 'plan');
+
+  // --- календарь ---
+  const m0 = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth(), 1);
+  const mEnd = new Date(m0.getFullYear(), m0.getMonth() + 1, 0);
+  const monthDeals = dealsIn(m0, mEnd).filter(counted);
+  let cells = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((x, i) => `<div class="cal-dow ${i > 4 ? 'wk' : ''}" aria-hidden="true">${x}</div>`).join('');
+  for (let i = 0; i < (m0.getDay() + 6) % 7; i++) cells += '<div aria-hidden="true"></div>';
+  for (let day = m0; day <= mEnd; day = addDays(day, 1)) {
+    const date = iso(day);
+    const per = ids.map(p => {
+      const used = SLOTS.filter(s => monthDeals.some(d => d.project === p && d.date === date && d.slot === s.k)).length;
+      const miss = !buy ? PJ[p].mandatory.filter(s => startOf(date, s) < NOW && !sold(p, date, s)).length : 0;
+      return { p, used, miss };
+    }).filter(x => x.used || x.miss);
+    const lbl = `${day.getDate()} ${MON_GEN[day.getMonth()]}, ${DOW_FULL[day.getDay()]}${date === todayIso ? ', сегодня' : ''}: ${per.length ? per.map(x => `${PJ[x.p].mono} ${x.used} из 7${x.miss ? `, недопродано ${x.miss}` : ''}`).join('; ') : 'пусто'}`;
+    cells += `<button class="dcal-day ${date === todayIso ? 'today' : ''} ${date === sel ? 'sel' : ''}" type="button" data-act="pick-day" data-date="${date}" tabindex="${date === sel ? 0 : -1}" aria-pressed="${date === sel}" ${date === todayIso ? 'aria-current="date"' : ''} aria-label="${lbl}">
+      <span class="dn">${day.getDate()}</span>
+      ${per.map(x => `<span class="pl ${x.miss ? 'miss' : ''}" style="--h:${PJ[x.p].h}" aria-hidden="true"><i></i><b>${esc(PJ[x.p].mono)} ${x.used}/7</b></span>`).join('')}
+    </button>`;
+  }
+  const cal = `<div class="dcal">
+    <div class="dcal-h">
+      <button class="btn ic sm" type="button" data-act="cal-month" data-d="-1" aria-label="Предыдущий месяц">${ICON.left}</button>
+      <h3 class="dcal-t">${MON_NOM[m0.getMonth()]} ${m0.getFullYear()}</h3>
+      <button class="btn ic sm" type="button" data-act="cal-month" data-d="1" aria-label="Следующий месяц">${ICON.right}</button>
+      ${sel !== todayIso ? '<button class="btn tiny" type="button" data-act="today">Сегодня</button>' : ''}
+    </div>
+    <div class="dcal-grid" role="group" aria-label="Выбор дня: стрелки — соседние дни, PageUp и PageDown — месяц">${cells}</div>
+    <p class="dcal-note">${buy ? 'В дне — сколько из 7 мест занято у каждого проекта' : 'В дне — сколько из 7 мест продано в каждом канале; красное — недопродажа'}</p>
+  </div>`;
+
+  // --- выбранный день: проекты × места ---
+  const dayList = list.filter(d => d.status !== 'cancel');
+  const foot = SLOTS.map(() => 0);
+  const rows = ids.map(p => {
+    const mand = buy ? [] : PJ[p].mandatory;
+    let used = 0;
+    const tds = SLOTS.map((s, si) => {
+      const ds = dayList.filter(d => d.project === p && d.slot === s.k);
+      const filled = buy ? ds.length > 0 : ds.some(d => d.status !== 'plan');
+      if (filled) { used++; foot[si]++; }
+      let inner;
+      if (ds.length) {
+        inner = ds.map(d => {
+          const who = buy ? admHTML(d.admin) : esc(d.buyer);
+          const lbl = `${s.l}: ${PJ[p].name}, ${buy ? admLabel(d.admin) : d.buyer}, ${ST[d.status].l}`;
+          return `<button class="dchip ${d.status === 'plan' ? 'plan' : ''} ${d.warns.length ? 'warn' : ''}" type="button" data-act="open" data-id="${d.id}" aria-label="${esc(lbl)}">
+            <span class="nm">${who}</span><span class="mk ${mkOf(d)}"></span>
+            <span class="sub">${priceHTML(d).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}</span></button>`;
+        }).join('');
+      } else if (mand.includes(s.k)) {
+        inner = startOf(sel, s.k) < NOW
+          ? `<div class="gmiss" role="img" aria-label="Недопродажа: обязательное место прошло пустым">не продано</div>`
+          : `<button class="gopen" type="button" data-act="new" data-date="${sel}" data-slot="${s.k}" data-proj="${p}" aria-label="Продать обязательное место: ${s.l}">свободно · продать</button>`;
+      } else {
+        inner = `<button class="gadd" type="button" data-act="new" data-date="${sel}" data-slot="${s.k}" data-proj="${p}" aria-label="Добавить для ${esc(PJ[p].name)}: ${s.l}">＋<span class="gadd-t"> добавить</span></button>`;
+      }
+      return `<td><div class="gcell">${inner}</div></td>`;
+    }).join('');
+    return `<tr><th scope="row"><span class="c-prj">${ava(p)}<span class="nm">${esc(PJ[p].name)}</span></span><span class="dp-occ">${used}/7 ${buy ? 'занято' : 'продано'}</span></th>${tds}</tr>`;
+  }).join('');
+  const head = SLOTS.map(s => `<th scope="col">${s.l}</th>`).join('');
+  const d0 = state.day;
+  const panel = `<div class="dayp">
+    <div class="dayp-h"><h3>${DOW_FULL[d0.getDay()].replace(/^./, c => c.toUpperCase())}, ${d0.getDate()} ${MON_GEN[d0.getMonth()]}</h3>${sel === todayIso ? '<span class="chip neutral today-chip">сегодня</span>' : ''}
+      <span class="dayp-s">${dayList.length} ${plural(dayList.length, 'сделка', 'сделки', 'сделок')} · клик по пустой клетке — ${buy ? 'закуп' : 'продажа'} на этот день и место</span></div>
+    <div class="tbl-wrap"><table class="tbl grid-tbl day-tbl">
+      <caption class="sr-only">${buy ? 'Закупы' : 'Продажи'} за ${d0.getDate()} ${MON_GEN[d0.getMonth()]}: проекты по местам</caption>
+      <thead><tr><th scope="col">${buy ? 'Проект' : 'Канал'}</th>${head}</tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><th scope="row">${buy ? 'Занято' : 'Продано'}</th>${foot.map(n => `<td>${n}/${ids.length}</td>`).join('')}</tr></tfoot>
+    </table><div class="scroll-hint" aria-hidden="true"></div></div>
+  </div>`;
+  return `<article class="card hero"><div class="card-h"><span class="card-idx">01 / день</span>
+      <div><h2 class="card-t">${buy ? 'Закупы за день' : 'Продажи за день'}</h2><div class="card-s">Выберите день в календаре — справа только он</div></div></div>
+    <div class="dayv">${cal}${panel}</div>
+    <div class="hint-row"><span class="legend"><span class="mk agreed"></span>договорились</span><span class="legend"><span class="mk pub"></span>вышел / завершён</span><span class="legend"><span class="mk plan"></span>в плане</span>${buy ? '' : '<span class="legend"><span class="mk miss"></span>недопродано</span>'}</div></article>`;
+}
+function setDay(d) { state.day = d; state.calMonth = new Date(d.getFullYear(), d.getMonth(), 1); }
+
 // ================= ВИД: СВОДКА =================
 const DIMS = {
   project: { l: 'Проект', sl: 'Мой канал', key: d => d.project, label: k => PJ[k].name, order: k => k },
@@ -985,12 +1080,13 @@ function render() {
     view.innerHTML = emptyHTML('У выбранных проектов нет каналов', 'Продавать рекламу можно только в канале, а VPN — бот без канала. Выберите в шапке проект с каналом.', false);
     return;
   }
-  if (!list.length && state.view !== 'grid') {
+  if (!list.length && state.view !== 'grid' && state.view !== 'day') {
     view.innerHTML = emptyHTML(state.mode === 'buy' ? 'За этот период закупов нет' : 'За этот период продаж нет', state.demo === 'empty' ? 'Так раздел выглядит, пока в нём нет ни одной сделки. Первая появится после «Новый закуп» — или откройте сетку и нажмите на нужную клетку.' : 'Смените период стрелками или добавьте сделку — она сразу появится во всех видах.');
     return;
   }
   view.innerHTML = state.view === 'list' ? renderList(list)
     : state.view === 'grid' ? renderGrid(r, list)
+    : state.view === 'day' ? renderDay(r, list)
     : state.view === 'summary' ? renderSummary(r, list)
     : renderMatrix(r, list);
 }
@@ -1377,6 +1473,9 @@ document.addEventListener('click', async e => {
   } else if (act === 'day') openDay(t.dataset.date);
   else if (act === 'cell') openDay(t.dataset.date, t.dataset.slot);
   else if (act === 'chan') { state.sellCh = Number(t.dataset.id); render(); }
+  else if (act === 'pick-day') { setDay(parseIso(t.dataset.date)); render(); restoreFocus(`.dcal-day[data-date="${t.dataset.date}"]`); }
+  else if (act === 'cal-month') { state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth() + Number(t.dataset.d), 1); render(); }
+  else if (act === 'today') { setDay(TODAY); render(); restoreFocus(`.dcal-day[data-date="${iso(TODAY)}"]`); }
   else if (act === 'only-proj') { state.scope = [Number(t.dataset.id)]; state.expanded = null; render(); toast(`Показан только ${PJ[t.dataset.id].name} — «Все проекты» в шапке вернёт остальные`, 'info'); }
   else if (act === 'warns') { state.warnsOpen = !state.warnsOpen; render(); }
   else if (act === 'tog') { const k = t.dataset.key; state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k); render(); restoreFocus(`[data-act="tog"][data-key="${CSS.escape(k)}"]`); }
@@ -1424,6 +1523,21 @@ document.addEventListener('click', async e => {
 });
 function restoreFocus(sel) { document.querySelector(sel)?.focus(); }
 
+// Календарь дня с клавиатуры: стрелки — соседние дни и недели, PageUp/PageDown — месяц.
+$('#view').addEventListener('keydown', e => {
+  const b = e.target.closest('.dcal-day'); if (!b) return;
+  const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+  let next = null;
+  const cur = parseIso(b.dataset.date);
+  if (step) next = addDays(cur, step);
+  else if (e.key === 'PageUp' || e.key === 'PageDown') next = new Date(cur.getFullYear(), cur.getMonth() + (e.key === 'PageUp' ? -1 : 1), Math.min(cur.getDate(), 28));
+  else if (e.key === 'Home') next = mondayOf(cur);
+  else if (e.key === 'End') next = addDays(mondayOf(cur), 6);
+  if (!next) return;
+  e.preventDefault();
+  setDay(next); render(); restoreFocus(`.dcal-day[data-date="${iso(next)}"]`);
+});
+
 // summary на телефоне: раскрытие <details> запоминается
 document.addEventListener('toggle', e => {
   const d = e.target; if (!(d instanceof HTMLDetailsElement) || !d.dataset.key || !state.expanded) return;
@@ -1433,9 +1547,9 @@ document.addEventListener('toggle', e => {
 function bindSeg(sel, fn) {
   document.querySelector(sel).addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b && !b.disabled) fn(b.dataset.v); });
 }
-bindSeg('#modeSeg', v => { state.mode = v; state.expanded = null; state.sumSort = { col: null, dir: -1 }; render(); });
+bindSeg('#modeSeg', v => { state.mode = v; setDay(TODAY); state.expanded = null; state.sumSort = { col: null, dir: -1 }; render(); });
 bindSeg('#periodSeg', v => { state.period = v; state.expanded = null; render(); });
-bindSeg('#viewSeg', v => { state.view = v; render(); });
+bindSeg('#viewSeg', v => { if (v === 'day') setDay(TODAY); state.view = v; render(); });
 bindSeg('#demoSeg', v => setDemo(v));
 bindSeg('#devSeg', v => {
   $('#stage').dataset.device = v;
@@ -1456,7 +1570,8 @@ function setDemo(v) {
   render();
 }
 function shift(dir) {
-  if (state.period === 'week') state.anchor = addDays(state.anchor, 7 * dir);
+  if (state.view === 'day') setDay(addDays(state.day, dir));
+  else if (state.period === 'week') state.anchor = addDays(state.anchor, 7 * dir);
   else if (state.period === 'month') state.anchor = new Date(state.anchor.getFullYear(), state.anchor.getMonth() + dir, 1);
   else { const n = dayDiff(state.cTo, state.cFrom) + 1; state.cFrom = addDays(state.cFrom, n * dir); state.cTo = addDays(state.cTo, n * dir); }
   state.expanded = null; render();
