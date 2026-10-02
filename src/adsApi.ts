@@ -30,6 +30,7 @@ import {
 import { listSettlements, settleContact, undoSettlement } from "./services/adSettlements.js";
 import { logAdminAction } from "./services/auditLog.js";
 import { checkerStatus } from "./jobs/adChecks.js";
+import { recordReport } from "./services/adPostReports.js";
 
 type Handler = (req: express.Request, res: express.Response) => Promise<unknown>;
 
@@ -105,6 +106,13 @@ export function createAdsRouter(opts: {
       await audit(req, "ad_mandatory_slots", "project", id, { slots });
       return { slots };
     })
+  );
+
+  // posting reports a post marked «Реклама»: { event: published|removed,
+  // chatId, messageId, at, deleteAt? }. Called with the X-API-Key, resent freely.
+  r.post(
+    "/posts",
+    wrap(async (req) => recordReport(body(req)))
   );
 
   // --- contacts ---

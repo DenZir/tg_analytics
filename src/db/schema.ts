@@ -433,3 +433,24 @@ export const adSettlementItems = sqliteTable(
     index("ad_settlement_items_deal_idx").on(table.kind, table.dealId),
   ]
 );
+
+// What posting reported about my own channels' posts marked «Реклама»: it
+// publishes them, so it knows the exact moment and the message number. Each
+// report is kept even when no sale matches it yet — a sale entered after the
+// post came out is matched on the next checker pass.
+export const adPostReports = sqliteTable(
+  "ad_post_reports",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    chat: text("chat").notNull(), // channel id as posting has it, "-100…"
+    messageId: integer("message_id").notNull(),
+    publishedAt: integer("published_at", { mode: "timestamp" }).notNull(),
+    deleteAt: integer("delete_at", { mode: "timestamp" }), // posting's removal timer
+    removedAt: integer("removed_at", { mode: "timestamp" }),
+    placeId: integer("place_id").references(() => adSalePlaces.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [unique("ad_post_reports_msg_unique").on(table.chat, table.messageId)]
+);

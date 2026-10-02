@@ -16,12 +16,13 @@ import cron from "node-cron";
 import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { adBuys, adPostSnapshots, adSalePlaces, adSales, adStatusHistory, projects } from "../db/schema.js";
-import { AD_FORMAT_HOURS, type AdFormat, type AdSlot } from "../db/adTypes.js";
+import type { AdFormat, AdSlot } from "../db/adTypes.js";
 import { accountConfig, clientReader, createClient, hasLogin, type PostReader } from "../telegram/account.js";
 import { applyObservation, dateIn, deriveChecks, needsCheck, type Observation, type Warn } from "../services/adPosts.js";
 import { resultsFor, syncTracking } from "../services/adDeals.js";
 import { contactLabel, getContact } from "../services/adContacts.js";
 import { notifyAdmins, warnLine } from "../services/adNotify.js";
+import { matchPendingReports, settleSale } from "../services/adPostReports.js";
 
 const PAUSE_MS = 400; // between looks — a few dozen posts are not worth a flood wait
 
@@ -162,28 +163,8 @@ export async function checkPlaces(r: PostReader, now = new Date()) {
     }
     await sleep(PAUSE_MS);
   }
-  for (const saleId of touched) settleSaleStatus(saleId, now);
+  for (const saleId of touched) settleSale(saleId, now);
   return checked;
-}
-
-/**
- * A package is "live" once any of its channels has the post out, and "done"
- * once every channel's post has served its term or is gone.
- */
-function settleSaleStatus(saleId: number, now: Date) {
-  const sale = db.select().from(adSales).where(eq(adSales.id, saleId)).get();
-  if (!sale || sale.status === "cancel" || sale.status === "done") return;
-  const places = db.select().from(adSalePlaces).where(eq(adSalePlaces.saleId, saleId)).all();
-  const seen = places.filter((p) => p.viewsAt && p.publishedAt);
-  if (!seen.length) return;
-  const hours = AD_FORMAT_HOURS[sale.format as AdFormat];
-  const over = (p: (typeof places)[number]) => !!p.removedAt || now.getTime() >= p.publishedAt!.getTime() + hours * 3600_000;
-  const next = seen.length === places.length && places.every(over) ? "done" : "live";
-  if (next === sale.status) return;
-  db.transaction((tx) => {
-    tx.update(adSales).set({ status: next, updatedAt: now }).where(eq(adSales.id, saleId)).run();
-    tx.insert(adStatusHistory).values({ kind: "sale", dealId: saleId, status: next, at: now }).run();
-  });
 }
 
 /** Sends each new warning once. */
@@ -243,6 +224,9 @@ export async function runAdChecks() {
   if (running) return; // a slow pass must not overlap the next tick
   running = true;
   try {
+    // posting's reports need no Telegram: match them even with the checker off
+    const late = await matchPendingReports();
+    if (late) console.log(`[adChecks] Matched ${late} posting report(s) to sales`);
     const r = await getReader();
     if (!r) return;
     const now = new Date();
