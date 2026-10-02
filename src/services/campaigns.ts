@@ -83,7 +83,14 @@ export async function createProject(input: {
  */
 export async function updateProjectConfig(
   projectId: number,
-  config: { telegramChatId?: string | null; botUsername?: string | null; name?: string }
+  config: {
+    telegramChatId?: string | null;
+    botUsername?: string | null;
+    name?: string;
+    // ad section modes: true/false set them, null returns to the default
+    adsBuy?: boolean | null;
+    adsSell?: boolean | null;
+  }
 ) {
   const current = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
   if (!current) return undefined;
@@ -100,6 +107,8 @@ export async function updateProjectConfig(
       botUsername,
       type: deriveProjectType({ telegramChatId, botUsername }),
       ...(config.name !== undefined && config.name.trim() !== "" && { name: config.name.trim() }),
+      ...(config.adsBuy !== undefined && { adsBuy: config.adsBuy }),
+      ...(config.adsSell !== undefined && { adsSell: config.adsSell }),
     })
     .where(eq(projects.id, projectId))
     .returning();

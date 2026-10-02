@@ -61,6 +61,7 @@ import {
   MAX_AVATAR_BYTES,
 } from "./services/avatars.js";
 import { eq } from "drizzle-orm";
+import { adsModesOf, hasChannel } from "./db/projectTypes.js";
 import {
   redeemAndRotateToken,
   getSessionTgUserId,
@@ -365,7 +366,9 @@ app.get("/api/projects", async (_req, res) => {
     const list = await getAllProjects();
     // hasCustomAvatar — чтобы дашборд знал, у кого показывать «сбросить»:
     // это свойство файла на диске, в таблице проектов его нет.
-    res.json(list.map((p) => ({ ...p, hasCustomAvatar: hasCustomAvatar(p.id) })));
+    // ads — does the ad section buy for it and sell in it, with defaults applied:
+    // the dashboard shows the result, not the raw nulls.
+    res.json(list.map((p) => ({ ...p, hasCustomAvatar: hasCustomAvatar(p.id), ads: adsModesOf(p) })));
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -483,20 +486,31 @@ app.delete("/api/projects/:id/avatar", async (req, res) => {
 app.patch("/api/projects/:id", async (req, res) => {
   try {
     const projectId = Number(req.params.id);
-    const { telegramChatId, botUsername, name } = req.body;
+    const { telegramChatId, botUsername, name, adsBuy, adsSell } = req.body;
 
     // null (or an empty string) removes that half of the project; a missing
     // field leaves it untouched. The type is recomputed either way.
     const toField = (v: unknown) => (v === undefined ? undefined : v === null ? null : String(v));
+    // Ad section modes: a boolean sets one, null returns it to the default.
+    const toMode = (v: unknown) => (v === undefined || v === null || typeof v === "boolean" ? v : "bad");
+    const buy = toMode(adsBuy), sell = toMode(adsSell);
+    if (buy === "bad" || sell === "bad") {
+      return res.status(400).json({ error: "adsBuy и adsSell — true, false или null" });
+    }
 
     const updated = await updateProjectConfig(projectId, {
       telegramChatId: toField(telegramChatId),
       botUsername: toField(botUsername),
       name: name !== undefined ? String(name) : undefined,
+      adsBuy: buy as boolean | null | undefined,
+      adsSell: sell as boolean | null | undefined,
     });
     if (!updated) return res.status(404).json({ error: "Project not found" });
+    if (sell === true && !hasChannel(updated)) {
+      return res.status(400).json({ error: "У проекта нет канала — продавать места в нём негде" });
+    }
 
-    res.json(updated);
+    res.json({ ...updated, ads: adsModesOf(updated) });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

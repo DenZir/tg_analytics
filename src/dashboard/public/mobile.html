@@ -63,6 +63,11 @@ input,select{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .btn:active{transform:scale(.96)}
 .btn-primary{background:linear-gradient(180deg,#5FB9FF,#3795E6);border-color:rgba(120,195,255,.5);color:#04141F;box-shadow:0 4px 16px rgba(63,155,233,.3),inset 0 1px 0 rgba(255,255,255,.35)}
 .btn.ic{width:38px;height:38px;padding:0;flex:none}
+.ads-modes{display:inline-flex;gap:6px;flex-wrap:wrap}
+.ads-mode[aria-pressed="true"]{background:rgba(87,182,255,.16);border-color:rgba(87,182,255,.45);color:var(--text)}
+.ads-mode[aria-pressed="false"]{color:var(--dim)}
+.ads-mode:disabled{opacity:.45;cursor:not-allowed}
+.prow-ads{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--muted)}
 .btn.tiny{padding:8px 12px;font-size:12px;border-radius:9px}
 /* Кружок проекта. Монограмма — фон, аватарка ложится поверх; если её нет,
    <img> удаляет себя, и остаётся буква. */

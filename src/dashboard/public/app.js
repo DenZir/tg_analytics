@@ -8,7 +8,7 @@ import {
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
   fillCampaignOptions, saveProjectScope, projectAvatarHtml, uploadProjectAvatar, bumpAvatarVersion,
   daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
-  readStartParams, renderContactFilter,
+  readStartParams, renderContactFilter, adsModeButtons, bindAdsModeControls,
 } from './shared.js';
 
 /* ================= СПАРКЛАЙН / АНИМАЦИИ (десктоп-специфичные размеры) ================= */
@@ -990,6 +990,7 @@ async function renderProjects() {
         <td><span class="chip ${typeChipClass(p.type)}">${typeLabel(p.type)}</span></td>
         <td class="mono" style="font-size:12px">${p.telegramChatId ? escapeHtml(p.telegramChatId) : '<span style="color:var(--dim)">—</span>'}</td>
         <td>${botCell}</td>
+        <td>${adsModeButtons(p)}</td>
         <td class="num">${campCountByProject[p.id] || 0}</td><td class="num">${linksCount}</td>
       </tr>`;
     }).join('');
@@ -997,6 +998,7 @@ async function renderProjects() {
   paint(null);
   bindAvatarControls();
   bindAttachBotControls();
+  bindAdsModeControls($('#projBody'), renderProjects);
 
 
   try {
@@ -1009,6 +1011,7 @@ async function renderProjects() {
     paint(linkCounts);
     bindAvatarControls();
     bindAttachBotControls();
+    bindAdsModeControls($('#projBody'), renderProjects);
   } catch (err) {
     console.error('[dashboard] Failed to load link counts for projects:', err);
   }

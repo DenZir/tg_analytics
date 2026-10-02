@@ -115,6 +115,10 @@ main{min-width:0;display:flex;flex-direction:column}
 .btn-primary:hover{background:linear-gradient(180deg,#74C4FF,#48A2EF);box-shadow:0 6px 20px rgba(63,155,233,.42)}
 .btn-danger{background:linear-gradient(180deg,#FF8A96,#E8495C);border-color:rgba(255,140,150,.5);color:#2A0508;box-shadow:0 4px 16px rgba(232,73,92,.3),inset 0 1px 0 rgba(255,255,255,.25)}
 .btn-danger:hover{background:linear-gradient(180deg,#FF9BA5,#F2586A);box-shadow:0 6px 20px rgba(232,73,92,.42)}
+.ads-modes{display:inline-flex;gap:6px;flex-wrap:wrap}
+.ads-mode[aria-pressed="true"]{background:rgba(87,182,255,.16);border-color:rgba(87,182,255,.45);color:var(--text)}
+.ads-mode[aria-pressed="false"]{color:var(--dim)}
+.ads-mode:disabled{opacity:.45;cursor:not-allowed}
 .btn.tiny{padding:5.5px 10px;font-size:11.5px;border-radius:8px}
 .btn.ic{padding:8.5px;width:36px;justify-content:center}
 .btn.spin svg{animation:rot .7s var(--ease)}
@@ -644,7 +648,7 @@ dialog#confirmDialog::backdrop{background:rgba(5,8,13,.62);backdrop-filter:blur(
     <article class="card table-card rv" style="--i:1">
       <div class="card-h"><span class="card-idx">02 / реестр</span><div><div class="card-t">Реестр проектов</div><div class="card-s" id="projSub"></div></div></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr>
-        <th>Проект</th><th>Тип</th><th>Канал</th><th>Бот</th><th class="num">Кампаний</th><th class="num">Ссылок</th>
+        <th>Проект</th><th>Тип</th><th>Канал</th><th>Бот</th><th title="Закупаю ли рекламу для проекта и продаю ли места в его канале — раздел «Реклама»">Реклама</th><th class="num">Кампаний</th><th class="num">Ссылок</th>
       </tr></thead><tbody id="projBody"></tbody></table></div>
     </article>
     <article class="card form-card rv" style="--i:2">

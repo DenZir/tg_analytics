@@ -637,3 +637,40 @@ export function csvNum(value, digits = null) {
   if (!Number.isFinite(n)) return '';
   return (digits === null ? String(n) : n.toFixed(digits)).replace('.', ',');
 }
+
+/* ================= РЕКЛАМА: ЗАКУП И ПРОДАЖА У ПРОЕКТА ================= */
+// Участвует ли проект в разделе «Реклама»: закупаю ли для него и продаю ли места
+// в его канале. Сервер отдаёт уже посчитанное (ads.buy / ads.sell, с умолчаниями:
+// канал — да и да, бот без канала — нет), здесь только показываем и меняем.
+// Выключенное прячется из раздела, но сделки остаются в базе и в расчётах.
+export function adsModeButtons(p) {
+  const m = p.ads || { buy: false, sell: false };
+  const noChannel = !p.telegramChatId;
+  const btn = (mode, on, label, disabled, title) =>
+    `<button class="btn tiny ads-mode" type="button" data-proj="${p.id}" data-mode="${mode}" aria-pressed="${on}"` +
+    `${disabled ? ' disabled' : ''} title="${escapeHtml(title)}">${on ? '✓ ' : ''}${label}</button>`;
+  return `<span class="ads-modes">` +
+    btn('buy', m.buy, 'Закуп', false, m.buy ? 'Закупаю рекламу для проекта — нажмите, чтобы выключить' : 'Закуп выключен — нажмите, чтобы включить') +
+    btn('sell', m.sell, 'Продажа', noChannel, noChannel ? 'Продавать места можно только в канале' : m.sell ? 'Продаю места в канале — нажмите, чтобы выключить' : 'Продажа выключена — нажмите, чтобы включить') +
+    `</span>`;
+}
+
+/** Нажатие на «Закуп» / «Продажа» у проекта. `rerender` — перерисовать экран. */
+export function bindAdsModeControls(root, rerender) {
+  root.querySelectorAll('.ads-mode').forEach(b => b.addEventListener('click', async () => {
+    const id = Number(b.dataset.proj), mode = b.dataset.mode;
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    const name = DATA.projectsById?.[id]?.name || 'проект';
+    b.disabled = true;
+    try {
+      await fetchJSON(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ [mode === 'buy' ? 'adsBuy' : 'adsSell']: on }) });
+      await afterMutation();
+      await rerender();
+      const what = mode === 'buy' ? 'Закуп' : 'Продажа';
+      toast(on ? `${what}: «${name}» теперь в разделе «Реклама»` : `${what}: «${name}» скрыт из раздела — сделки остались в базе`, 'info');
+    } catch (err) {
+      b.disabled = false;
+      toast(`Не удалось сохранить: ${err.message}`, 'warn');
+    }
+  }));
+}

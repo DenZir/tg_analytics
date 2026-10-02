@@ -13,6 +13,10 @@ export const projects = sqliteTable("projects", {
   // AD_SLOTS values. Null means the default (morning, day, evening). Ignored
   // for a project without a channel — there is nothing to sell there.
   mandatorySlots: text("mandatory_slots"),
+  // Ad section: does it buy placements for this project / sell places in it.
+  // Null — the default for its make-up (see adsModesOf in db/projectTypes.ts).
+  adsBuy: integer("ads_buy", { mode: "boolean" }),
+  adsSell: integer("ads_sell", { mode: "boolean" }),
 });
 
 export const campaigns = sqliteTable("campaigns", {

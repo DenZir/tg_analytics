@@ -40,7 +40,7 @@ import {
   type AdStatus,
 } from "../db/adTypes.js";
 import { EVENT_TYPES, FUNNEL_ENTRY_TYPES } from "../db/eventTypes.js";
-import { hasBot, hasChannel } from "../db/projectTypes.js";
+import { adsModesOf, hasBot, hasChannel } from "../db/projectTypes.js";
 import { AdInputError, contactLabel, getContact } from "./adContacts.js";
 import {
   createCampaign,
@@ -239,6 +239,8 @@ export async function listAdProjects() {
     channel: hasChannel(p),
     bot: hasBot(p),
     botUsername: p.botUsername,
+    // which side of the section the project takes part in (Проекты screen)
+    ...adsModesOf(p),
     mandatorySlots: hasChannel(p) ? mandatorySlotsOf(p) : [],
   }));
 }
@@ -474,6 +476,7 @@ export async function createBuy(input: Record<string, unknown>, mintInvite: Invi
   const f = buyFields(input);
   const readyRef = parseText(input.readyLink, 300, "Ссылка");
   if (!hasChannel(project) && !hasBot(project)) throw new AdInputError("У проекта нет ни канала, ни бота");
+  if (!adsModesOf(project).buy) throw new AdInputError(`Закуп для «${project.name}» выключен — включите его на экране «Проекты»`);
 
   const buy = db.transaction((tx) => {
     const row = tx
@@ -638,12 +641,20 @@ async function assertPlacesFree(projectIds: number[], date: string, slot: AdSlot
   }
 }
 
-async function assertChannels(projectIds: number[]) {
+/**
+ * The channels of a sale exist and can be sold in. A channel already in the sale
+ * is let through even if selling there was switched off since: switching off
+ * hides old deals, it does not lock them against corrections.
+ */
+async function assertChannels(projectIds: number[], alreadyIn: number[] = []) {
   const rows = await db.select().from(projects).where(inArray(projects.id, projectIds));
   for (const id of projectIds) {
     const p = rows.find((r) => r.id === id);
     if (!p) throw new AdInputError(`Проект ${id} не найден`, 404);
     if (!hasChannel(p)) throw new AdInputError(`У «${p.name}» нет канала — продавать места в нём нельзя`);
+    if (!alreadyIn.includes(id) && !adsModesOf(p).sell) {
+      throw new AdInputError(`Продажа в «${p.name}» выключена — включите её на экране «Проекты»`);
+    }
   }
 }
 
@@ -747,7 +758,7 @@ export async function updateSale(id: number, input: Record<string, unknown>) {
     ? parsePlaces(input.places)
     : existing.map((e) => ({ projectId: e.projectId, share: f.priceMode === "fix" && !has(input, "total") ? e.share : null, views: null, cpmState: null, postUrl: null, sent: {} }));
   const ids = places.map((p) => p.projectId);
-  await assertChannels(ids);
+  await assertChannels(ids, existing.map((e) => e.projectId));
   if (f.status !== "cancel") await assertPlacesFree(ids, f.date, f.slot, id);
   const rows = resolveShares(places, f.priceMode, input.total, existing);
   const nowPublished = isPublished(f.status) && !isPublished(current.status);

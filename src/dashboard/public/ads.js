@@ -140,7 +140,7 @@ function setProjects(list) {
   PROJECTS = list.map(p => {
     let mono = monoOf(p.name);
     if (seen[mono]) mono += ++seen[mono]; else seen[mono] = 1;
-    return { id: p.id, name: p.name, mono, h: (p.id * 137 + 200) % 360, kind: kindOf(p), channel: p.channel, bot: p.bot, mandatory: p.mandatorySlots };
+    return { id: p.id, name: p.name, mono, h: (p.id * 137 + 200) % 360, kind: kindOf(p), channel: p.channel, bot: p.bot, buy: p.buy, sell: p.sell, mandatory: p.mandatorySlots };
   });
   PJ = Object.fromEntries(PROJECTS.map(p => [p.id, p]));
 }
@@ -316,8 +316,13 @@ function rangeLabel(r) {
 }
 const prevLabel = () => (state.view === 'day' ? 'к предыдущему дню' : state.period === 'week' ? 'к прошлой неделе' : state.period === 'month' ? 'к прошлому месяцу' : 'к предыдущему периоду такой же длины');
 
-const scopeIds = () => (state.scope.length ? state.scope : PROJECTS.map(p => p.id));
-const channelIds = () => scopeIds().filter(id => PJ[id].channel);
+// Что выбрано в шапке, и из этого — что участвует в текущей стороне: закуп и
+// продажа включаются у проекта отдельно (экран «Проекты»). Выключенное прячется
+// из вида, но его сделки остаются в базе и в расчётах с контактами.
+const pickedIds = () => (state.scope.length ? state.scope : PROJECTS.map(p => p.id)).filter(id => PJ[id]);
+const inMode = id => (state.mode === 'buy' ? PJ[id].buy : PJ[id].sell);
+const scopeIds = () => pickedIds().filter(inMode);
+const channelIds = () => pickedIds().filter(id => PJ[id].sell);
 const sideIds = () => (state.mode === 'buy' ? scopeIds() : channelIds());
 function dealsIn(from, to, ids = sideIds()) {
   const f = iso(from), t = iso(to);
@@ -1031,8 +1036,11 @@ function render() {
     view.innerHTML = emptyHTML('Проектов пока нет', 'Сначала добавьте канал или бота во вкладке «Проекты» — закупы и продажи привязываются к ним.', false);
     return;
   }
-  if (state.mode === 'sell' && !channelIds().length) {
-    view.innerHTML = emptyHTML('У выбранных проектов нет каналов', 'Продавать рекламу можно только в канале, а у выбранных проектов только боты. Выберите в шапке проект с каналом.', false);
+  if (!sideIds().length) {
+    const buy = state.mode === 'buy', anywhere = PROJECTS.some(p => (buy ? p.buy : p.sell));
+    view.innerHTML = anywhere
+      ? emptyHTML(buy ? 'У выбранных проектов закуп выключен' : 'В выбранных проектах продажа выключена', 'Выберите в шапке другой проект или включите его на экране «Проекты» — колонка «Реклама».', false)
+      : emptyHTML(buy ? 'Закуп выключен во всех проектах' : 'Продажа выключена во всех проектах', `Включите ${buy ? 'закуп' : 'продажу'} у нужных проектов на экране «Проекты» — колонка «Реклама».${buy ? '' : ' Продавать можно только в проекте с каналом.'}`, false);
     return;
   }
   if (!list.length && state.view !== 'grid' && state.view !== 'day') {
@@ -1052,8 +1060,9 @@ function renderProjPop() {
   const all = !state.scope.length;
   $('#projList').innerHTML = `<button class="pj-it" type="button" data-pj="all" aria-pressed="${all}"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span class="nm">Все проекты</span></button><div class="pop-sep"></div>` +
     PROJECTS.map(p => {
-      const off = state.mode === 'sell' && !p.channel;
-      return `<button class="pj-it" type="button" data-pj="${p.id}" aria-pressed="${!all && ids.includes(p.id)}" ${off ? 'disabled' : ''}><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>${ava(p.id)}<span class="nm">${esc(p.name)}</span><span class="ptype">${off ? 'нет канала' : p.kind}</span></button>`;
+      const off = !inMode(p.id);
+      const why = state.mode === 'sell' && !p.channel ? 'нет канала' : state.mode === 'buy' ? 'закуп выключен' : 'продажа выключена';
+      return `<button class="pj-it" type="button" data-pj="${p.id}" aria-pressed="${!all && ids.includes(p.id)}" ${off ? `disabled title="Включается на экране «Проекты»"` : ''}><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>${ava(p.id)}<span class="nm">${esc(p.name)}</span><span class="ptype">${off ? why : p.kind}</span></button>`;
     }).join('');
 }
 $('#projList').addEventListener('click', e => {
@@ -1097,7 +1106,9 @@ function openDeal(id, prefill = {}) {
   const pub = isPub(d.status);
   const what = buy ? 'закуп' : 'продажа';
   if (!PROJECTS.length) { toast('Сначала добавьте проект во вкладке «Проекты»', 'info'); return; }
-  const projOpts = (buy ? PROJECTS : PROJECTS.filter(p => p.channel)).map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+  if (!src && !PROJECTS.some(p => p.buy)) { toast('Закуп выключен во всех проектах — включите его на экране «Проекты»', 'info'); return; }
+  // своя сделка выключенного проекта открывается как есть, новая — только во включённом
+  const projOpts = PROJECTS.filter(p => (buy ? p.buy : p.sell) || p.id === d.project).map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
   const slotPick = SLOTS.map(s => `<label><input type="radio" name="slot" value="${s.k}" ${s.k === d.slot ? 'checked' : ''} required>${s.l}${!buy && PJ[d.project].mandatory.includes(s.k) ? '<span class="req">*</span>' : ''}</label>`).join('');
   const views = viewsOf(d);
 
@@ -1219,6 +1230,7 @@ function evenSplit(total, chans) {
 
 function openSale(id, prefill = {}) {
   const src = findDeal(id);
+  if (!src && !PROJECTS.some(p => p.sell)) { toast('Продажа выключена во всех проектах — включите её на экране «Проекты»', 'info'); return; }
   const parts = src ? pkgOf(src) : [];
   const base = src ? structuredClone(src) : {
     buyer: '', date: prefill.date || iso(addDays(TODAY, 1)), slot: prefill.slot || null, format: '1/24', status: 'plan', pm: 'fix', notes: '', history: [],
@@ -1289,7 +1301,7 @@ function renderChPick(checked) {
   const box = $('#chPick'); if (!box) return;
   const f = $('#dealForm'), date = f.elements.date.value, slot = f.elements.slot.value;
   const own = new Set(editing.parts.map(x => x.id));
-  box.innerHTML = `<legend class="flbl">В каких каналах</legend><div class="chopts">${PROJECTS.filter(p => p.channel).map(p => {
+  box.innerHTML = `<legend class="flbl">В каких каналах</legend><div class="chopts">${PROJECTS.filter(p => p.channel && (p.sell || checked.includes(p.id))).map(p => {
     const busy = DEALS.find(x => x.side === 'sell' && x.project === p.id && x.date === date && x.slot === slot && x.status !== 'cancel' && !own.has(x.id));
     const mand = p.mandatory.includes(slot);
     const on = checked.includes(p.id) && !busy;

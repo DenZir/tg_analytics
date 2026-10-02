@@ -8,7 +8,7 @@ import {
   fetchCampaignsPage, renderPager, fetchAllCampaignRowsForExport, moveLink, segInit,
   fillCampaignOptions, projectAvatarHtml, uploadProjectAvatar, bumpAvatarVersion,
   daysUntilPurge, typeLabel, typeChipClass, identOf, roiCls, fmtHours, csvNum, fetchPromoStats,
-  readStartParams, renderContactFilter,
+  readStartParams, renderContactFilter, adsModeButtons, bindAdsModeControls,
 } from './shared.js';
 
 /* ================= СПАРКЛАЙН (мобильные размеры) ================= */
@@ -1029,6 +1029,7 @@ async function renderProjects() {
           <span>Кампаний: <b>${campCountByProject[p.id] || 0}</b></span>
           <span>Ссылок: <b>${linksCount}</b></span>
         </div>
+        <div class="prow-ads"><span>Реклама:</span>${adsModeButtons(p)}</div>
         <div class="ava-actions">
           <button class="btn tiny" data-ava="${p.id}" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex:none"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 8"/></svg>Сменить аватарку</button>
           ${p.hasCustomAvatar ? `<button class="btn tiny" data-ava-reset="${p.id}" type="button">↩ Сбросить</button>` : ''}
@@ -1038,6 +1039,7 @@ async function renderProjects() {
   }
   paint(null);
   bindAvatarControls();
+  bindAdsModeControls($('#projCards'), renderProjects);
 
 
   try {
@@ -1049,6 +1051,7 @@ async function renderProjects() {
     }
     paint(linkCounts);
     bindAvatarControls();
+    bindAdsModeControls($('#projCards'), renderProjects);
   } catch (err) {
     console.error('[mobile] Failed to load link counts for projects:', err);
   }

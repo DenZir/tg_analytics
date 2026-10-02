@@ -71,3 +71,19 @@ export function deriveProjectType(p: {
   if (hasBot(p)) return PROJECT_TYPES.BOT_DIRECT;
   return PROJECT_TYPES.CHANNEL;
 }
+
+/**
+ * Whether the ad section buys placements for this project and sells places in
+ * it. The owner sets both on the Проекты screen; null means "as the project's
+ * make-up suggests": a channel both buys and sells, a bot alone does neither by
+ * default. Selling needs a channel whatever the setting says — there is no
+ * place to sell without one.
+ */
+export function adsModesOf(p: {
+  telegramChatId?: string | null;
+  adsBuy?: boolean | null;
+  adsSell?: boolean | null;
+}): { buy: boolean; sell: boolean } {
+  const channel = hasChannel(p);
+  return { buy: p.adsBuy ?? channel, sell: channel && (p.adsSell ?? true) };
+}
