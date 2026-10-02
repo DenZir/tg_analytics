@@ -254,13 +254,19 @@ app.get("/auth/telegram", async (req, res) => {
 // no separate address to remember — /index.html and /mobile.html stay
 // reachable directly (unaffected by this check) for anyone who wants to force
 // one or the other.
+// The dashboard's own pages, scripts and styles are revalidated on every load
+// (a cheap 304 via ETag while unchanged). Without it a proxy in front — Cloudflare
+// rewrites max-age to 4 h — kept serving the previous ads.js after a deploy, and
+// the fix looked as if it had not shipped. Avatars and other files keep caching.
+const DASHBOARD_CACHE = "no-cache";
+
 const MOBILE_UA = /Android|iPhone|iPod|Windows Phone|BlackBerry|IEMobile|Opera Mini/i;
 app.get("/", async (req, res, next) => {
   if (!(await hasValidDashSession(req))) {
     return res.status(401).send(LOGIN_REQUIRED_HTML);
   }
   if (MOBILE_UA.test(req.headers["user-agent"] || "")) {
-    return res.sendFile(path.join(__dirname, "dashboard/public/mobile.html"));
+    return res.sendFile(path.join(__dirname, "dashboard/public/mobile.html"), { headers: { "Cache-Control": DASHBOARD_CACHE } });
   }
   next();
 });
@@ -272,7 +278,13 @@ app.get(["/index.html", "/mobile.html", "/ads.html"], async (req, res, next) => 
   next();
 });
 
-app.use(express.static(path.join(__dirname, "dashboard/public")));
+app.use(
+  express.static(path.join(__dirname, "dashboard/public"), {
+    setHeaders(res, file) {
+      if (/\.(html|js|css)$/.test(file)) res.setHeader("Cache-Control", DASHBOARD_CACHE);
+    },
+  })
+);
 
 // API Authentication Middleware — accepts EITHER the shared X-API-Key header
 // (used by server-to-server callers, e.g. the private/private-test bots) OR
