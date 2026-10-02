@@ -107,6 +107,7 @@ input[type="date"].inp{color-scheme:dark}
 
 /* Аватарка проекта — как .pava дашборда: монограмма на цветном круге */
 .pava{position:relative;flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;overflow:hidden;background:hsl(var(--h) 42% 34%);color:#fff;font:700 9px var(--body);line-height:1;user-select:none;letter-spacing:-.02em}
+.pava img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .pava.sm{width:18px;height:18px;font-size:7.5px}
 .pava.lg{width:30px;height:30px;font-size:11px}
 .pava-stack{display:inline-flex}

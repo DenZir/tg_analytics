@@ -327,7 +327,9 @@ const agg = list => (state.mode === 'buy' ? aggBuy(list) : aggSell(list));
 
 // ================= РАЗМЕТКА: МЕЛОЧИ =================
 const $ = s => document.querySelector(s);
-const ava = (p, cls = '') => `<span class="pava ${cls}" style="--h:${PJ[p].h}" aria-hidden="true">${esc(PJ[p].mono)}</span>`;
+// Аватарка — как в дашборде: картинка проекта поверх монограммы; нет картинки —
+// она убирается, и остаётся монограмма.
+const ava = (p, cls = '') => `<span class="pava ${cls}" style="--h:${PJ[p].h}" aria-hidden="true">${esc(PJ[p].mono)}<img src="/api/projects/${p}/avatar" alt="" loading="lazy" onerror="this.remove()"></span>`;
 // «Кот (@kot_tgg)»: имя главное, username — в скобках и потише
 const admHTML = id => (ADMINS[id] ? `<span class="adm"><b>${esc(ADMINS[id].name)}</b>${ADMINS[id].user ? ` <span class="u">(@${esc(ADMINS[id].user)})</span>` : ''}</span>` : '<span class="dash-v">—</span>');
 const stChip = s => `<span class="st st-${s}">${ST[s].l}</span>`;
