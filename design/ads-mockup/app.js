@@ -636,6 +636,8 @@ function renderGrid(r, list) {
     if (!chs.includes(state.sellCh)) state.sellCh = chs[0];
     ch = state.sellCh;
     if (chs.length > 1) chPick = `<div class="chan-pick" role="group" aria-label="Канал">${chs.map(id => `<button type="button" data-act="chan" data-id="${id}" aria-pressed="${id === ch}">${ava(id, 'sm')}${esc(PJ[id].name)}</button>`).join('')}</div>`;
+    // на телефоне неделя показывает все каналы сразу — ей нужен полный список
+    if (useWeek && state.narrow) return renderWeekPhone(r, list, ch, chPick);
     list = list.filter(d => d.project === ch);
   }
   return useWeek ? renderWeek(r, list, ch, chPick) : renderMonth(r, list, ch, chPick);
@@ -646,6 +648,10 @@ function cellDeals(list, date, slot) { return list.filter(d => d.date === date &
 // Тело недельной сетки: строки дней и счётчик «Занято / Продано» по местам.
 // opts.proj — проект полосы (новый закуп из пустой клетки сразу на него),
 // opts.hideAva — в полосе проекта аватарка в плашке лишняя.
+// Свободное место: в продажах так и пишем, в закупах — тихий «＋».
+const freeLabel = () => (state.mode === 'sell'
+  ? '<span class="gfree">свободно</span><span class="gadd-t">＋ продать</span>'
+  : '<span class="gfree">＋</span><span class="gadd-t">＋ добавить</span>');
 function weekBody(r, list, mandatory, ch, opts = {}) {
   const buy = state.mode === 'buy';
   const footCnt = SLOTS.map(() => 0), footMiss = SLOTS.map(() => 0);
@@ -670,7 +676,7 @@ function weekBody(r, list, mandatory, ch, opts = {}) {
         if (past) { footMiss[si]++; inner = `<div class="gmiss" role="img" aria-label="Недопродажа: обязательное место прошло пустым">не продано</div>`; }
         else inner = `<button class="gopen" type="button" data-act="new" data-date="${date}" data-slot="${s.k}" data-proj="${ch}" aria-label="Продать обязательное место: ${s.l}, ${dm(day)}">свободно · продать</button>`;
       } else {
-        inner = `<button class="gadd" type="button" data-act="new" data-date="${date}" data-slot="${s.k}"${projAttr} aria-label="Добавить${opts.proj ? ` для ${esc(PJ[opts.proj].name)}` : ''}: ${s.l}, ${dm(day)}">＋<span class="gadd-t"> добавить</span></button>`;
+        inner = `<button class="gadd" type="button" data-act="new" data-date="${date}" data-slot="${s.k}"${projAttr} aria-label="Добавить${opts.proj ? ` для ${esc(PJ[opts.proj].name)}` : ''}: ${s.l}, ${dm(day)}">${freeLabel()}</button>`;
       }
       return `<td><div class="gcell">${inner}</div></td>`;
     }).join('');
@@ -711,7 +717,40 @@ function projSummary(r, list) {
   return `<ul class="psum" aria-label="По проектам">${items}</ul>`;
 }
 
+
+// Неделя на телефоне: широкая сетка не помещается, поэтому — список дней.
+// В дне строка на канал (в закупе — на проект) из 7 меток мест; нажатие на день
+// открывает вид «День», где у каждого места полная плашка.
+const SLOT_LETTER = { morning: 'У', day: 'Д', evening: 'В', night: 'Н', stories: 'С', n9: '9', n17: '17' };
+function renderWeekPhone(r, list, ch, chPick) {
+  const buy = state.mode === 'buy';
+  const lines = buy ? (state.gridGroup === 'project' ? scopeIds().map(p => [p]) : [scopeIds()]) : channelIds().map(p => [p]);
+  const days = r.days.map(day => {
+    const date = iso(day), today = dayDiff(day, TODAY) === 0;
+    const rows = lines.map(ps => {
+      const ds = list.filter(d => ps.includes(d.project));
+      const sts = SLOTS.map(s => dayState(ds, date, s.k, buy ? null : ps[0]));
+      const used = sts.filter(x => x === 'pub' || x === 'agreed' || (buy && x === 'plan')).length;
+      const who = `<span class="wl-who">${ps.length === 1 ? `${ava(ps[0], 'sm')}<span class="wl-nm">${esc(PJ[ps[0]].mono)}</span>` : '<span class="wl-nm">все</span>'}</span>`;
+      return `<span class="wl">${who}<span class="wmarks">${sts.map((x, i) => `<span class="wm ${x}" title="${SLOTS[i].l}: ${DOT_LBL[x]}">${SLOT_LETTER[SLOTS[i].k]}</span>`).join('')}</span><span class="wl-n">${used}/7</span></span>`;
+    }).join('');
+    const lbl = `${DOW_FULL[day.getDay()]}, ${day.getDate()} ${MON_GEN[day.getMonth()]} — открыть день`;
+    return `<li><button class="wday ${today ? 'today' : ''}" type="button" data-act="goto-day" data-date="${date}" aria-label="${lbl}">
+      <span class="wd-h"><b>${DOW[day.getDay()]}, ${dm(day)}</b>${today ? '<span class="chip neutral today-chip">сегодня</span>' : ''}<span class="wd-go" aria-hidden="true">›</span></span>${rows}</button></li>`;
+  }).join('');
+  const seg = buy && scopeIds().length > 1
+    ? `<div class="seg sm" role="group" aria-label="Группировка" data-seg="gridGroup"><button type="button" data-v="project" aria-pressed="${state.gridGroup === 'project'}">По проектам</button><button type="button" data-v="all" aria-pressed="${state.gridGroup !== 'project'}">Все вместе</button></div>` : '';
+  return `<article class="card hero">
+    <div class="card-h"><span class="card-idx">01 / сетка</span>
+      <div><h2 class="card-t">${buy ? 'Что занято и что свободно' : 'Продажи по каналам'}</h2><div class="card-s">Неделя ${rangeLabel(r)} · нажмите на день — откроется он целиком</div></div>
+      <div class="right">${seg}</div></div>
+    ${buy ? projSummary(r, list) : ''}
+    <ul class="wdays">${days}</ul>
+    <div class="hint-row"><span class="legend"><span class="wm pub">У</span>вышел</span><span class="legend"><span class="wm agreed">У</span>договорились</span><span class="legend"><span class="wm plan">У</span>в плане</span><span class="legend"><span class="wm free">У</span>свободно</span>${buy ? '' : '<span class="legend"><span class="wm miss">У</span>не продано</span><span class="legend"><span class="wm open">У</span>обязательное свободно</span>'}<span>У Д В Н С — утро, день, вечер, ночь, сторис; 9 и 17 — нейтралы</span></div></article>`;
+}
+
 function renderWeek(r, list, ch, chPick) {
+  if (state.narrow) return renderWeekPhone(r, list, ch, chPick);
   const buy = state.mode === 'buy';
   const mandatory = ch ? PJ[ch].mandatory : [];
   const ids = scopeIds();
@@ -818,7 +857,7 @@ function renderDay(r, list) {
     const lbl = `${day.getDate()} ${MON_GEN[day.getMonth()]}, ${DOW_FULL[day.getDay()]}${date === todayIso ? ', сегодня' : ''}: ${per.length ? per.map(x => `${PJ[x.p].mono} ${x.used} из 7${x.miss ? `, недопродано ${x.miss}` : ''}`).join('; ') : 'пусто'}`;
     cells += `<button class="dcal-day ${date === todayIso ? 'today' : ''} ${date === sel ? 'sel' : ''}" type="button" data-act="pick-day" data-date="${date}" tabindex="${date === sel ? 0 : -1}" aria-pressed="${date === sel}" ${date === todayIso ? 'aria-current="date"' : ''} aria-label="${lbl}">
       <span class="dn">${day.getDate()}</span>
-      ${per.map(x => `<span class="pl ${x.miss ? 'miss' : ''}" style="--h:${PJ[x.p].h}" aria-hidden="true"><i></i><b>${esc(PJ[x.p].mono)} ${x.used}/7</b></span>`).join('')}
+      ${per.map(x => `<span class="pl ${x.miss ? 'miss' : ''}" style="--h:${PJ[x.p].h}" aria-hidden="true"><i></i><b>${esc(PJ[x.p].mono)} ${x.used}<span class="of">/7</span></b></span>`).join('')}
     </button>`;
   }
   const cal = `<div class="dcal">
@@ -835,10 +874,11 @@ function renderDay(r, list) {
   // --- выбранный день: проекты × места ---
   const dayList = list.filter(d => d.status !== 'cancel');
   const foot = SLOTS.map(() => 0);
+  const cards = [];
   const rows = ids.map(p => {
     const mand = buy ? [] : PJ[p].mandatory;
     let used = 0;
-    const tds = SLOTS.map((s, si) => {
+    const inners = SLOTS.map((s, si) => {
       const ds = dayList.filter(d => d.project === p && d.slot === s.k);
       const filled = buy ? ds.length > 0 : ds.some(d => d.status !== 'plan');
       if (filled) { used++; foot[si]++; }
@@ -856,23 +896,28 @@ function renderDay(r, list) {
           ? `<div class="gmiss" role="img" aria-label="Недопродажа: обязательное место прошло пустым">не продано</div>`
           : `<button class="gopen" type="button" data-act="new" data-date="${sel}" data-slot="${s.k}" data-proj="${p}" aria-label="Продать обязательное место: ${s.l}">свободно · продать</button>`;
       } else {
-        inner = `<button class="gadd" type="button" data-act="new" data-date="${sel}" data-slot="${s.k}" data-proj="${p}" aria-label="Добавить для ${esc(PJ[p].name)}: ${s.l}">＋<span class="gadd-t"> добавить</span></button>`;
+        inner = `<button class="gadd" type="button" data-act="new" data-date="${sel}" data-slot="${s.k}" data-proj="${p}" aria-label="Добавить для ${esc(PJ[p].name)}: ${s.l}">${freeLabel()}</button>`;
       }
-      return `<td><div class="gcell">${inner}</div></td>`;
-    }).join('');
+      return inner;
+    });
+    cards.push({ p, used, inners, mand });
+    const tds = inners.map(inner => `<td><div class="gcell">${inner}</div></td>`).join('');
     return `<tr><th scope="row"><span class="c-prj">${ava(p)}<span class="nm">${esc(PJ[p].name)}</span></span><span class="dp-occ">${used}/7 ${buy ? 'занято' : 'продано'}</span></th>${tds}</tr>`;
   }).join('');
   const head = SLOTS.map(s => `<th scope="col">${s.l}</th>`).join('');
   const d0 = state.day;
   const panel = `<div class="dayp">
     <div class="dayp-h"><h3>${DOW_FULL[d0.getDay()].replace(/^./, c => c.toUpperCase())}, ${d0.getDate()} ${MON_GEN[d0.getMonth()]}</h3>${sel === todayIso ? '<span class="chip neutral today-chip">сегодня</span>' : ''}
-      <span class="dayp-s">${dayList.length} ${plural(dayList.length, 'сделка', 'сделки', 'сделок')} · клик по пустой клетке — ${buy ? 'закуп' : 'продажа'} на этот день и место</span></div>
-    <div class="tbl-wrap"><table class="tbl grid-tbl day-tbl">
+      <span class="dayp-s">${dayList.length} ${plural(dayList.length, 'сделка', 'сделки', 'сделок')} · ${state.narrow ? 'нажмите' : 'клик'} на свободное место — ${buy ? 'закуп' : 'продажа'} на этот день и место</span></div>
+    ${state.narrow
+      ? `<div class="dcards">${cards.map(c => `<div class="dcard"><h4 class="dcard-h">${ava(c.p)}<span class="nm">${esc(PJ[c.p].name)}</span><span class="dp-occ">${c.used}/7 ${buy ? 'занято' : 'продано'}</span></h4>
+          <ul class="dslots">${SLOTS.map((s, i) => `<li><span class="dsl">${s.l}${c.mand.includes(s.k) ? '<span class="req" title="обязательное место">*</span>' : ''}</span><div class="dsv">${c.inners[i]}</div></li>`).join('')}</ul></div>`).join('')}</div>`
+      : `<div class="tbl-wrap"><table class="tbl grid-tbl day-tbl">
       <caption class="sr-only">${buy ? 'Закупы' : 'Продажи'} за ${d0.getDate()} ${MON_GEN[d0.getMonth()]}: проекты по местам</caption>
       <thead><tr><th scope="col">${buy ? 'Проект' : 'Канал'}</th>${head}</tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr><th scope="row">${buy ? 'Занято' : 'Продано'}</th>${foot.map(n => `<td>${n}/${ids.length}</td>`).join('')}</tr></tfoot>
-    </table><div class="scroll-hint" aria-hidden="true"></div></div>
+    </table><div class="scroll-hint" aria-hidden="true"></div></div>`}
   </div>`;
   return `<article class="card hero"><div class="card-h"><span class="card-idx">01 / день</span>
       <div><h2 class="card-t">${buy ? 'Закупы за день' : 'Продажи за день'}</h2><div class="card-s">Выберите день в календаре — справа только он</div></div></div>
@@ -1293,8 +1338,13 @@ function openSale(id, prefill = {}) {
   const src = id ? DEALS.find(d => d.id === id) : null;
   const parts = src ? pkgOf(src) : [];
   const base = src ? structuredClone(src) : {
-    buyer: '', date: prefill.date || iso(addDays(TODAY, 1)), slot: prefill.slot || 'evening', format: '1/24', status: 'plan', pm: 'fix', notes: '', history: [],
+    buyer: '', date: prefill.date || iso(addDays(TODAY, 1)), slot: prefill.slot || null, format: '1/24', status: 'plan', pm: 'fix', notes: '', history: [],
   };
+  // без подсказки — первое место, свободное хотя бы в одном канале в этот день
+  if (!base.slot) {
+    const free = SLOTS.find(s => channelIds().some(p => !DEALS.some(x => x.side === 'sell' && x.project === p && x.date === base.date && x.slot === s.k && x.status !== 'cancel')));
+    base.slot = free ? free.k : 'evening';
+  }
   const chans = src ? parts.map(x => x.project) : [Number(prefill.proj) || state.sellCh || channelIds()[0]];
   const total = src && base.pm === 'fix' ? parts.reduce((s, x) => s + (x.price || 0), 0) : null;
   editing = { kind: 'sale', pkg: src?.pkg || null, parts, src };
@@ -1660,6 +1710,7 @@ document.addEventListener('click', async e => {
   } else if (act === 'day') openDay(t.dataset.date);
   else if (act === 'cell') openDay(t.dataset.date, t.dataset.slot);
   else if (act === 'chan') { state.sellCh = Number(t.dataset.id); render(); }
+  else if (act === 'goto-day') { state.view = 'day'; setDay(parseIso(t.dataset.date)); render(); $('#view').scrollIntoView({ block: 'start' }); }
   else if (act === 'pick-day') { setDay(parseIso(t.dataset.date)); render(); restoreFocus(`.dcal-day[data-date="${t.dataset.date}"]`); }
   else if (act === 'cal-month') { state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth() + Number(t.dataset.d), 1); render(); }
   else if (act === 'today') { setDay(TODAY); render(); restoreFocus(`.dcal-day[data-date="${iso(TODAY)}"]`); }
@@ -1737,7 +1788,7 @@ document.addEventListener('toggle', e => {
 function bindSeg(sel, fn) {
   document.querySelector(sel).addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b && !b.disabled) fn(b.dataset.v); });
 }
-bindSeg('#modeSeg', v => { state.mode = v; setDay(TODAY); state.expanded = null; state.sumSort = { col: null, dir: -1 }; render(); });
+bindSeg('#modeSeg', v => { state.mode = v; state.expanded = null; state.sumSort = { col: null, dir: -1 }; render(); });
 bindSeg('#periodSeg', v => { state.period = v; state.expanded = null; render(); });
 bindSeg('#viewSeg', v => { if (v === 'day') setDay(TODAY); state.view = v; render(); });
 bindSeg('#demoSeg', v => setDemo(v));
@@ -1770,7 +1821,7 @@ $('#prevBtn').addEventListener('click', () => shift(-1));
 $('#nextBtn').addEventListener('click', () => shift(1));
 $('#cFrom').addEventListener('change', e => { if (e.target.value) { state.cFrom = parseIso(e.target.value); render(); } });
 $('#cTo').addEventListener('change', e => { if (e.target.value) { state.cTo = parseIso(e.target.value); render(); } });
-$('#newBtn').addEventListener('click', () => openDeal(null));
+$('#newBtn').addEventListener('click', () => openDeal(null, state.view === 'day' ? { date: iso(state.day) } : {}));
 $('#moreBtn').addEventListener('click', () => $('#moreDlg').showModal());
 $('#refreshBtn').addEventListener('click', e => {
   const b = e.currentTarget; b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin');

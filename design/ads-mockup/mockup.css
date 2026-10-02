@@ -326,9 +326,12 @@ input[type="date"].inp{color-scheme:dark}
 .gdeal.plan{border-style:dashed;background:none;color:var(--muted)}
 .gdeal.warn{border-color:rgba(255,107,122,.45)}
 .gmore{border:0;background:none;color:var(--accent);font:600 10.5px var(--mono);text-align:left;padding:1px 6px}
-.gadd{flex:1;display:grid;place-items:center;width:100%;min-height:44px;border:1px dashed transparent;border-radius:8px;background:none;color:transparent;font:600 11px var(--body);transition:all .15s}
-.gadd:hover,.gadd:focus-visible{border-color:rgba(87,182,255,.4);color:var(--accent);background:rgba(87,182,255,.05)}
-@media (hover:none){.gadd{color:var(--dim)}}
+.gadd{flex:1;display:grid;place-items:center;width:100%;min-height:44px;border:1px dashed rgba(255,255,255,.07);border-radius:8px;background:rgba(255,255,255,.012);color:var(--dim);font:600 11px var(--body);transition:all .15s}
+.gadd .gadd-t{display:none}
+.gadd:hover,.gadd:focus-visible{border-color:rgba(87,182,255,.45);color:var(--accent);background:rgba(87,182,255,.06)}
+.gadd:hover .gfree,.gadd:focus-visible .gfree{display:none}
+.gadd:hover .gadd-t,.gadd:focus-visible .gadd-t{display:inline}
+.gfree{opacity:.75}
 /* недопродажа: прошедшее обязательное место без продажи — потеря */
 .gmiss{flex:1;display:grid;place-items:center;width:100%;min-height:44px;border-radius:8px;border:1px solid rgba(255,107,122,.35);color:var(--red);font:600 10.5px var(--body);background:repeating-linear-gradient(135deg,rgba(255,107,122,.10) 0 6px,rgba(255,107,122,.03) 6px 12px)}
 /* обязательное место впереди и ещё свободно — можно успеть продать */
@@ -387,7 +390,7 @@ input[type="date"].inp{color-scheme:dark}
 .cal-sum b{font-family:var(--mono)}
 
 /* ============ ДЕНЬ ============ */
-.dayv{display:grid;grid-template-columns:minmax(320px,390px) minmax(0,1fr);align-items:start}
+.dayv{display:grid;grid-template-columns:minmax(340px,410px) minmax(0,1fr);align-items:start}
 .dcal{padding:0 14px 14px 18px;border-right:1px solid var(--line)}
 .dcal-h{display:flex;align-items:center;gap:6px;margin-bottom:10px}
 .dcal-t{font:700 13.5px var(--body);min-width:118px;text-align:center}
@@ -400,9 +403,43 @@ input[type="date"].inp{color-scheme:dark}
 .dcal-day.today .dn{color:var(--accent)}
 .dcal-day.today{box-shadow:inset 0 0 0 1px rgba(87,182,255,.35)}
 .dcal-day.sel{border-color:rgba(87,182,255,.7);background:rgba(87,182,255,.13)}
-.dcal-day .pl{display:flex;align-items:center;gap:3px;font:600 9px/1.2 var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden}
-.dcal-day .pl i{flex:none;width:6px;height:6px;border-radius:50%;background:hsl(var(--h) 55% 55%)}
-.dcal-day .pl.miss b{color:var(--red)}
+.dcal-day .pl{display:flex;align-items:center;gap:3px;font:600 9px/1.25 var(--mono);color:hsl(var(--h) 60% 72%);white-space:nowrap}
+.dcal-day .pl i{display:none;flex:none;width:6px;height:6px;border-radius:50%;background:hsl(var(--h) 55% 55%)}
+.dcal-day .pl.miss b{color:#fff;background:rgba(255,107,122,.38);border-radius:3px;padding:0 3px}
+/* неделя на телефоне: список дней с метками мест */
+.wdays{list-style:none;display:flex;flex-direction:column;gap:8px;padding:0 12px 12px}
+.wday{width:100%;display:flex;flex-direction:column;gap:7px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025);text-align:left;color:var(--text)}
+.wday.today{border-color:rgba(87,182,255,.5);box-shadow:inset 3px 0 0 var(--accent)}
+.wd-h{display:flex;align-items:center;gap:8px;font-size:13px}
+.wd-go{margin-left:auto;color:var(--dim);font-size:18px;line-height:1}
+.wl{display:grid;grid-template-columns:52px minmax(0,1fr) 30px;align-items:center;gap:8px}
+.wl-who{display:flex;align-items:center;gap:5px;min-width:0}
+.wl-nm{font:600 10.5px var(--mono);color:var(--muted)}
+.wl-n{font:600 11px var(--mono);color:var(--muted);text-align:right}
+.wmarks{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.wm{display:grid;place-items:center;height:22px;border-radius:5px;font:700 9.5px var(--mono);color:var(--dim);background:rgba(255,255,255,.04)}
+.wm.pub{background:rgba(61,220,151,.22);color:#9DF0CB}
+.wm.agreed{background:rgba(87,182,255,.22);color:#A8D6FF}
+.wm.plan{background:none;box-shadow:inset 0 0 0 1px rgba(138,148,166,.6);color:var(--muted)}
+.wm.free{color:rgba(90,100,120,.8)}
+.wm.miss{color:#FFB3BC;background:repeating-linear-gradient(135deg,rgba(255,107,122,.3) 0 4px,rgba(255,107,122,.12) 4px 8px)}
+.wm.open{background:rgba(255,180,84,.08);box-shadow:inset 0 0 0 1px rgba(255,180,84,.6);color:var(--amber)}
+.hint-row .wm{display:inline-grid;width:18px;height:16px;font-size:8.5px}
+/* день на телефоне: карточка на канал, места столбиком */
+.dcards{display:flex;flex-direction:column;gap:10px;padding:0 12px 12px}
+.dcard{border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.02);overflow:hidden}
+.dcard-h{display:flex;align-items:center;gap:9px;padding:10px 12px;font:600 13px var(--body);border-bottom:1px solid var(--line)}
+.dcard-h .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dcard-h .dp-occ{margin-left:auto;flex:none;font:500 10.5px var(--mono);color:var(--dim)}
+.dslots{list-style:none}
+.dslots li{display:grid;grid-template-columns:84px minmax(0,1fr);gap:10px;align-items:center;padding:6px 12px;border-top:1px solid rgba(255,255,255,.04)}
+.dslots li:first-child{border-top:0}
+.dsl{font:600 11.5px var(--body);color:var(--muted)}
+.dsl .req{color:var(--amber);font-family:var(--mono);margin-left:2px}
+.dsv{display:flex;flex-direction:column;gap:4px;min-width:0}
+.dsv .gadd,.dsv .gmiss,.dsv .gopen{min-height:34px}
+.dsv .dchip{padding:6px 9px}
+.dsv .dchip .nm,.dsv .dchip .sub{font-size:12px}
 .dcal-note{font-size:10.5px;color:var(--dim);margin-top:9px;line-height:1.4}
 .dayp{min-width:0;padding-top:2px}
 .dayp-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:2px 18px 10px}
@@ -711,10 +748,10 @@ input[type="date"].inp{color-scheme:dark}
   .dayv{grid-template-columns:1fr}
   .dcal{border-right:0;border-bottom:1px solid var(--line);padding:0 10px 12px}
   .dcal-grid{gap:3px}
-  .dcal-day{min-height:46px;padding:4px;flex-direction:row;flex-wrap:wrap;align-content:flex-start;gap:3px}
+  .dcal-day{min-height:46px;padding:4px;gap:1px}
   .dcal-day .dn{flex-basis:100%;margin:0}
-  .dcal-day .pl b{display:none}
-  .dcal-day .pl.miss i{box-shadow:0 0 0 2px rgba(255,107,122,.6)}
+  .dcal-day .pl .of{display:none}
+  .dcal-day .pl{font-size:8.5px;flex-basis:100%}
   .dayp-h{padding:12px 12px 8px}
   .day-tbl{min-width:640px}
   .day-tbl thead th:first-child,.day-tbl tbody th,.day-tbl tfoot th{width:96px}
@@ -724,8 +761,7 @@ input[type="date"].inp{color-scheme:dark}
   .gdeal{padding:3px 5px;font-size:10px}
   /* в узкой клетке закупа аватарка уже говорит, какой проект: оставляем её и статус */
   .gdeal .adm .u{display:none}
-  .gadd-t{display:none}
-  .gadd{font-size:15px}
+  .gadd{font-size:10.5px}
   .mx-tbl{min-width:600px}
   .mx-tbl tbody th{min-width:110px}
   .mx-tbl tbody th .c-prj span.nm{max-width:80px}
