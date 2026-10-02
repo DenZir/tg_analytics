@@ -300,6 +300,12 @@ input[type="date"].inp{color-scheme:dark}
 .op-dir.out{color:var(--green);background:rgba(61,220,151,.1)}
 .ops-tbl thead th{position:sticky}
 .ops-tbl tbody tr.is-plan{opacity:.5}
+.settle{list-style:none;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.settle li{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 13px;font-size:12.5px}
+.settle li+li{border-top:1px solid rgba(255,255,255,.045)}
+.settle time{color:var(--muted);font-size:11.5px}
+.settle .adm-link{margin-left:auto}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
 .ops-m{list-style:none;display:flex;flex-direction:column;gap:6px}
 .ops-it{width:100%;display:flex;flex-direction:column;gap:6px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.025);text-align:left;color:var(--text);font-size:12px}
 .ops-it.muted{opacity:.55}

@@ -1511,6 +1511,24 @@ function contactField(label, value) {
 // подсчёта, кто кому должен. Считаются «Договорились», «Вышел», «Завершён»;
 // отметки об оплате в разделе нет, поэтому итог — сумма сделок, а не остаток долга.
 let opsState = { id: null, period: 'all' };
+// Обнуление («рассчитались») не трогает сделки: оно запоминает, какие операции
+// вошли в расчёт, и дальше итог считает только остальные. В расчёт попадает то,
+// что уже было в итоге; CPM без суммы и «В плане» дождутся следующего раза.
+const SETTLE = {};
+const settledIds = id => new Set((SETTLE[id] || []).flatMap(s => s.ids));
+const isOpen = o => counts(o) && !o.settled;
+// Подтверждение ловим на submit формы — он приходит сразу при нажатии кнопки,
+// а событие close у диалога браузер может придержать (скрытая вкладка).
+let confirmCb = null;
+function confirmAsk(title, text, okLabel, onOk) {
+  $('#confirmTitle').textContent = title; $('#confirmText').textContent = text; $('#confirmOk').textContent = okLabel;
+  confirmCb = onOk;
+  $('#confirmDlg').showModal();
+}
+$('#confirmDlg form').addEventListener('submit', e => {
+  const cb = confirmCb; confirmCb = null;
+  if (e.submitter?.value === 'ok' && cb) cb();
+});
 const contactOf = d => (d.side === 'buy' ? d.admin : d.buyer);
 function opsList(id, period) {
   const inP = d => period === 'all' || d.date.startsWith(period);
@@ -1522,7 +1540,9 @@ function opsList(id, period) {
     return { dir, date: ps[0].date, slot: ps[0].slot, where: ps.map(x => x.project), amount: amts.some(v => v == null) ? null : amts.reduce((a, b) => a + b, 0),
       pm: ps[0].pm, rate: ps[0].rate, status: ps[0].status, id: ps[0].id, est: ps.some(x => x.cpmState === 'failed') };
   };
+  const closed = settledIds(id);
   return [...mine.filter(x => x.side === 'buy').map(d => one([d], 'in')), ...[...pk.values()].map(ps => one(ps, 'out'))]
+    .map(o => ({ ...o, settled: closed.has(o.id) && o.amount != null }))
     .sort((x, y) => y.date.localeCompare(x.date) || SLOT[y.slot].i - SLOT[x.slot].i);
 }
 const counts = o => o.status === 'agreed' || isPub(o.status);
@@ -1534,7 +1554,7 @@ function openOps(id) {
 }
 function opsTotals(ops) {
   const side = dir => {
-    const xs = ops.filter(o => o.dir === dir && counts(o));
+    const xs = ops.filter(o => o.dir === dir && isOpen(o));
     return { n: xs.length, sum: xs.reduce((s, o) => s + (o.amount ?? 0), 0), pending: xs.filter(o => o.amount == null).length };
   };
   const i = side('in'), o = side('out');
@@ -1547,6 +1567,8 @@ function renderOps() {
   const ops = opsList(id, period);
   const t = opsTotals(ops);
   const name = esc(a.name);
+  const hist = SETTLE[id] || [], last = hist[hist.length - 1];
+  const netLbl = v => (v > 0 ? `я должен ${rub(v)}` : v < 0 ? `мне должны ${rub(-v)}` : 'в ноль');
   const verdict = t.net > 0 ? `Я должен: <b class="mono">${rub(t.net)}</b>` : t.net < 0 ? `Мне должны: <b class="mono">${rub(-t.net)}</b>` : 'Взаимно в ноль';
   const pLbl = period === 'all' ? 'за всё время' : `за ${MON_NOM[Number(period.slice(5)) - 1].toLowerCase()} ${period.slice(0, 4)}`;
   // без склонения имён: «у Кот» звучит криво, а угадывать падеж нельзя
@@ -1554,15 +1576,15 @@ function renderOps() {
   const whereLbl = o => o.where.map(p => esc(PJ[p].mono)).join(' + ');
   const amtLbl = o => (o.amount == null ? `<span class="price-q">CPM ${int(o.rate)} ₽</span><span class="price-sub"> после фиксации</span>` : `${o.est ? '≈ ' : ''}${rub(o.amount)}`);
   const rowsHTML = state.narrow
-    ? `<ul class="ops-m">${ops.map(o => `<li><button class="ops-it ${counts(o) ? '' : 'muted'}" type="button" data-act="open" data-id="${o.id}">
+    ? `<ul class="ops-m">${ops.map(o => `<li><button class="ops-it ${isOpen(o) ? '' : 'muted'}" type="button" data-act="open" data-id="${o.id}">
         <span class="ops-l1"><b class="mono">${dm(parseIso(o.date))}</b> · ${SLOT[o.slot].l} · ${whereLbl(o)}<span class="ops-amt mono">${amtLbl(o)}</span></span>
-        <span class="ops-l2"><span class="op-dir ${o.dir}">${dirLbl(o)}</span>${stChip(o.status)}</span></button></li>`).join('')}</ul>`
+        <span class="ops-l2"><span class="op-dir ${o.dir}">${dirLbl(o)}</span><span>${o.settled ? '<span class="chip neutral">закрыто</span> ' : ''}${stChip(o.status)}</span></span></button></li>`).join('')}</ul>`
     : `<div class="tbl-wrap" style="padding:0;max-block-size:46vh"><table class="tbl list ops-tbl"><caption class="sr-only">Операции с ${name}</caption>
         <thead><tr><th scope="col">Дата</th><th scope="col">Кто кому</th><th scope="col">Где</th><th scope="col">Место</th><th scope="col" class="num">Сумма</th><th scope="col">Статус</th></tr></thead>
-        <tbody>${ops.map(o => `<tr class="${counts(o) ? '' : 'is-plan'}" data-act="open" data-id="${o.id}">
+        <tbody>${ops.map(o => `<tr class="${isOpen(o) ? '' : 'is-plan'}" data-act="open" data-id="${o.id}">
           <th scope="row"><button class="row-btn mono" type="button" data-act="open" data-id="${o.id}">${dm(parseIso(o.date))}</button></th>
           <td><span class="op-dir ${o.dir}">${dirLbl(o)}</span></td><td>${whereLbl(o)}</td><td>${SLOT[o.slot].l}</td>
-          <td class="num">${amtLbl(o)}</td><td>${stChip(o.status)}</td></tr>`).join('')}</tbody></table></div>`;
+          <td class="num">${amtLbl(o)}</td><td>${stChip(o.status)}${o.settled ? ' <span class="chip neutral">закрыто</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`;
   $('#opsDlg').innerHTML = `
     <div class="m-head"><div><div class="m-eyebrow">все операции с контактом</div><h2 id="opsTitle">${esc(admLabel(id))}</h2>
       ${a.old?.length ? `<div class="m-chips"><span class="chip neutral">раньше ${a.old.map(o => `@${esc(o)}`).join(', ')}</span></div>` : ''}</div>
@@ -1575,20 +1597,22 @@ function renderOps() {
       <div class="ops-sum">
         <div class="ops-c in"><span class="ops-cl">Я купил</span><b class="mono">${rub(t.i.sum)}</b><span class="ops-cs">${t.i.n} ${plural(t.i.n, 'закуп', 'закупа', 'закупов')}${t.i.pending ? ` · ещё ${t.i.pending} по CPM без суммы` : ''}</span></div>
         <div class="ops-c out"><span class="ops-cl">Купили у меня</span><b class="mono">${rub(t.o.sum)}</b><span class="ops-cs">${t.o.n} ${plural(t.o.n, 'продажа', 'продажи', 'продаж')}${t.o.pending ? ` · ещё ${t.o.pending} по CPM без суммы` : ''}</span></div>
-        <div class="ops-c net ${t.net > 0 ? 'owe' : t.net < 0 ? 'owed' : ''}"><span class="ops-cl">Итог ${pLbl}</span><span class="ops-v">${verdict}</span><span class="ops-cs">взаимозачёт: купленное минус проданное</span></div>
+        <div class="ops-c net ${t.net > 0 ? 'owe' : t.net < 0 ? 'owed' : ''}"><span class="ops-cl">Итог ${pLbl}${last ? ' · после обнуления' : ''}</span><span class="ops-v">${verdict}</span><span class="ops-cs">${last ? `считается с обнуления ${dtLbl(last.at)}` : 'взаимозачёт: купленное минус проданное'}</span></div>
       </div>
-      <p class="mnote">Считаются «Договорились», «Вышел» и «Завершён»; «В плане» показаны, но в итог не входят, отменённые скрыты. Отметок об оплате пока нет — итог показывает сумму сделок за период, а не остаток долга.</p>
+      <p class="mnote">Считаются «Договорились», «Вышел» и «Завершён»; «В плане» показаны, но в итог не входят, отменённые скрыты. Рассчитались — нажмите «Обнулить»: итог станет 0, а сделки останутся в истории с пометкой «закрыто».</p>
+      ${hist.length ? `<div class="m-sec"><div class="m-sec-h"><span class="card-idx">обнуления</span><h3>Расчёты</h3></div><ol class="settle">${[...hist].reverse().map((s, i) => `<li><time class="mono">${dmy(s.at)}, ${hmOf(s.at)}</time><span>было: ${netLbl(s.net)} · ${s.ids.length} ${plural(s.ids.length, 'операция', 'операции', 'операций')} закрыто</span>${i === 0 ? '<button class="adm-link" type="button" data-act="ops-undo">Отменить</button>' : ''}</li>`).join('')}</ol></div>` : ''}
       <div class="m-sec">${ops.length ? rowsHTML : `<p class="dl-empty" style="padding:6px 0">${pLbl[0].toUpperCase() + pLbl.slice(1)} операций нет.</p>`}</div>
     </div>
-    <div class="m-foot"><span class="sp"></span><button class="btn" type="button" data-act="ops-copy">Скопировать для сверки</button><button class="btn btn-primary" type="button" data-close>Готово</button></div>`;
+    <div class="m-foot"><button class="btn btn-ghost-danger" type="button" data-act="ops-reset" ${opsList(id, 'all').some(o => isOpen(o) && o.amount != null) ? '' : 'disabled'}>Обнулить</button><span class="sp"></span><button class="btn" type="button" data-act="ops-copy">Скопировать для сверки</button><button class="btn btn-primary" type="button" data-close>Готово</button></div>`;
 }
 function opsText() {
   const { id, period } = opsState, a = ADMINS[id];
-  const ops = opsList(id, period).filter(counts), t = opsTotals(ops);
+  const ops = opsList(id, period).filter(isOpen), t = opsTotals(ops);
+  const last = (SETTLE[id] || []).at(-1);
   const pLbl = period === 'all' ? 'всё время' : `${MON_NOM[Number(period.slice(5)) - 1]} ${period.slice(0, 4)}`;
   const lines = ops.map(o => `${dm(parseIso(o.date))} ${SLOT[o.slot].l} — ${o.dir === 'in' ? 'я купил' : 'купили у меня'}: ${o.where.map(p => PJ[p].mono).join(' + ')} — ${o.amount == null ? `CPM ${o.rate} ₽, сумма после фиксации` : `${o.est ? '≈ ' : ''}${rub(o.amount)}`} (${ST[o.status].l})`);
   const net = t.net > 0 ? `я должен ${rub(t.net)}` : t.net < 0 ? `мне должны ${rub(-t.net)}` : 'в ноль';
-  return [`Сверка с ${admLabel(id)} · ${pLbl}`, ...lines, '', `Я купил: ${t.i.n} на ${rub(t.i.sum)}`, `Купили у меня: ${t.o.n} на ${rub(t.o.sum)}`, `Итог: ${net}`].join('\n');
+  return [`Сверка с ${admLabel(id)} · ${pLbl}${last ? ` · после расчёта ${dtLbl(last.at)}` : ''}`, ...lines, '', `Я купил: ${t.i.n} на ${rub(t.i.sum)}`, `Купили у меня: ${t.o.n} на ${rub(t.o.sum)}`, `Итог: ${net}`].join('\n');
 }
 
 // ================= АВТОПОДБОР АДМИНА =================
@@ -1835,19 +1859,31 @@ document.addEventListener('click', async e => {
   } else if (act === 'del') {
     const { src } = editing;
     const gone = editing.kind === 'sale' ? editing.parts : [src];
-    $('#confirmText').textContent = `${src.side === 'buy' ? 'Закуп' : 'Продажа'} ${src.id} от ${dm(parseIso(src.date))}${gone.length > 1 ? ` — во всех ${gone.length} каналах —` : ''} исчезнет из всех видов и итогов. Отменить это будет нельзя — если сделка просто сорвалась, лучше поставить статус «Отменён».`;
-    const dlg = $('#confirmDlg');
-    dlg.returnValue = '';
-    dlg.showModal();
-    dlg.addEventListener('close', () => {
-      if (dlg.returnValue !== 'ok') return;
-      DEALS = DEALS.filter(x => !gone.includes(x));
-      $('#dealDlg').close(); render(); toast(`${src.id} удалён${src.side === 'buy' ? '' : 'а'}`);
-    }, { once: true });
+    confirmAsk('Удалить сделку?',
+      `${src.side === 'buy' ? 'Закуп' : 'Продажа'} ${src.id} от ${dm(parseIso(src.date))}${gone.length > 1 ? ` — во всех ${gone.length} каналах —` : ''} исчезнет из всех видов и итогов. Отменить это будет нельзя — если сделка просто сорвалась, лучше поставить статус «Отменён».`,
+      'Удалить', () => {
+        DEALS = DEALS.filter(x => !gone.includes(x));
+        $('#dealDlg').close(); render(); toast(`${src.id} удалён${src.side === 'buy' ? '' : 'а'}`);
+      });
   } else if (act === 'ops') {
     e.preventDefault(); openOps(t.dataset.adm);
   } else if (act === 'ops-period') {
     opsState.period = t.dataset.v; renderOps();
+  } else if (act === 'ops-reset') {
+    // в расчёт — только то, у чего есть сумма: CPM без фиксации дождётся следующего раза
+    const id = opsState.id, open = opsList(id, 'all').filter(o => isOpen(o) && o.amount != null), tt = opsTotals(open);
+    const was = tt.net > 0 ? `я должен ${rub(tt.net)}` : tt.net < 0 ? `мне должны ${rub(-tt.net)}` : 'в ноль';
+    confirmAsk(`Обнулить расчёт: ${admLabel(id)}?`,
+      `Сейчас итог за всё время: ${was} (${open.length} ${plural(open.length, 'операция', 'операции', 'операций')}).${opsState.period !== 'all' ? ' Обнуляется весь итог, а не только выбранный месяц.' : ''} После обнуления он станет 0. Сделки останутся в истории с пометкой «закрыто»; новые сделки, CPM без суммы и «В плане» войдут в следующий расчёт. Обнуление можно отменить.`,
+      'Обнулить', () => {
+        (SETTLE[id] = SETTLE[id] || []).push({ at: new Date(NOW), ids: open.map(o => o.id), net: tt.net });
+        renderOps();
+        toast(`Обнулено — было: ${was}. Сделки остались в истории`);
+      });
+  } else if (act === 'ops-undo') {
+    const s = SETTLE[opsState.id]?.pop();
+    renderOps();
+    if (s) toast(`Обнуление от ${dtLbl(s.at)} отменено — эти операции снова в итоге`, 'info');
   } else if (act === 'ops-copy') {
     navigator.clipboard.writeText(opsText()).then(() => toast('Сверка скопирована — можно вставить в чат с контактом'), () => toast('Не удалось скопировать: браузер не дал доступ к буферу', 'info'));
   } else if (act === 'split-even') {
@@ -1965,7 +2001,7 @@ function toast(text, kind = 'ok') {
 new ResizeObserver(([entry]) => {
   const narrow = entry.contentRect.width < 760;
   document.documentElement.toggleAttribute('data-narrow', narrow);
-  if (narrow !== state.narrow) { state.narrow = narrow; render(); }
+  if (narrow !== state.narrow) { state.narrow = narrow; render(); if ($('#opsDlg').open) renderOps(); }
 }).observe($('#frame'));
 
 render();
