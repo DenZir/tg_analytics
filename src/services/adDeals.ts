@@ -29,7 +29,6 @@ import {
 import {
   AD_CPM_STATES,
   AD_PUBLISHED_STATUSES,
-  AD_SLOT_TIME,
   DEFAULT_MANDATORY_SLOTS,
   isAdFormat,
   isAdPriceMode,
@@ -967,5 +966,3 @@ export async function listDeals(filter: DealFilter) {
   return { buys: buyRows, sales: saleRows };
 }
 
-/** For "has this slot already passed" on the client — sent so both sides agree. */
-export const SLOT_TIMES = AD_SLOT_TIME;

@@ -1,5 +1,18 @@
 import { db } from "../db/index.js";
-import { campaigns, campaignTags, links, projects, events, dailyStats, utmLinks } from "../db/schema.js";
+import {
+  campaigns,
+  campaignTags,
+  links,
+  projects,
+  events,
+  dailyStats,
+  utmLinks,
+  adBuys,
+  adSalePlaces,
+  adSales,
+  adSettlementItems,
+  adStatusHistory,
+} from "../db/schema.js";
 import { eq, and, or, inArray, desc, sql, isNull, isNotNull } from "drizzle-orm";
 import { aggregate } from "../jobs/dailyAggregate.js";
 import { getRetentionStats, getCohortLtv } from "./metrics.js";
@@ -148,6 +161,9 @@ export async function attachBotProject(channelProjectId: number, botProjectId: n
     tx.update(events).set({ projectId: channelProjectId }).where(eq(events.projectId, botProjectId)).run();
     tx.update(campaigns).set({ projectId: channelProjectId }).where(eq(campaigns.projectId, botProjectId)).run();
     tx.update(utmLinks).set({ projectId: channelProjectId }).where(eq(utmLinks.projectId, botProjectId)).run();
+    // Ad buys made for the bot are now buys for the merged project. A bot-only
+    // project has no channel, so it never had sale places to move.
+    tx.update(adBuys).set({ projectId: channelProjectId }).where(eq(adBuys.projectId, botProjectId)).run();
 
     // The bot row goes before the channel takes its username: bot_username is
     // what incoming events are matched on, and for a moment two rows holding it
@@ -175,6 +191,28 @@ export async function deleteProjectCascade(projectId: number) {
   // race hit here: deleting a project while an event arrived could fail on the
   // foreign key half way, with events and links already gone.
   return db.transaction((tx) => {
+    // Ad deals of the project go first: they point at its campaigns and UTM
+    // links as well as at the project. A sale package loses only this channel;
+    // a sale left with no channel at all goes too.
+    const buyIds = tx.select({ id: adBuys.id }).from(adBuys).where(eq(adBuys.projectId, projectId)).all().map((b) => b.id);
+    if (buyIds.length > 0) {
+      tx.delete(adStatusHistory).where(and(eq(adStatusHistory.kind, "buy"), inArray(adStatusHistory.dealId, buyIds))).run();
+      tx.delete(adSettlementItems).where(and(eq(adSettlementItems.kind, "buy"), inArray(adSettlementItems.dealId, buyIds))).run();
+      tx.delete(adBuys).where(inArray(adBuys.id, buyIds)).run();
+    }
+    tx.delete(adSalePlaces).where(eq(adSalePlaces.projectId, projectId)).run();
+    const emptySaleIds = tx
+      .select({ id: adSales.id })
+      .from(adSales)
+      .where(sql`NOT EXISTS (SELECT 1 FROM ad_sale_places p WHERE p.sale_id = ${adSales.id})`)
+      .all()
+      .map((s) => s.id);
+    if (emptySaleIds.length > 0) {
+      tx.delete(adStatusHistory).where(and(eq(adStatusHistory.kind, "sale"), inArray(adStatusHistory.dealId, emptySaleIds))).run();
+      tx.delete(adSettlementItems).where(and(eq(adSettlementItems.kind, "sale"), inArray(adSettlementItems.dealId, emptySaleIds))).run();
+      tx.delete(adSales).where(inArray(adSales.id, emptySaleIds)).run();
+    }
+
     const campaignIds = tx
       .select({ id: campaigns.id })
       .from(campaigns)
@@ -840,6 +878,9 @@ export async function deleteCampaignCascade(campaignId: number) {
     const deletedLinksCount = tx.delete(links).where(eq(links.campaignId, campaignId)).run().changes;
     const deletedTagsCount = tx.delete(campaignTags).where(eq(campaignTags.campaignId, campaignId)).run().changes;
     const deletedStatsCount = tx.delete(dailyStats).where(eq(dailyStats.campaignId, campaignId)).run().changes;
+    // A buy whose campaign was trashed by hand and then purged stays a buy —
+    // it only loses its tracking link and with it the results.
+    tx.update(adBuys).set({ campaignId: null }).where(eq(adBuys.campaignId, campaignId)).run();
     const [deletedCampaign] = tx.delete(campaigns).where(eq(campaigns.id, campaignId)).returning().all();
 
     return {
