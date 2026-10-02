@@ -293,6 +293,20 @@ app.use("/api", async (req, res, next) => {
     return next();
   }
 
+  // posting lives on another server and only ever reports ad posts. Its key
+  // opens that one call and nothing else: API_SECRET there would hand another
+  // machine the whole API, full database export included.
+  const reportKey = process.env.ADS_REPORT_KEY;
+  if (
+    reportKey &&
+    req.method === "POST" &&
+    req.path === "/ads/posts" &&
+    typeof apiKey === "string" &&
+    constantTimeEqual(apiKey, reportKey)
+  ) {
+    return next();
+  }
+
   if (await hasValidDashSession(req)) return next();
 
   return res.status(401).json({ error: "Unauthorized" });

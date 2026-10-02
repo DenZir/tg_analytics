@@ -231,8 +231,10 @@ curl "https://<хост>/api/attribution?tgUserId=777000123&botUsername=my_vpn_b
 
 ```
 POST /api/ads/posts
-X-API-Key: <API_SECRET>
+X-API-Key: <ADS_REPORT_KEY>
 ```
+
+`ADS_REPORT_KEY` пускает только к этому вызову — его и отдают posting, который живёт на другом сервере. `API_SECRET` тоже подходит, но открывает всё API.
 
 ```json
 { "event": "published", "chatId": "-1001234567890", "messageId": 4417,
