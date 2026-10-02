@@ -111,6 +111,7 @@ let ADMINS = {};
 let DEALS = [];
 let canMint = false;
 let checker = { enabled: false, reason: null };
+let trackBotName = null; // бот отслежки для админов, null — не подключён
 const contactIds = () => Object.keys(ADMINS).map(Number);
 const admLabel = id => { const a = ADMINS[id]; return a ? (a.user ? `${a.name} (@${a.user})` : a.name) : '—'; };
 
@@ -164,6 +165,7 @@ async function loadAll() {
   setContacts(boot.contacts);
   canMint = !!boot.canMintInvites;
   checker = boot.checker || checker;
+  trackBotName = boot.trackBot || null;
   const cr = document.getElementById('checkerRow');
   if (cr) {
     cr.textContent = checker.enabled ? 'проверка постов: каждые 5 мин' : 'проверка постов выключена';
@@ -1179,6 +1181,9 @@ function openDeal(id, prefill = {}) {
         ${buy ? `<div class="fld"><label for="fReach">Охват</label><input class="inp mono" id="fReach" readonly value="${pub && views != null ? `${int(views)} просмотров` : ''}" placeholder="замеряется автоматически"></div>` : ''}
         <div class="fld wide"><label for="fNotes">Заметки</label><textarea class="inp" id="fNotes" name="notes" placeholder="Договорённости, контакты, что учесть">${esc(d.notes)}</textarea></div>
       </div></div>
+      ${!isNew ? `<div class="m-sec" id="trackSec"><div class="m-sec-h"><span class="card-idx">отслежка</span><h3>Отслежка для админа</h3></div>${trackBotName
+        ? `<p class="mnote" style="margin-top:0">Ссылка на бота @${esc(trackBotName)}: админ увидит, сколько пришло, ушло и осталось по вашей ссылке и почём подписчик. Карточка у него обновляется сама, а по окончании срока придёт итог. Выручка и ROI ему не видны.</p><div class="frow" id="trackBox"><button class="btn" type="button" data-act="track">Получить ссылку на отслежку</button></div>`
+        : '<p class="mnote" style="margin-top:0">Бот отслежки не подключён — задайте TRACK_BOT_TOKEN в .env аналитики.</p>'}</div>` : ''}
       ${cpm}
       <div class="m-sec"><div class="m-sec-h"><span class="card-idx">${buy ? '03' : '02'} / результат</span><h3>Показатели</h3></div>${result}${resNote ? `<p class="mnote">${resNote}</p>` : ''}</div>
       ${checks}${hist}
@@ -1878,6 +1883,16 @@ document.addEventListener('click', async e => {
       toast(was ? `${r.contact.name} теперь @${u} — обновлено во всех сделках и кампаниях; по @${was} он по-прежнему находится` : `${r.contact.name}: username @${u} сохранён`);
       if (r.notice) toast(r.notice, 'info');
     } catch (err) { inp.setCustomValidity(err.message); inp.reportValidity(); }
+  } else if (act === 'track' || act === 'track-copy') {
+    const src = editing?.src; if (!src) return;
+    try {
+      const r = await api('POST', `/api/ads/buys/${src.dealId}/track`);
+      $('#trackBox').innerHTML = `<input class="inp mono" readonly value="${esc(r.url)}" aria-label="Ссылка на отслежку" style="flex:1;min-width:0"><button class="btn" type="button" data-act="track-copy">Скопировать</button>
+        <div class="hint" style="flex-basis:100%">${r.views ? `Открыли: ${r.views}` : 'Пока никто не открывал'} · отправьте ссылку админу, у которого купили место</div>`;
+      if (act === 'track-copy') {
+        await navigator.clipboard.writeText(r.url).then(() => toast('Ссылка на отслежку скопирована'), () => toast('Не удалось скопировать — выделите ссылку вручную', 'info'));
+      }
+    } catch (err) { toast(err.message, 'warn'); }
   } else if (act === 'copy-track') {
     navigator.clipboard.writeText($('#fTr').value).then(() => toast('Ссылка скопирована — можно отправлять админу'), () => toast('Не удалось скопировать: браузер не дал доступ к буферу', 'info'));
   } else if (act === 'mint') {

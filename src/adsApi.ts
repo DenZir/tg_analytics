@@ -30,6 +30,8 @@ import {
 import { listSettlements, settleContact, undoSettlement } from "./services/adSettlements.js";
 import { logAdminAction } from "./services/auditLog.js";
 import { checkerStatus } from "./jobs/adChecks.js";
+import { trackBotUsername } from "./bots/trackBot.js";
+import { getOrCreateTrack, trackViewsCount } from "./services/adTrack.js";
 import { recordReport } from "./services/adPostReports.js";
 
 type Handler = (req: express.Request, res: express.Response) => Promise<unknown>;
@@ -83,6 +85,8 @@ export function createAdsRouter(opts: {
       canMintInvites: !!opts.mintInvite,
       // is the post checker on (account session), and if not, why
       checker: checkerStatus(),
+      // the tracking bot for admins («отслежка»), null when TRACK_BOT_TOKEN is not set
+      trackBot: trackBotUsername(),
     }))
   );
 
@@ -201,6 +205,19 @@ export function createAdsRouter(opts: {
       const out = await updateBuy(id, body(req));
       await audit(req, "ad_buy_update", "ad_buy", id, body(req));
       return out;
+    })
+  );
+
+  // «Отслежка» for the admin of this buy: the link to my tracking bot (made on
+  // first request) and how many people have opened it.
+  r.post(
+    "/buys/:id/track",
+    wrap(async (req) => {
+      const id = idParam(req);
+      const bot = trackBotUsername();
+      if (!bot) throw new AdInputError("Бот отслежки не настроен — задайте TRACK_BOT_TOKEN", 409);
+      const t = await getOrCreateTrack(id);
+      return { url: `https://t.me/${bot}?start=trk_${t.token}`, views: await trackViewsCount(t.id) };
     })
   );
 

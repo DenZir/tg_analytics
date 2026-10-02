@@ -458,3 +458,39 @@ export const adPostReports = sqliteTable(
   },
   (table) => [unique("ad_post_reports_msg_unique").on(table.chat, table.messageId)]
 );
+
+// «Отслежка»: an admin I bought a place from gets a link to my tracking bot and
+// sees how the placement is doing — joined, left, stayed, cost per subscriber.
+// Anyone with the link can open it (the owner's choice: like the market's
+// tracking bots, the link is the access).
+export const adTrackLinks = sqliteTable("ad_track_links", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  buyId: integer("buy_id")
+    .notNull()
+    .unique()
+    .references(() => adBuys.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(), // the ?start= payload, unguessable
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Each card the tracking bot has sent: refreshed in place while the post stands,
+// then frozen with the final result once its term is over.
+export const adTrackViews = sqliteTable(
+  "ad_track_views",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    trackId: integer("track_id")
+      .notNull()
+      .references(() => adTrackLinks.id, { onDelete: "cascade" }),
+    chatId: text("chat_id").notNull(), // who opened it
+    messageId: integer("message_id").notNull(), // the card in that chat
+    lastText: text("last_text"), // what the card shows now — no edit when nothing changed
+    finalSentAt: integer("final_sent_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [unique("ad_track_views_chat_unique").on(table.trackId, table.chatId)]
+);
