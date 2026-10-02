@@ -274,11 +274,34 @@ function generate() {
   // Завтра одно обязательное место ещё не продано — для предупреждения.
   drop('sell', 1, '2026-10-09', 'day');
 
+  // Часть продаж — пакетом в двух каналах сразу: тот же покупатель, день и место,
+  // сумма за пакет делится между каналами.
+  let pk = 0;
+  for (const s of deals.filter(x => x.side === 'sell' && x.project === 1 && x.status !== 'cancel' && !x.viewsNow)) {
+    if (R() >= .2 || deals.some(x => x.side === 'sell' && x.project === 3 && x.date === s.date && x.slot === s.slot)) continue;
+    const k = { ...structuredClone(s), project: 3, post: s.post ? s.post.replace('satan_games', 'crypto_insaid') : '', warns: [] };
+    if (s.pm === 'fix') { const total = Math.round(s.price * 1.7 / 100) * 100; s.price = Math.ceil(total / 2); k.price = total - s.price; }
+    else if (k.views) k.views = Math.round(k.views * .8);
+    s._pk = k._pk = ++pk;
+    deals.push(k);
+  }
+  // и один уже вышедший пакет на этой неделе — чтобы было видно долю в «Заработано»
+  drop('sell', 1, '2026-10-06', 'stories'); drop('sell', 3, '2026-10-06', 'stories');
+  const pA = { side: 'sell', project: 1, date: '2026-10-06', slot: 'stories', format: '1/24', status: 'done', pm: 'fix', price: 3500, buyer: '@ad_manager_77', post: 'https://t.me/satan_games/4391', notes: 'Пакет на оба канала, скидка за объём', warns: [], viewsSeen: 12480, factShift: 2 };
+  const pB = { ...pA, project: 3, post: 'https://t.me/crypto_insaid/1877', viewsSeen: 9310, warns: [] };
+  pA._pk = pB._pk = ++pk;
+  deals.push(pA, pB);
+
   deals.sort((a, b) => a.date.localeCompare(b.date) || SLOT[a.slot].i - SLOT[b.slot].i || a.project - b.project);
   let nb = 1001, ns = 2001;
+  const firstOfPk = {};
   for (const d of deals) {
     d.id = d.side === 'buy' ? `З-${nb++}` : `П-${ns++}`;
-    if (!d.history) d.history = makeHistory(d);
+    if (d.side === 'sell') {
+      if (d._pk) { if (!firstOfPk[d._pk]) firstOfPk[d._pk] = d; d.pkg = firstOfPk[d._pk].id; } else d.pkg = d.id;
+    }
+    if (!d.history) d.history = d._pk && firstOfPk[d._pk] !== d ? structuredClone(firstOfPk[d._pk].history) : makeHistory(d);
+    delete d._pk;
   }
   return deals;
 }
@@ -328,6 +351,7 @@ function aggBuy(list) {
 }
 
 function aggSell(list) {
+  const pk = new Set();
   const a = { count: 0, planCount: 0, earned: 0, earnedCount: 0, expected: 0, expectedCount: 0, expectedCpm: 0, waitCpm: 0, waitEst: 0, estimated: 0, views: 0, viewsEarned: 0 };
   for (const d of list) {
     if (d.status === 'cancel') continue;
@@ -337,7 +361,7 @@ function aggSell(list) {
     if (isPub(d.status)) {
       if (amt == null) { a.waitCpm++; a.waitEst += d.rate * (d.viewsNow || 0) / 1000; }
       else {
-        a.earned += amt; a.earnedCount++;
+        a.earned += amt; pk.add(d.pkg ?? d.id); a.earnedCount = pk.size;
         if (d.cpmState === 'failed') a.estimated++;
         const v = viewsOf(d);
         if (v != null) { a.views += v; a.viewsEarned += amt; }
@@ -581,8 +605,8 @@ function renderList(list) {
       <td class="c-slot"><span class="chip slot">${SLOT[d.slot].l}${mand ? ' <span class="req" title="обязательное место">*</span>' : ''}</span><span class="chip fmt fmt-m">${d.format}</span></td>
       <td class="c-fmt"><span class="chip fmt">${d.format}</span></td>
       <td class="c-proj"><span class="c-prj">${ava(d.project)}<span class="nm">${esc(PJ[d.project].name)}</span></span></td>
-      <td class="c-venue">${buy ? admHTML(d.admin) : esc(d.buyer)}</td>
-      <td class="num c-price">${priceHTML(d)}</td>
+      <td class="c-venue">${buy ? admHTML(d.admin) : `${esc(d.buyer)}${pkgBadge(d)}`}</td>
+      <td class="num c-price">${priceHTML(d)}${!buy && pkgSize(d) > 1 ? `<div class="price-sub">доля · пакет ×${pkgSize(d)}${d.pm === 'fix' ? ` на ${rub(pkgOf(d).reduce((s, x) => s + (x.price || 0), 0))}` : ''}</div>` : ''}</td>
       <td class="c-st">${stChip(d.status)}</td>
       ${metrics}
       <td class="c-warn"><span class="wcell">${warnIcons(d)}</span></td>
@@ -638,7 +662,7 @@ function weekBody(r, list, mandatory, ch, opts = {}) {
         inner = ds.slice(0, 2).map(d => {
           const nm = buy ? admHTML(d.admin) : esc(d.buyer);
           const lbl = `${SLOT[d.slot].l}, ${dm(day)}: ${buy ? `${PJ[d.project].name}, ${admLabel(d.admin)}` : d.buyer}, ${ST[d.status].l}${d.warns.length ? ', есть предупреждение' : ''}`;
-          return `<button class="gdeal ${d.status === 'plan' ? 'plan' : ''} ${d.warns.length ? 'warn' : ''}" type="button" data-act="open" data-id="${d.id}" aria-label="${esc(lbl)}">${buy && !opts.hideAva ? ava(d.project, 'sm') : ''}<span class="nm">${nm}</span><span class="mk ${mkOf(d)}"></span></button>`;
+          return `<button class="gdeal ${d.status === 'plan' ? 'plan' : ''} ${d.warns.length ? 'warn' : ''}" type="button" data-act="open" data-id="${d.id}" aria-label="${esc(lbl)}">${buy && !opts.hideAva ? ava(d.project, 'sm') : ''}<span class="nm">${nm}</span>${pkgBadge(d)}<span class="mk ${mkOf(d)}"></span></button>`;
         }).join('') + (ds.length > 2 ? `<button class="gmore" type="button" data-act="cell" data-date="${date}" data-slot="${s.k}">+ ещё ${ds.length - 2}</button>` : '');
         if (!buy && isMand && !filled) inner += `<span class="sr-only">обязательное место ещё не продано</span>`;
       } else if (isMand) {
@@ -824,7 +848,7 @@ function renderDay(r, list) {
           const who = buy ? admHTML(d.admin) : esc(d.buyer);
           const lbl = `${s.l}: ${PJ[p].name}, ${buy ? admLabel(d.admin) : d.buyer}, ${ST[d.status].l}`;
           return `<button class="dchip ${d.status === 'plan' ? 'plan' : ''} ${d.warns.length ? 'warn' : ''}" type="button" data-act="open" data-id="${d.id}" aria-label="${esc(lbl)}">
-            <span class="nm">${who}</span><span class="mk ${mkOf(d)}"></span>
+            <span class="nm">${who}${pkgBadge(d)}</span><span class="mk ${mkOf(d)}"></span>
             <span class="sub">${priceHTML(d).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}</span></button>`;
         }).join('');
       } else if (mand.includes(s.k)) {
@@ -1129,6 +1153,7 @@ function placeFallback(pop, btn, align) {
 let editing = null;
 function openDeal(id, prefill = {}) {
   const src = id ? DEALS.find(d => d.id === id) : null;
+  if ((src ? src.side : state.mode) === 'sell') return openSale(id, prefill);
   const buy = (src ? src.side : state.mode) === 'buy';
   const ids = buy ? scopeIds() : channelIds();
   const d = src ? structuredClone(src) : {
@@ -1235,7 +1260,7 @@ function openDeal(id, prefill = {}) {
 }
 
 function updateCalc() {
-  const f = $('#dealForm'); if (!f || !editing) return;
+  const f = $('#dealForm'); if (!f || !editing || editing.kind === 'sale') return;
   const pm = f.elements.pm.value;
   $('#pmFix').hidden = pm !== 'fix'; $('#pmCpm').hidden = pm !== 'cpm';
   $('#fPrice').required = pm === 'fix'; $('#fRate').required = pm === 'cpm';
@@ -1249,6 +1274,166 @@ function updateCalc() {
 }
 $('#dealForm').addEventListener('input', e => { if (e.target.name === 'pm' || e.target.name === 'rate') updateCalc(); });
 $('#dealForm').addEventListener('change', e => { if (e.target.name === 'pm') updateCalc(); });
+
+
+// ================= ПРОДАЖА: ПАКЕТ ПО КАНАЛАМ =================
+// Одна продажа — один покупатель и одна сумма, но мест может быть несколько:
+// по одному в каждом выбранном канале, в один день и на одно место. Хранится
+// это как места-«доли» с общим d.pkg: тогда статистика по каналам, обязательные
+// места и недопродажи считаются как раньше, а сумма пакета — это сумма долей.
+const pkgOf = d => DEALS.filter(x => x.side === 'sell' && x.pkg === d.pkg);
+const pkgSize = d => pkgOf(d).filter(x => x.status !== 'cancel').length;
+const pkgBadge = d => { const n = d.side === 'sell' ? pkgSize(d) : 1; return n > 1 ? `<span class="pkgb" title="Пакет: ${n} ${plural(n, 'канал', 'канала', 'каналов')}">×${n}</span>` : ''; };
+function evenSplit(total, chans) {
+  const base = Math.floor(total / chans.length);
+  return Object.fromEntries(chans.map((p, i) => [p, base + (i === 0 ? total - base * chans.length : 0)]));
+}
+
+function openSale(id, prefill = {}) {
+  const src = id ? DEALS.find(d => d.id === id) : null;
+  const parts = src ? pkgOf(src) : [];
+  const base = src ? structuredClone(src) : {
+    buyer: '', date: prefill.date || iso(addDays(TODAY, 1)), slot: prefill.slot || 'evening', format: '1/24', status: 'plan', pm: 'fix', notes: '', history: [],
+  };
+  const chans = src ? parts.map(x => x.project) : [Number(prefill.proj) || state.sellCh || channelIds()[0]];
+  const total = src && base.pm === 'fix' ? parts.reduce((s, x) => s + (x.price || 0), 0) : null;
+  editing = { kind: 'sale', pkg: src?.pkg || null, parts, src };
+  const isNew = !src;
+  const pub = isPub(base.status);
+  const warns = parts.flatMap(x => x.warns.map(w => ({ w, x })));
+
+  // по каналам: доля, просмотры, фиксация CPM
+  const rowsRes = parts.map(x => {
+    const amt = amountOf(x), v = viewsOf(x);
+    const fix = x.pm !== 'cpm' ? '' : x.cpmState === 'fixed' ? `<span class="r-good">зафиксировано ${dtLbl(x.fixedAt)}</span>`
+      : x.cpmState === 'failed' ? '<span class="r-bad">не удалось — по последнему замеру</span>' : '<span class="dash-v">ждёт снятия поста</span>';
+    return `<tr><th scope="row"><span class="c-prj">${ava(x.project, 'sm')}<span class="nm">${esc(PJ[x.project].name)}</span></span></th>
+      <td class="num">${amt != null ? (x.cpmState === 'failed' ? '≈ ' : '') + rub(amt) : '<span class="dash-v">—</span>'}</td>
+      <td class="num">${pub && v != null ? int(v) : '<span class="dash-v">—</span>'}</td>${base.pm === 'cpm' ? `<td>${fix}</td>` : ''}</tr>`;
+  }).join('');
+  const sumAmt = parts.reduce((s, x) => s + (amountOf(x) ?? 0), 0), anyAmt = parts.some(x => amountOf(x) != null);
+  const sumViews = parts.reduce((s, x) => s + (viewsOf(x) ?? 0), 0);
+  const result = parts.length ? `<div class="tbl-wrap" style="padding:0"><table class="tbl sale-res"><thead><tr><th scope="col">Канал</th><th scope="col" class="num">Сумма</th><th scope="col" class="num">Просмотры</th>${base.pm === 'cpm' ? '<th scope="col">Фиксация CPM</th>' : ''}</tr></thead>
+    <tbody>${rowsRes}</tbody><tfoot><tr><th scope="row">Итого${parts.length > 1 ? ` · ${parts.length} ${plural(parts.length, 'канал', 'канала', 'каналов')}` : ''}</th><td class="num">${anyAmt ? rub(sumAmt) : '—'}</td><td class="num">${pub && sumViews ? int(sumViews) : '—'}</td>${base.pm === 'cpm' ? '<td></td>' : ''}</tr></tfoot></table></div>` : '';
+
+  $('#dealForm').innerHTML = `
+    <div class="m-head"><div>
+      <div class="m-eyebrow">${isNew ? 'новая продажа' : `продажа · ${base.id} · ${dmy(parseIso(base.date))}`}</div>
+      <h2 id="dealTitle">${isNew ? 'Новая продажа' : esc(base.buyer)}</h2>
+      ${isNew ? '' : `<div class="m-chips">${stChip(base.status)}<span class="chip slot">${SLOT[base.slot].l}</span><span class="chip fmt">${base.format}</span>${parts.map(x => `<span class="chip neutral">${ava(x.project, 'sm')}${esc(PJ[x.project].mono)}</span>`).join('')}</div>`}
+    </div><button class="x-btn" type="button" data-close aria-label="Закрыть">${ICON.x}</button></div>
+    <div class="m-body">
+      ${warns.length ? `<div class="m-sec"><div class="wbox"><ul class="wlist" style="border:0">${warns.map(({ w, x }) => `<li><div class="witem"><span class="wtag ${w.sev}">${w.sev === 'high' ? 'высокая' : 'средняя'}</span><span class="wtext">${esc(PJ[x.project].mono)}: ${warnText(x, w)}</span></div></li>`).join('')}</ul></div></div>` : ''}
+      <div class="m-sec"><div class="m-sec-h"><span class="card-idx">01 / сделка</span><h3>Поля продажи</h3></div>
+      <div class="fgrid">
+        <div class="fld"><label for="sBuyer">Покупатель — контакт</label><input class="inp" id="sBuyer" name="buyer" required value="${esc(base.buyer)}" placeholder="@username" pattern="@[A-Za-z0-9_]{4,32}"><div class="hint">Telegram-контакт в виде @username</div></div>
+        <div class="fld"><label for="fDate">Дата выхода</label><input class="inp mono" type="date" id="fDate" name="date" required value="${base.date}"><div class="hint">Общая для всех каналов продажи</div></div>
+        <div class="fld wide"><span class="flbl" id="slotLbl">Место — общее для всех каналов</span><div class="slot-pick" role="radiogroup" aria-labelledby="slotLbl">${SLOTS.map(s => `<label><input type="radio" name="slot" value="${s.k}" ${s.k === base.slot ? 'checked' : ''} required>${s.l}</label>`).join('')}</div></div>
+        <fieldset class="fld wide chpick" id="chPick" data-init="${chans.join(',')}"></fieldset>
+        <div class="fld"><span class="flbl" id="fmtLbl">Формат</span><div class="slot-pick" role="radiogroup" aria-labelledby="fmtLbl">${['1/24', '1/48'].map(f => `<label><input type="radio" name="format" value="${f}" ${f === base.format ? 'checked' : ''}>${f}</label>`).join('')}</div></div>
+        <div class="fld"><label for="fSt">Статус</label><select class="inp" id="fSt" name="status">${ST_ORDER.map(s => `<option value="${s}" ${s === base.status ? 'selected' : ''}>${ST[s].l}</option>`).join('')}</select></div>
+        <div class="fld wide"><span class="flbl" id="pmLbl">Цена</span>
+          <div class="frow" style="align-items:flex-start">
+            <div class="slot-pick" role="radiogroup" aria-labelledby="pmLbl" style="flex:none">${[['fix', 'Фикс'], ['cpm', 'CPM']].map(([v, l]) => `<label><input type="radio" name="pm" value="${v}" ${v === base.pm ? 'checked' : ''}>${l}</label>`).join('')}</div>
+            <div id="sFix" ${base.pm === 'fix' ? '' : 'hidden'}><label class="sr-only" for="sTotal">Сумма за всю продажу, ₽</label><input class="inp mono" type="number" id="sTotal" name="total" min="1" step="1" inputmode="numeric" placeholder="Сумма за продажу, ₽" value="${total ?? ''}"><div id="splitBox"></div></div>
+            <div id="sCpm" ${base.pm === 'cpm' ? '' : 'hidden'}><label class="sr-only" for="sRate">Ставка за 1000 просмотров, ₽</label><input class="inp mono" type="number" id="sRate" name="rate" min="1" step="1" inputmode="numeric" placeholder="Ставка за 1000, ₽" value="${base.rate ?? ''}"><div class="hint">Одна ставка на все каналы; просмотры фиксируются в каждом канале отдельно и складываются</div></div>
+          </div></div>
+        <div class="fld wide"><label for="fNotes">Заметки</label><textarea class="inp" id="fNotes" name="notes" placeholder="Договорённости, что учесть">${esc(base.notes)}</textarea></div>
+      </div></div>
+      ${result ? `<div class="m-sec"><div class="m-sec-h"><span class="card-idx">02 / по каналам</span><h3>Суммы и просмотры</h3></div>${result}${pub ? '' : '<p class="mnote">Пост ещё не вышел — просмотры появятся после выхода.</p>'}</div>` : ''}
+      ${base.history?.length ? `<div class="m-sec"><div class="m-sec-h"><span class="card-idx">история</span><h3>История статусов</h3></div><ol class="tl">${base.history.map(h => `<li style="--c:${ST[h.st].c}"><span>${ST[h.st].l}</span><time datetime="${h.at.toISOString()}">${dmy(h.at)}, ${hmOf(h.at)}</time></li>`).join('')}</ol></div>` : ''}
+    </div>
+    <div class="m-foot">${isNew ? '' : `<button class="btn btn-ghost-danger" type="button" data-act="del">Удалить</button>`}<span class="sp"></span><button class="btn" type="button" data-close>Отмена</button><button class="btn btn-primary" type="submit">${isNew ? 'Добавить' : 'Сохранить'}</button></div>`;
+  renderChPick(chans);
+  renderSplit(total, src ? Object.fromEntries(parts.map(x => [x.project, x.price])) : null);
+  $('#dealDlg').showModal();
+}
+
+// Каналы: занятое другим покупателем место в этот день выбрать нельзя.
+function renderChPick(checked) {
+  const box = $('#chPick'); if (!box) return;
+  const f = $('#dealForm'), date = f.elements.date.value, slot = f.elements.slot.value;
+  const own = new Set(editing.parts.map(x => x.id));
+  box.innerHTML = `<legend class="flbl">В каких каналах</legend><div class="chopts">${PROJECTS.filter(p => p.channel).map(p => {
+    const busy = DEALS.find(x => x.side === 'sell' && x.project === p.id && x.date === date && x.slot === slot && x.status !== 'cancel' && !own.has(x.id));
+    const mand = p.mandatory.includes(slot);
+    const on = checked.includes(p.id) && !busy;
+    return `<label class="chopt ${busy ? 'busy' : ''}"><input type="checkbox" name="ch" value="${p.id}" ${on ? 'checked' : ''} ${busy ? 'disabled' : ''}>${ava(p.id)}<span class="nm">${esc(p.name)}</span>
+      <span class="note">${busy ? `место занято: ${esc(busy.buyer)}` : mand ? 'обязательное место' : ''}</span></label>`;
+  }).join('')}</div><div class="hint">Отметьте несколько — это одна продажа пакетом: один покупатель, одна сумма, тот же день и место во всех каналах</div>`;
+}
+const checkedChans = () => [...document.querySelectorAll('#chPick input[name="ch"]:checked')].map(i => Number(i.value));
+// Дележ суммы по каналам: поровну, но можно поправить руками.
+function renderSplit(total, shares) {
+  const box = $('#splitBox'); if (!box) return;
+  const chans = checkedChans();
+  if (chans.length < 2 || !total) { box.innerHTML = ''; return; }
+  const sh = shares && chans.every(p => p in shares) ? shares : evenSplit(total, chans);
+  box.innerHTML = `<div class="split"><div class="split-h"><span>Дележ по каналам</span><button class="adm-link" type="button" data-act="split-even">Поровну</button></div>
+    ${chans.map(p => `<label class="split-row">${ava(p, 'sm')}<span class="nm">${esc(PJ[p].mono)}</span><input class="inp mono" type="number" min="0" step="1" name="share-${p}" value="${sh[p]}" aria-label="Доля ${esc(PJ[p].name)}, ₽"></label>`).join('')}
+    <div class="split-sum" id="splitSum"></div></div>`;
+  updateSplitSum();
+}
+function updateSplitSum() {
+  const el = $('#splitSum'); if (!el) return;
+  const total = Number($('#sTotal').value) || 0;
+  const sum = checkedChans().reduce((s, p) => s + (Number($('#dealForm').elements[`share-${p}`]?.value) || 0), 0);
+  el.innerHTML = sum === total ? `<span class="r-good">распределено ${rub(sum)} из ${rub(total)}</span>` : `<span class="r-bad">распределено ${rub(sum)} из ${rub(total)} — ${sum > total ? 'лишние' : 'не хватает'} ${rub(Math.abs(total - sum))}</span>`;
+}
+function validateSale(f) {
+  const chans = checkedChans();
+  const first = f.querySelector('#chPick input[name="ch"]:not(:disabled)');
+  first?.setCustomValidity(chans.length ? '' : 'Выберите хотя бы один канал');
+  const pm = f.elements.pm.value;
+  $('#sTotal').required = pm === 'fix'; $('#sRate').required = pm === 'cpm';
+  $('#sTotal').setCustomValidity('');
+  if (pm === 'fix' && chans.length > 1 && $('#splitBox').innerHTML) {
+    const total = Number($('#sTotal').value) || 0;
+    const sum = chans.reduce((s, p) => s + (Number(f.elements[`share-${p}`]?.value) || 0), 0);
+    if (sum !== total) $('#sTotal').setCustomValidity(`Доли каналов (${rub(sum)}) не сходятся с суммой продажи`);
+  }
+}
+function saveSale(f) {
+  const el = f.elements;
+  const chans = checkedChans();
+  const pm = el.pm.value, total = Number($('#sTotal').value) || 0;
+  const shares = pm === 'fix' ? (chans.length > 1 && $('#splitBox').innerHTML ? Object.fromEntries(chans.map(p => [p, Number(el[`share-${p}`].value) || 0])) : evenSplit(total, chans)) : null;
+  const shared = { buyer: el.buyer.value.trim(), date: el.date.value, slot: el.slot.value, format: el.format.value, status: el.status.value, pm, notes: el.notes.value.trim() };
+  const { parts, src } = editing;
+  const statusChanged = !src || src.status !== shared.status;
+  // убранные каналы — убираем их места
+  DEALS = DEALS.filter(x => !(parts.includes(x) && !chans.includes(x.project)));
+  let pkg = editing.pkg, last = Math.max(2000, ...DEALS.filter(x => x.side === 'sell').map(x => Number(x.id.slice(2))));
+  const touched = [];
+  for (const p of chans) {
+    let d = parts.find(x => x.project === p && DEALS.includes(x));
+    if (!d) {
+      d = { side: 'sell', project: p, id: `П-${++last}`, post: '', warns: [], history: structuredClone(parts[0]?.history || []) };
+      DEALS.push(d);
+    }
+    Object.assign(d, shared);
+    if (pm === 'fix') { d.price = shares[p]; delete d.rate; } else { d.rate = Number(el.rate.value); delete d.price; if (!d.cpmState) d.cpmState = 'wait'; }
+    if (statusChanged) d.history = [...(d.history || []), { st: d.status, at: new Date(NOW) }];
+    touched.push(d);
+  }
+  if (!pkg) pkg = touched[0].id;
+  touched.forEach(d => { d.pkg = pkg; });
+  DEALS.sort((a, b) => a.date.localeCompare(b.date) || SLOT[a.slot].i - SLOT[b.slot].i || a.project - b.project);
+  $('#dealDlg').close();
+  render();
+  toast(`${src ? 'Продажа сохранена' : 'Продажа добавлена'}: ${chans.map(p => PJ[p].mono).join(' + ')}${chans.length > 1 && pm === 'fix' ? ` · ${rub(total)} за пакет` : ''}`);
+}
+$('#dealForm').addEventListener('change', e => {
+  if (editing?.kind !== 'sale') return;
+  if (e.target.name === 'date' || e.target.name === 'slot') { renderChPick(checkedChans()); renderSplit(Number($('#sTotal').value), null); }
+  if (e.target.name === 'ch') renderSplit(Number($('#sTotal').value), null);
+  if (e.target.name === 'pm') { $('#sFix').hidden = e.target.value !== 'fix'; $('#sCpm').hidden = e.target.value !== 'cpm'; }
+});
+$('#dealForm').addEventListener('input', e => {
+  if (editing?.kind !== 'sale') return;
+  if (e.target.id === 'sTotal') renderSplit(Number(e.target.value), null);
+  else if (e.target.name?.startsWith('share-')) updateSplitSum();
+});
 
 // ================= АВТОПОДБОР АДМИНА =================
 // Ищет по имени, по текущему и прошлым username; слово, набранное не в той
@@ -1415,7 +1600,9 @@ $('#dealForm').addEventListener('submit', e => {
   e.preventDefault();
   const f = e.currentTarget;
   if (f.elements.admin) admValidate(f);
+  if (editing.kind === 'sale') validateSale(f);
   if (!f.checkValidity()) { f.reportValidity(); return; }
+  if (editing.kind === 'sale') { saveSale(f); return; }
   const { src, d } = editing;
   const buy = d.side === 'buy';
   const el = f.elements;
@@ -1489,15 +1676,18 @@ document.addEventListener('click', async e => {
     state.expanded = null; render();
   } else if (act === 'del') {
     const { src } = editing;
-    $('#confirmText').textContent = `${src.side === 'buy' ? 'Закуп' : 'Продажа'} ${src.id} от ${dm(parseIso(src.date))} исчезнет из всех видов и итогов. Отменить это будет нельзя — если сделка просто сорвалась, лучше поставить статус «Отменён».`;
+    const gone = editing.kind === 'sale' ? editing.parts : [src];
+    $('#confirmText').textContent = `${src.side === 'buy' ? 'Закуп' : 'Продажа'} ${src.id} от ${dm(parseIso(src.date))}${gone.length > 1 ? ` — во всех ${gone.length} каналах —` : ''} исчезнет из всех видов и итогов. Отменить это будет нельзя — если сделка просто сорвалась, лучше поставить статус «Отменён».`;
     const dlg = $('#confirmDlg');
     dlg.returnValue = '';
     dlg.showModal();
     dlg.addEventListener('close', () => {
       if (dlg.returnValue !== 'ok') return;
-      DEALS = DEALS.filter(x => x !== src);
+      DEALS = DEALS.filter(x => !gone.includes(x));
       $('#dealDlg').close(); render(); toast(`${src.id} удалён${src.side === 'buy' ? '' : 'а'}`);
     }, { once: true });
+  } else if (act === 'split-even') {
+    renderSplit(Number($('#sTotal').value), null);
   } else if (act === 'adv') {
     e.preventDefault();
     toast(`Откроется вкладка «Кампании» → «Рекламодатели» с фильтром по ${admLabel(t.dataset.adm)}: все его кампании, ссылки, подписчики и выручка`, 'info');

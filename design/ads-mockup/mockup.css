@@ -280,6 +280,28 @@ input[type="date"].inp{color-scheme:dark}
 .gdeal .adm .u{font-size:10px}
 .adm-link{border:0;background:none;padding:0;color:var(--accent);font:600 11.5px var(--body);cursor:pointer}
 .adm-link:hover{text-decoration:underline}
+/* продажа пакетом */
+.pkgb{display:inline-block;margin-left:5px;padding:0 4px;border-radius:4px;font:700 9.5px/1.5 var(--mono);color:#CBBFFF;background:rgba(155,140,255,.18);vertical-align:1px}
+.chpick{border:0;min-width:0}
+.chopts{display:flex;flex-direction:column;gap:6px}
+.fld label.chopt{display:flex;margin:0;align-items:center;gap:10px;padding:8px 11px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.03);cursor:pointer;text-transform:none;letter-spacing:0;font:500 13px var(--body);color:var(--text)}
+.chopt:has(input:checked){border-color:rgba(87,182,255,.5);background:rgba(87,182,255,.1)}
+.chopt:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.chopt input{accent-color:var(--accent);width:16px;height:16px;flex:none}
+.chopt .nm{font-weight:600}
+.chopt .note{margin-left:auto;font:500 10.5px var(--mono);color:var(--amber)}
+.chopt.busy{cursor:not-allowed;opacity:.55}
+.chopt.busy .note{color:var(--red)}
+.split{margin-top:8px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02)}
+.split-h{display:flex;align-items:center;justify-content:space-between;font:600 10.5px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.fld label.split-row{display:grid;grid-template-columns:auto 44px 1fr;align-items:center;gap:8px;margin:0 0 6px;text-transform:none;letter-spacing:0}
+.split-row .nm{font:600 12px var(--mono);color:var(--muted)}
+.split-row .inp{padding:6px 10px;font-size:12.5px}
+.split-sum{font:500 11px var(--mono)}
+.sale-res{font-size:12.5px}
+.sale-res thead th{position:static}
+.sale-res tfoot td,.sale-res tfoot th{position:static}
+
 /* автоподбор админа */
 .cbx{position:relative}
 .cbx-list{position:absolute;z-index:5;left:0;right:0;top:calc(100% + 6px);list-style:none;margin:0;padding:5px;max-height:310px;overflow:auto;border:1px solid var(--line2);border-radius:12px;background:linear-gradient(180deg,#151C28,#0F141C);box-shadow:0 18px 44px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06)}
