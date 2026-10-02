@@ -688,6 +688,11 @@ html[data-narrow] .ops-sum{grid-template-columns:1fr}
 .toast.warn .t-ic{background:rgba(255,107,122,.14);color:var(--red)}
 /* Ручной ввод просмотров для CPM — пока их не снимает бот постинга */
 .cpm-views{margin-top:12px}
+/* Отслежка для админа: ссылка во всю ширину, под ней две кнопки поровну */
+.track-box{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center}
+.track-box > .inp,.track-box > .hint,.track-box > .btn:only-child{grid-column:1/-1}
+.track-box > .btn{justify-content:center}
+.track-box > .hint{font-size:11px;color:var(--dim);line-height:1.4}
 .views-inp{display:block;width:120px;margin-top:6px;padding:6px 9px;font-size:12px}
 button[aria-busy="true"]{opacity:.6;cursor:progress}
 .toast .t-ic svg{width:12px;height:12px}

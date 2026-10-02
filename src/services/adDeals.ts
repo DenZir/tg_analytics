@@ -20,6 +20,8 @@ import {
   adSales,
   adSettlementItems,
   adStatusHistory,
+  adTrackLinks,
+  adTrackViews,
   campaigns,
   events,
   links,
@@ -916,6 +918,22 @@ async function tracksFor(buys: Buy[]) {
   return map;
 }
 
+/** Tracking-bot links of buys and how many people opened each. */
+async function adminTracksFor(buys: Buy[]) {
+  const map = new Map<number, { token: string; views: number }>();
+  if (!buys.length) return map;
+  const rows = await inChunks(buys.map((b) => b.id), (c) => db.select().from(adTrackLinks).where(inArray(adTrackLinks.buyId, c)));
+  const counts = rows.length
+    ? await db
+        .select({ trackId: adTrackViews.trackId, n: sql<number>`count(*)` })
+        .from(adTrackViews)
+        .where(inArray(adTrackViews.trackId, rows.map((r) => r.id)))
+        .groupBy(adTrackViews.trackId)
+    : [];
+  for (const r of rows) map.set(r.buyId, { token: r.token, views: Number(counts.find((c) => c.trackId === r.id)?.n ?? 0) });
+  return map;
+}
+
 export interface DealFilter {
   from?: string;
   to?: string;
@@ -947,11 +965,12 @@ export async function listDeals(filter: DealFilter) {
     ? await inChunks(sales.map((s) => s.id), (c) => db.select().from(adSalePlaces).where(inArray(adSalePlaces.saleId, c)).orderBy(adSalePlaces.id))
     : [];
 
-  const [results, tracks, buyHist, saleHist] = await Promise.all([
+  const [results, tracks, buyHist, saleHist, trackLinks] = await Promise.all([
     resultsFor(buys),
     tracksFor(buys),
     historyFor("buy", buys.map((b) => b.id)),
     historyFor("sale", sales.map((s) => s.id)),
+    adminTracksFor(buys),
   ]);
 
   const now = new Date();
@@ -980,6 +999,9 @@ export async function listDeals(filter: DealFilter) {
     admin: b.contactId,
     creative: b.creative ?? "",
     track: tracks.get(b.id) ?? "",
+    // «отслежка» for the admin: the token of the tracking-bot link (the dashboard
+    // builds the URL from the bot's name) and how many people have opened it
+    adminTrack: trackLinks.get(b.id) ?? null,
     campaignId: b.campaignId,
     utmLinkId: b.utmLinkId,
     post: b.postUrl ?? "",

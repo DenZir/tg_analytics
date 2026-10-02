@@ -193,6 +193,14 @@ export function createAdsRouter(opts: {
     wrap(async (req, res) => {
       const out = await createBuy(body(req), opts.mintInvite);
       await audit(req, "ad_buy_create", "ad_buy", out.buy.id);
+      // the admin's «отслежка» comes with the link for the post, not as an extra step
+      if (trackBotUsername()) {
+        try {
+          await getOrCreateTrack(out.buy.id);
+        } catch (error) {
+          console.error(`[ads] Tracking link for buy ${out.buy.id} not made:`, error);
+        }
+      }
       res.status(201);
       return out;
     })
