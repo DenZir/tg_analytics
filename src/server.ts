@@ -69,7 +69,8 @@ import {
   SESSION_TTL_MS,
 } from "./services/dashboardAuth.js";
 import { isAdmin } from "./config/admins.js";
-import { channelBot } from "./bots/channelBot.js";
+import { channelBot, createInviteForCampaign } from "./bots/channelBot.js";
+import { createAdsRouter } from "./adsApi.js";
 import { createFullExport } from "./jobs/backup.js";
 import fs from "node:fs";
 
@@ -317,6 +318,18 @@ app.get("/api/export/full", async (_req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// --- Ad section API ---
+
+app.use(
+  "/api/ads",
+  createAdsRouter({
+    getAdminId: getRequestAdminId,
+    mintInvite: channelBot
+      ? async (chatId, campaignId, name) => createInviteForCampaign(chatId, campaignId, name, false, name)
+      : null,
+  })
+);
 
 // --- Projects API ---
 
@@ -945,7 +958,8 @@ app.get("/api/campaigns/page", async (req, res) => {
       const { rows, total } = await getCreativesPage({ page, pageSize, q });
       res.json({ mode, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), creatives: rows });
     } else {
-      const { rows, total } = await getCampaignsPage({ page, pageSize, q });
+      const contactId = Number(req.query.contactId) || undefined;
+      const { rows, total } = await getCampaignsPage({ page, pageSize, q, contactId });
       res.json({ mode, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), campaigns: rows });
     }
   } catch (error: any) {

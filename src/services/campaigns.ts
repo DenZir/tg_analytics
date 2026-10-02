@@ -8,12 +8,16 @@ import { logAdminAction } from "./auditLog.js";
 import { deriveProjectType, hasBot, hasChannel } from "../db/projectTypes.js";
 import { findProjectIdByBotUsername } from "./events.js";
 import { buildDeepLink } from "./utm.js";
+import { matchContactByAdvertiser } from "./adContacts.js";
 
 export interface CreateCampaignInput {
   projectId: number;
   advertiser: string;
   price: number;
   tags?: Array<{ tagKey: string; tagValue: string }> | Record<string, string>;
+  // Who the placement was bought from. Left out, it is matched from the
+  // advertiser text against existing contacts (never creating one).
+  contactId?: number | null;
 }
 
 export async function getAllProjects() {
@@ -235,6 +239,8 @@ export async function createCampaign(input: CreateCampaignInput) {
       projectId: input.projectId,
       advertiser: input.advertiser,
       price: input.price,
+      contactId:
+        input.contactId !== undefined ? input.contactId : await matchContactByAdvertiser(input.advertiser),
     })
     .returning();
 
@@ -950,6 +956,8 @@ export interface CampaignsPageParams {
   page: number;
   pageSize: number;
   q?: string;
+  // Only this contact's campaigns — the ad section's "all campaigns of this admin".
+  contactId?: number;
 }
 
 export interface CampaignsPageLinkRow {
@@ -1010,6 +1018,7 @@ export async function getCampaignsPage(
     if (matchingIds.length === 0) return { rows: [], total: 0 };
     whereClause = and(isNull(campaigns.deletedAt), inArray(campaigns.id, matchingIds))!;
   }
+  if (params.contactId) whereClause = and(whereClause, eq(campaigns.contactId, params.contactId))!;
 
   const [{ total }] = await db
     .select({ total: sql<number>`count(*)` })
