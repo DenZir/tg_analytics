@@ -120,11 +120,19 @@ const ADMINS = {
   leha: { name: 'Лёха', user: 'leha_it' },
   sasha: { name: 'Саша Трейдер', user: 'sasha_trade' },
   pro: { name: 'Крипто PRO', user: 'cryptopro_ads' },
+  // покупатели мест в моих каналах — те же контакты; Кот и Фарид бывают по обе стороны
+  ad77: { name: 'Артём', user: 'ad_manager_77' },
+  promo: { name: 'Promo Hunter', user: 'promo_hunter' },
+  crypto_sell: { name: 'Влад', user: 'crypto_sell' },
+  traffic: { name: 'Traffic Lab', user: 'traffic_lab' },
+  media: { name: 'Media Buy', user: 'media_buy_pro' },
+  reklama: { name: 'Олег', user: 'reklama_tg' },
+  gamedev: { name: 'GameDev Ads', user: 'gamedev_ads' },
 };
 const ADMINS_BY_PROJECT = { 1: ['kot', 'farid', 'tenshi', 'max', 'ira'], 2: ['leha', 'kot', 'max'], 3: ['sasha', 'farid', 'ira'] };
 const admLabel = id => (ADMINS[id] ? `${ADMINS[id].name} (@${ADMINS[id].user})` : '—');
 const CREATIVES = { 1: ['Арт «Ночь»', 'Видео 15 с', 'Мем-подача'], 2: ['Скорость', 'Цена 99 ₽', 'Без логов'], 3: ['Сигнал дня', 'Разбор сделки'] };
-const BUYERS = ['@ad_manager_77', '@promo_hunter', '@crypto_sell', '@traffic_lab', '@media_buy_pro', '@reklama_tg', '@gamedev_ads'];
+const BUYERS = ['ad77', 'promo', 'crypto_sell', 'traffic', 'media', 'reklama', 'gamedev', 'kot', 'farid'];
 const BUY_PROB = {
   1: { morning: .4, day: .22, evening: .5, night: .15, stories: .22, n9: .16, n17: .22 },
   2: { morning: .06, day: .06, evening: .22, night: .18, stories: .05, n9: .04, n17: .12 },
@@ -268,9 +276,9 @@ function generate() {
   deals.push({ side: 'buy', project: 3, date: '2026-10-14', slot: 'evening', format: '1/48', status: 'agreed', pm: 'fix', price: 150000, admin: 'pro', creative: 'Разбор сделки', track: 'https://t.me/+Kx4Lm2Pq8VwZ', post: '', notes: 'Сетка из трёх каналов, 1,2 млн подписчиков суммарно. Креатив согласовать до 12.10.', warns: [], checks: null, result: null });
 
   drop('sell', 1, '2026-10-08', 'evening');
-  deals.push({ side: 'sell', project: 1, date: '2026-10-08', slot: 'evening', format: '1/24', status: 'agreed', pm: 'cpm', rate: 450, cpmState: 'wait', buyer: '@ad_manager_77', post: '', notes: '', warns: [] });
+  deals.push({ side: 'sell', project: 1, date: '2026-10-08', slot: 'evening', format: '1/24', status: 'agreed', pm: 'cpm', rate: 450, cpmState: 'wait', buyer: 'ad77', post: '', notes: '', warns: [] });
   drop('sell', 1, '2026-10-08', 'morning');
-  deals.push({ side: 'sell', project: 1, date: '2026-10-08', slot: 'morning', format: '1/24', status: 'live', pm: 'cpm', rate: 420, cpmState: 'wait', viewsNow: 9870, buyer: '@promo_hunter', post: 'https://t.me/satan_games/4417', notes: '', warns: [], factShift: 2 });
+  deals.push({ side: 'sell', project: 1, date: '2026-10-08', slot: 'morning', format: '1/24', status: 'live', pm: 'cpm', rate: 420, cpmState: 'wait', viewsNow: 9870, buyer: 'promo', post: 'https://t.me/satan_games/4417', notes: '', warns: [], factShift: 2 });
   // Завтра одно обязательное место ещё не продано — для предупреждения.
   drop('sell', 1, '2026-10-09', 'day');
 
@@ -287,7 +295,7 @@ function generate() {
   }
   // и один уже вышедший пакет на этой неделе — чтобы было видно долю в «Заработано»
   drop('sell', 1, '2026-10-06', 'stories'); drop('sell', 3, '2026-10-06', 'stories');
-  const pA = { side: 'sell', project: 1, date: '2026-10-06', slot: 'stories', format: '1/24', status: 'done', pm: 'fix', price: 3500, buyer: '@ad_manager_77', post: 'https://t.me/satan_games/4391', notes: 'Пакет на оба канала, скидка за объём', warns: [], viewsSeen: 12480, factShift: 2 };
+  const pA = { side: 'sell', project: 1, date: '2026-10-06', slot: 'stories', format: '1/24', status: 'done', pm: 'fix', price: 3500, buyer: 'ad77', post: 'https://t.me/satan_games/4391', notes: 'Пакет на оба канала, скидка за объём', warns: [], viewsSeen: 12480, factShift: 2 };
   const pB = { ...pA, project: 3, post: 'https://t.me/crypto_insaid/1877', viewsSeen: 9310, warns: [] };
   pA._pk = pB._pk = ++pk;
   deals.push(pA, pB);
@@ -576,7 +584,7 @@ function renderWarns(list) {
     <div class="wbox-h"><span class="wic ${high ? 'high' : 'mid'}">${ICON.warn}</span>${ws.length} ${plural(ws.length, 'предупреждение', 'предупреждения', 'предупреждений')}<span class="cnt">${high ? `${high} ${plural(high, 'высокое', 'высоких', 'высоких')}` : 'все средние'}</span>
       ${ws.length > 3 ? `<button class="btn tiny" type="button" data-act="warns" aria-expanded="${state.warnsOpen}">${state.warnsOpen ? 'Свернуть' : `Показать все ${ws.length}`}</button>` : ''}</div>
     <ul class="wlist">${shown.map(w => {
-      const meta = w.d ? `${dm(parseIso(w.d.date))} · ${SLOT[w.d.slot].l} · ${esc(PJ[w.d.project].mono)}${w.d.side === 'buy' ? ` · ${esc(admLabel(w.d.admin))}` : ` · ${esc(w.d.buyer)}`}` : `${esc(PJ[w.tomorrow.p].mono)} · продать`;
+      const meta = w.d ? `${dm(parseIso(w.d.date))} · ${SLOT[w.d.slot].l} · ${esc(PJ[w.d.project].mono)}${` · ${esc(admLabel(contactOf(w.d)))}`}` : `${esc(PJ[w.tomorrow.p].mono)} · продать`;
       const act = w.d ? `data-act="open" data-id="${w.d.id}"` : `data-act="new" data-date="${w.tomorrow.date}" data-slot="${w.tomorrow.slot}" data-proj="${w.tomorrow.p}"`;
       return `<li><button class="witem" type="button" ${act}><span class="wtag ${w.sev}">${w.sev === 'high' ? 'высокая' : 'средняя'}</span><span class="wtext">${w.html}</span><span class="wmeta">${meta}</span></button></li>`;
     }).join('')}</ul></div>`;
@@ -605,7 +613,7 @@ function renderList(list) {
       <td class="c-slot"><span class="chip slot">${SLOT[d.slot].l}${mand ? ' <span class="req" title="обязательное место">*</span>' : ''}</span><span class="chip fmt fmt-m">${d.format}</span></td>
       <td class="c-fmt"><span class="chip fmt">${d.format}</span></td>
       <td class="c-proj"><span class="c-prj">${ava(d.project)}<span class="nm">${esc(PJ[d.project].name)}</span></span></td>
-      <td class="c-venue">${buy ? admHTML(d.admin) : `${esc(d.buyer)}${pkgBadge(d)}`}</td>
+      <td class="c-venue"><button class="adm-ops" type="button" data-act="ops" data-adm="${contactOf(d)}" aria-label="Все операции с ${esc(admLabel(contactOf(d)))}">${admHTML(contactOf(d))}</button>${buy ? '' : pkgBadge(d)}</td>
       <td class="num c-price">${priceHTML(d)}${!buy && pkgSize(d) > 1 ? `<div class="price-sub">доля · пакет ×${pkgSize(d)}${d.pm === 'fix' ? ` на ${rub(pkgOf(d).reduce((s, x) => s + (x.price || 0), 0))}` : ''}</div>` : ''}</td>
       <td class="c-st">${stChip(d.status)}</td>
       ${metrics}
@@ -666,8 +674,8 @@ function weekBody(r, list, mandatory, ch, opts = {}) {
       let inner;
       if (ds.length) {
         inner = ds.slice(0, 2).map(d => {
-          const nm = buy ? admHTML(d.admin) : esc(d.buyer);
-          const lbl = `${SLOT[d.slot].l}, ${dm(day)}: ${buy ? `${PJ[d.project].name}, ${admLabel(d.admin)}` : d.buyer}, ${ST[d.status].l}${d.warns.length ? ', есть предупреждение' : ''}`;
+          const nm = admHTML(contactOf(d));
+          const lbl = `${SLOT[d.slot].l}, ${dm(day)}: ${buy ? `${PJ[d.project].name}, ` : ''}${admLabel(contactOf(d))}, ${ST[d.status].l}${d.warns.length ? ', есть предупреждение' : ''}`;
           return `<button class="gdeal ${d.status === 'plan' ? 'plan' : ''} ${d.warns.length ? 'warn' : ''}" type="button" data-act="open" data-id="${d.id}" aria-label="${esc(lbl)}">${buy && !opts.hideAva ? ava(d.project, 'sm') : ''}<span class="nm">${nm}</span>${pkgBadge(d)}<span class="mk ${mkOf(d)}"></span></button>`;
         }).join('') + (ds.length > 2 ? `<button class="gmore" type="button" data-act="cell" data-date="${date}" data-slot="${s.k}">+ ещё ${ds.length - 2}</button>` : '');
         if (!buy && isMand && !filled) inner += `<span class="sr-only">обязательное место ещё не продано</span>`;
@@ -885,8 +893,8 @@ function renderDay(r, list) {
       let inner;
       if (ds.length) {
         inner = ds.map(d => {
-          const who = buy ? admHTML(d.admin) : esc(d.buyer);
-          const lbl = `${s.l}: ${PJ[p].name}, ${buy ? admLabel(d.admin) : d.buyer}, ${ST[d.status].l}`;
+          const who = admHTML(contactOf(d));
+          const lbl = `${s.l}: ${PJ[p].name}, ${admLabel(contactOf(d))}, ${ST[d.status].l}`;
           return `<button class="dchip ${d.status === 'plan' ? 'plan' : ''} ${d.warns.length ? 'warn' : ''}" type="button" data-act="open" data-id="${d.id}" aria-label="${esc(lbl)}">
             <span class="nm">${who}${pkgBadge(d)}</span><span class="mk ${mkOf(d)}"></span>
             <span class="sub">${priceHTML(d).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}</span></button>`;
@@ -935,7 +943,7 @@ const DIMS = {
   format: { l: 'Формат', key: d => d.format, label: k => k, order: k => k },
   admin: { l: 'Админ', buyOnly: true, key: d => d.admin, label: k => admLabel(k), order: k => ADMINS[k]?.name || k },
   creative: { l: 'Креатив', buyOnly: true, key: d => d.creative || 'без креатива', label: k => k, order: k => k },
-  buyer: { l: 'Покупатель', sellOnly: true, key: d => d.buyer, label: k => k, order: k => k },
+  buyer: { l: 'Покупатель', sellOnly: true, key: d => d.buyer, label: k => admLabel(k), order: k => ADMINS[k]?.name || k },
 };
 const dimsForMode = () => Object.keys(DIMS).filter(k => !(state.mode === 'buy' ? DIMS[k].sellOnly : DIMS[k].buyOnly));
 const dimLabel = k => (state.mode === 'sell' && DIMS[k].sl ? DIMS[k].sl : DIMS[k].l);
@@ -1258,25 +1266,7 @@ function openDeal(id, prefill = {}) {
       <div class="m-sec"><div class="m-sec-h"><span class="card-idx">01 / сделка</span><h3>${buy ? 'Поля закупа' : 'Поля продажи'}</h3></div>
       <div class="fgrid">
         <div class="fld"><label for="fProj">${buy ? 'Проект — куда ведём' : 'Мой канал'}</label><select class="inp" id="fProj" name="project" required>${projOpts}</select></div>
-        ${buy
-          ? `<div class="fld adm-fld"><label for="fWho" id="fWhoLbl">У кого купил — админ</label>
-              <div class="cbx">
-                <input class="inp" id="fWho" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="admList" aria-describedby="admHint" autocomplete="off" spellcheck="false" placeholder="Имя или @username" value="${esc(d.admin ? admLabel(d.admin) : '')}">
-                <input type="hidden" name="admin" value="${d.admin || ''}">
-                <ul class="cbx-list" id="admList" role="listbox" aria-labelledby="fWhoLbl" hidden></ul>
-              </div>
-              <div class="adm-sub" id="admNew" hidden>
-                <div class="frow"><div><label class="sr-only" for="fNewName">Имя нового админа</label><input class="inp" id="fNewName" placeholder="Имя"></div>
-                <div><label class="sr-only" for="fNewUser">Username нового админа</label><input class="inp mono" id="fNewUser" placeholder="username" pattern="@?[A-Za-z0-9_]{4,32}" autocapitalize="off" spellcheck="false"></div></div>
-              </div>
-              <div class="adm-sub" id="admRename" hidden>
-                <div class="frow"><div><label class="sr-only" for="fRenUser">Новый username</label><input class="inp mono" id="fRenUser" placeholder="новый username" pattern="@?[A-Za-z0-9_]{4,32}" autocapitalize="off" spellcheck="false"></div>
-                <div class="frow" style="flex:none"><button class="btn tiny" type="button" data-act="ren-ok">Сменить</button><button class="btn tiny" type="button" data-act="ren-cancel">Отмена</button></div></div>
-                <div class="hint">Поменяется сразу во всех закупах и кампаниях — они ссылаются на админа, а не на текст. Старый username останется в подсказках как прошлый. В рабочей версии смену заметит сессия аккаунта и обновит сама.</div>
-              </div>
-              <div class="hint" id="admHint"></div>
-              <span class="sr-only" aria-live="polite" id="admLive"></span></div>`
-          : `<div class="fld"><label for="fWho">Покупатель — контакт</label><input class="inp" id="fWho" name="who" required value="${esc(d.buyer)}" placeholder="@username" pattern="@[A-Za-z0-9_]{4,32}"><div class="hint">Telegram-контакт в виде @username</div></div>`}
+        ${contactField('У кого купил — админ', d.admin)}
         <div class="fld"><label for="fDate">Дата выхода — план</label><input class="inp mono" type="date" id="fDate" name="date" required value="${d.date}"></div>
         <div class="fld"><label for="fFact">Дата выхода — факт</label><input class="inp mono" id="fFact" readonly value="${pub && d.checks ? `${dm(parseIso(d.date))}, ${d.checks.time.fact}` : pub ? `${dm(parseIso(d.date))}, ${SLOT[d.slot].t}` : ''}" placeholder="заполнится, когда пост выйдет"><div class="hint">Проставляет бот постинга, вручную не меняется</div></div>
         <div class="fld wide"><span class="flbl" id="slotLbl">Место</span><div class="slot-pick" role="radiogroup" aria-labelledby="slotLbl">${slotPick}</div>${buy ? '' : '<div class="hint">* — обязательное место этого канала</div>'}</div>
@@ -1369,14 +1359,14 @@ function openSale(id, prefill = {}) {
   $('#dealForm').innerHTML = `
     <div class="m-head"><div>
       <div class="m-eyebrow">${isNew ? 'новая продажа' : `продажа · ${base.id} · ${dmy(parseIso(base.date))}`}</div>
-      <h2 id="dealTitle">${isNew ? 'Новая продажа' : esc(base.buyer)}</h2>
+      <h2 id="dealTitle">${isNew ? 'Новая продажа' : esc(admLabel(base.buyer))}</h2>
       ${isNew ? '' : `<div class="m-chips">${stChip(base.status)}<span class="chip slot">${SLOT[base.slot].l}</span><span class="chip fmt">${base.format}</span>${parts.map(x => `<span class="chip neutral">${ava(x.project, 'sm')}${esc(PJ[x.project].mono)}</span>`).join('')}</div>`}
     </div><button class="x-btn" type="button" data-close aria-label="Закрыть">${ICON.x}</button></div>
     <div class="m-body">
       ${warns.length ? `<div class="m-sec"><div class="wbox"><ul class="wlist" style="border:0">${warns.map(({ w, x }) => `<li><div class="witem"><span class="wtag ${w.sev}">${w.sev === 'high' ? 'высокая' : 'средняя'}</span><span class="wtext">${esc(PJ[x.project].mono)}: ${warnText(x, w)}</span></div></li>`).join('')}</ul></div></div>` : ''}
       <div class="m-sec"><div class="m-sec-h"><span class="card-idx">01 / сделка</span><h3>Поля продажи</h3></div>
       <div class="fgrid">
-        <div class="fld"><label for="sBuyer">Покупатель — контакт</label><input class="inp" id="sBuyer" name="buyer" required value="${esc(base.buyer)}" placeholder="@username" pattern="@[A-Za-z0-9_]{4,32}"><div class="hint">Telegram-контакт в виде @username</div></div>
+        ${contactField('Покупатель — кто купил место', base.buyer)}
         <div class="fld"><label for="fDate">Дата выхода</label><input class="inp mono" type="date" id="fDate" name="date" required value="${base.date}"><div class="hint">Общая для всех каналов продажи</div></div>
         <div class="fld wide"><span class="flbl" id="slotLbl">Место — общее для всех каналов</span><div class="slot-pick" role="radiogroup" aria-labelledby="slotLbl">${SLOTS.map(s => `<label><input type="radio" name="slot" value="${s.k}" ${s.k === base.slot ? 'checked' : ''} required>${s.l}</label>`).join('')}</div></div>
         <fieldset class="fld wide chpick" id="chPick" data-init="${chans.join(',')}"></fieldset>
@@ -1395,8 +1385,10 @@ function openSale(id, prefill = {}) {
     </div>
     <div class="m-foot">${isNew ? '' : `<button class="btn btn-ghost-danger" type="button" data-act="del">Удалить</button>`}<span class="sp"></span><button class="btn" type="button" data-close>Отмена</button><button class="btn btn-primary" type="submit">${isNew ? 'Добавить' : 'Сохранить'}</button></div>`;
   renderChPick(chans);
+  ensureChannel();
   renderSplit(total, src ? Object.fromEntries(parts.map(x => [x.project, x.price])) : null);
   $('#dealDlg').showModal();
+  admHint();
 }
 
 // Каналы: занятое другим покупателем место в этот день выбрать нельзя.
@@ -1409,8 +1401,14 @@ function renderChPick(checked) {
     const mand = p.mandatory.includes(slot);
     const on = checked.includes(p.id) && !busy;
     return `<label class="chopt ${busy ? 'busy' : ''}"><input type="checkbox" name="ch" value="${p.id}" ${on ? 'checked' : ''} ${busy ? 'disabled' : ''}>${ava(p.id)}<span class="nm">${esc(p.name)}</span>
-      <span class="note">${busy ? `место занято: ${esc(busy.buyer)}` : mand ? 'обязательное место' : ''}</span></label>`;
+      <span class="note">${busy ? `место занято: ${esc(admLabel(busy.buyer))}` : mand ? 'обязательное место' : ''}</span></label>`;
   }).join('')}</div><div class="hint">Отметьте несколько — это одна продажа пакетом: один покупатель, одна сумма, тот же день и место во всех каналах</div>`;
+}
+// если отмеченный канал оказался занят — отмечаем первый свободный, а не оставляем ни одного
+function ensureChannel() {
+  if (checkedChans().length) return;
+  const free = document.querySelector('#chPick input[name="ch"]:not(:disabled)');
+  if (free) free.checked = true;
 }
 const checkedChans = () => [...document.querySelectorAll('#chPick input[name="ch"]:checked')].map(i => Number(i.value));
 // Дележ суммы по каналам: поровну, но можно поправить руками.
@@ -1448,7 +1446,7 @@ function saveSale(f) {
   const chans = checkedChans();
   const pm = el.pm.value, total = Number($('#sTotal').value) || 0;
   const shares = pm === 'fix' ? (chans.length > 1 && $('#splitBox').innerHTML ? Object.fromEntries(chans.map(p => [p, Number(el[`share-${p}`].value) || 0])) : evenSplit(total, chans)) : null;
-  const shared = { buyer: el.buyer.value.trim(), date: el.date.value, slot: el.slot.value, format: el.format.value, status: el.status.value, pm, notes: el.notes.value.trim() };
+  const shared = { buyer: adminFromForm(f), date: el.date.value, slot: el.slot.value, format: el.format.value, status: el.status.value, pm, notes: el.notes.value.trim() };
   const { parts, src } = editing;
   const statusChanged = !src || src.status !== shared.status;
   // убранные каналы — убираем их места
@@ -1475,7 +1473,7 @@ function saveSale(f) {
 }
 $('#dealForm').addEventListener('change', e => {
   if (editing?.kind !== 'sale') return;
-  if (e.target.name === 'date' || e.target.name === 'slot') { renderChPick(checkedChans()); renderSplit(Number($('#sTotal').value), null); }
+  if (e.target.name === 'date' || e.target.name === 'slot') { renderChPick(checkedChans()); ensureChannel(); renderSplit(Number($('#sTotal').value), null); }
   if (e.target.name === 'ch') renderSplit(Number($('#sTotal').value), null);
   if (e.target.name === 'pm') { $('#sFix').hidden = e.target.value !== 'fix'; $('#sCpm').hidden = e.target.value !== 'cpm'; }
 });
@@ -1484,6 +1482,114 @@ $('#dealForm').addEventListener('input', e => {
   if (e.target.id === 'sTotal') renderSplit(Number(e.target.value), null);
   else if (e.target.name?.startsWith('share-')) updateSplitSum();
 });
+
+
+// Поле «контакт» с автоподбором — одно и для админа в закупе, и для покупателя в
+// продаже: это одни и те же люди, и их сделки в обе стороны сводятся вместе.
+function contactField(label, value) {
+  return `<div class="fld adm-fld"><label for="fWho" id="fWhoLbl">${label}</label>
+    <div class="cbx">
+      <input class="inp" id="fWho" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="admList" aria-describedby="admHint" autocomplete="off" spellcheck="false" placeholder="Имя или @username" value="${esc(value ? admLabel(value) : '')}">
+      <input type="hidden" name="admin" value="${value || ''}">
+      <ul class="cbx-list" id="admList" role="listbox" aria-labelledby="fWhoLbl" hidden></ul>
+    </div>
+    <div class="adm-sub" id="admNew" hidden>
+      <div class="frow"><div><label class="sr-only" for="fNewName">Имя нового контакта</label><input class="inp" id="fNewName" placeholder="Имя"></div>
+      <div><label class="sr-only" for="fNewUser">Username нового контакта</label><input class="inp mono" id="fNewUser" placeholder="username" pattern="@?[A-Za-z0-9_]{4,32}" autocapitalize="off" spellcheck="false"></div></div>
+    </div>
+    <div class="adm-sub" id="admRename" hidden>
+      <div class="frow"><div><label class="sr-only" for="fRenUser">Новый username</label><input class="inp mono" id="fRenUser" placeholder="новый username" pattern="@?[A-Za-z0-9_]{4,32}" autocapitalize="off" spellcheck="false"></div>
+      <div class="frow" style="flex:none"><button class="btn tiny" type="button" data-act="ren-ok">Сменить</button><button class="btn tiny" type="button" data-act="ren-cancel">Отмена</button></div></div>
+      <div class="hint">Поменяется сразу во всех закупах, продажах и кампаниях — они ссылаются на контакт, а не на текст. Старый username останется в подсказках как прошлый. В рабочей версии смену заметит сессия аккаунта и обновит сама.</div>
+    </div>
+    <div class="hint" id="admHint"></div>
+    <span class="sr-only" aria-live="polite" id="admLive"></span></div>`;
+}
+
+// ================= ВСЕ ОПЕРАЦИИ С КОНТАКТОМ =================
+// Сделки в обе стороны: что я купил у него и что он купил у меня — для сверки и
+// подсчёта, кто кому должен. Считаются «Договорились», «Вышел», «Завершён»;
+// отметки об оплате в разделе нет, поэтому итог — сумма сделок, а не остаток долга.
+let opsState = { id: null, period: 'all' };
+const contactOf = d => (d.side === 'buy' ? d.admin : d.buyer);
+function opsList(id, period) {
+  const inP = d => period === 'all' || d.date.startsWith(period);
+  const mine = DEALS.filter(d => contactOf(d) === id && d.status !== 'cancel' && inP(d));
+  const pk = new Map();
+  for (const d of mine.filter(x => x.side === 'sell')) { if (!pk.has(d.pkg)) pk.set(d.pkg, []); pk.get(d.pkg).push(d); }
+  const one = (ps, dir) => {
+    const amts = ps.map(amountOf);
+    return { dir, date: ps[0].date, slot: ps[0].slot, where: ps.map(x => x.project), amount: amts.some(v => v == null) ? null : amts.reduce((a, b) => a + b, 0),
+      pm: ps[0].pm, rate: ps[0].rate, status: ps[0].status, id: ps[0].id, est: ps.some(x => x.cpmState === 'failed') };
+  };
+  return [...mine.filter(x => x.side === 'buy').map(d => one([d], 'in')), ...[...pk.values()].map(ps => one(ps, 'out'))]
+    .sort((x, y) => y.date.localeCompare(x.date) || SLOT[y.slot].i - SLOT[x.slot].i);
+}
+const counts = o => o.status === 'agreed' || isPub(o.status);
+function openOps(id) {
+  if ($('#dealDlg').open) $('#dealDlg').close();
+  opsState = { id, period: 'all' };
+  renderOps();
+  if (!$('#opsDlg').open) $('#opsDlg').showModal();
+}
+function opsTotals(ops) {
+  const side = dir => {
+    const xs = ops.filter(o => o.dir === dir && counts(o));
+    return { n: xs.length, sum: xs.reduce((s, o) => s + (o.amount ?? 0), 0), pending: xs.filter(o => o.amount == null).length };
+  };
+  const i = side('in'), o = side('out');
+  return { i, o, net: i.sum - o.sum };
+}
+function renderOps() {
+  const { id, period } = opsState, a = ADMINS[id];
+  const all = DEALS.filter(d => contactOf(d) === id && d.status !== 'cancel');
+  const months = [...new Set(all.map(d => d.date.slice(0, 7)))].sort().reverse();
+  const ops = opsList(id, period);
+  const t = opsTotals(ops);
+  const name = esc(a.name);
+  const verdict = t.net > 0 ? `Я должен: <b class="mono">${rub(t.net)}</b>` : t.net < 0 ? `Мне должны: <b class="mono">${rub(-t.net)}</b>` : 'Взаимно в ноль';
+  const pLbl = period === 'all' ? 'за всё время' : `за ${MON_NOM[Number(period.slice(5)) - 1].toLowerCase()} ${period.slice(0, 4)}`;
+  // без склонения имён: «у Кот» звучит криво, а угадывать падеж нельзя
+  const dirLbl = o => (o.dir === 'in' ? 'я купил' : 'купили у меня');
+  const whereLbl = o => o.where.map(p => esc(PJ[p].mono)).join(' + ');
+  const amtLbl = o => (o.amount == null ? `<span class="price-q">CPM ${int(o.rate)} ₽</span><span class="price-sub"> после фиксации</span>` : `${o.est ? '≈ ' : ''}${rub(o.amount)}`);
+  const rowsHTML = state.narrow
+    ? `<ul class="ops-m">${ops.map(o => `<li><button class="ops-it ${counts(o) ? '' : 'muted'}" type="button" data-act="open" data-id="${o.id}">
+        <span class="ops-l1"><b class="mono">${dm(parseIso(o.date))}</b> · ${SLOT[o.slot].l} · ${whereLbl(o)}<span class="ops-amt mono">${amtLbl(o)}</span></span>
+        <span class="ops-l2"><span class="op-dir ${o.dir}">${dirLbl(o)}</span>${stChip(o.status)}</span></button></li>`).join('')}</ul>`
+    : `<div class="tbl-wrap" style="padding:0;max-block-size:46vh"><table class="tbl list ops-tbl"><caption class="sr-only">Операции с ${name}</caption>
+        <thead><tr><th scope="col">Дата</th><th scope="col">Кто кому</th><th scope="col">Где</th><th scope="col">Место</th><th scope="col" class="num">Сумма</th><th scope="col">Статус</th></tr></thead>
+        <tbody>${ops.map(o => `<tr class="${counts(o) ? '' : 'is-plan'}" data-act="open" data-id="${o.id}">
+          <th scope="row"><button class="row-btn mono" type="button" data-act="open" data-id="${o.id}">${dm(parseIso(o.date))}</button></th>
+          <td><span class="op-dir ${o.dir}">${dirLbl(o)}</span></td><td>${whereLbl(o)}</td><td>${SLOT[o.slot].l}</td>
+          <td class="num">${amtLbl(o)}</td><td>${stChip(o.status)}</td></tr>`).join('')}</tbody></table></div>`;
+  $('#opsDlg').innerHTML = `
+    <div class="m-head"><div><div class="m-eyebrow">все операции с контактом</div><h2 id="opsTitle">${esc(admLabel(id))}</h2>
+      ${a.old?.length ? `<div class="m-chips"><span class="chip neutral">раньше ${a.old.map(o => `@${esc(o)}`).join(', ')}</span></div>` : ''}</div>
+      <button class="x-btn" type="button" data-close aria-label="Закрыть">${ICON.x}</button></div>
+    <div class="m-body">
+      <div class="m-sec"><div class="seg sm ops-per" role="group" aria-label="Период">
+        <button type="button" data-act="ops-period" data-v="all" aria-pressed="${period === 'all'}">Всё время</button>
+        ${months.map(m => `<button type="button" data-act="ops-period" data-v="${m}" aria-pressed="${period === m}">${MON_NOM[Number(m.slice(5)) - 1]}</button>`).join('')}
+      </div></div>
+      <div class="ops-sum">
+        <div class="ops-c in"><span class="ops-cl">Я купил</span><b class="mono">${rub(t.i.sum)}</b><span class="ops-cs">${t.i.n} ${plural(t.i.n, 'закуп', 'закупа', 'закупов')}${t.i.pending ? ` · ещё ${t.i.pending} по CPM без суммы` : ''}</span></div>
+        <div class="ops-c out"><span class="ops-cl">Купили у меня</span><b class="mono">${rub(t.o.sum)}</b><span class="ops-cs">${t.o.n} ${plural(t.o.n, 'продажа', 'продажи', 'продаж')}${t.o.pending ? ` · ещё ${t.o.pending} по CPM без суммы` : ''}</span></div>
+        <div class="ops-c net ${t.net > 0 ? 'owe' : t.net < 0 ? 'owed' : ''}"><span class="ops-cl">Итог ${pLbl}</span><span class="ops-v">${verdict}</span><span class="ops-cs">взаимозачёт: купленное минус проданное</span></div>
+      </div>
+      <p class="mnote">Считаются «Договорились», «Вышел» и «Завершён»; «В плане» показаны, но в итог не входят, отменённые скрыты. Отметок об оплате пока нет — итог показывает сумму сделок за период, а не остаток долга.</p>
+      <div class="m-sec">${ops.length ? rowsHTML : `<p class="dl-empty" style="padding:6px 0">${pLbl[0].toUpperCase() + pLbl.slice(1)} операций нет.</p>`}</div>
+    </div>
+    <div class="m-foot"><span class="sp"></span><button class="btn" type="button" data-act="ops-copy">Скопировать для сверки</button><button class="btn btn-primary" type="button" data-close>Готово</button></div>`;
+}
+function opsText() {
+  const { id, period } = opsState, a = ADMINS[id];
+  const ops = opsList(id, period).filter(counts), t = opsTotals(ops);
+  const pLbl = period === 'all' ? 'всё время' : `${MON_NOM[Number(period.slice(5)) - 1]} ${period.slice(0, 4)}`;
+  const lines = ops.map(o => `${dm(parseIso(o.date))} ${SLOT[o.slot].l} — ${o.dir === 'in' ? 'я купил' : 'купили у меня'}: ${o.where.map(p => PJ[p].mono).join(' + ')} — ${o.amount == null ? `CPM ${o.rate} ₽, сумма после фиксации` : `${o.est ? '≈ ' : ''}${rub(o.amount)}`} (${ST[o.status].l})`);
+  const net = t.net > 0 ? `я должен ${rub(t.net)}` : t.net < 0 ? `мне должны ${rub(-t.net)}` : 'в ноль';
+  return [`Сверка с ${admLabel(id)} · ${pLbl}`, ...lines, '', `Я купил: ${t.i.n} на ${rub(t.i.sum)}`, `Купили у меня: ${t.o.n} на ${rub(t.o.sum)}`, `Итог: ${net}`].join('\n');
+}
 
 // ================= АВТОПОДБОР АДМИНА =================
 // Ищет по имени, по текущему и прошлым username; слово, набранное не в той
@@ -1496,10 +1602,11 @@ const hl = (text, i, len) => `${esc(text.slice(0, i))}<mark>${esc(text.slice(i, 
 const hueOf = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
 
 function admStats(id) {
-  const ds = DEALS.filter(d => d.side === 'buy' && d.admin === id && d.status !== 'cancel');
+  const ds = DEALS.filter(d => contactOf(d) === id && d.status !== 'cancel');
   const today = iso(TODAY);
   const past = ds.filter(d => d.date <= today);
-  return { n: past.length, planned: ds.length - past.length, last: past.reduce((m, d) => (d.date > m ? d.date : m), ''), projects: [...new Set(ds.map(d => d.project))].sort() };
+  const buys = past.filter(d => d.side === 'buy').length, sells = new Set(past.filter(d => d.side === 'sell').map(d => d.pkg)).size;
+  return { n: past.length, buys, sells, planned: ds.length - past.length, last: past.reduce((m, d) => (d.date > m ? d.date : m), ''), projects: [...new Set(ds.map(d => d.project))].sort() };
 }
 function admSearch(raw) {
   const q0 = raw.trim().toLowerCase().replace(/^@/, '');
@@ -1543,7 +1650,7 @@ function admRender() {
   if (q && !exact) cbx.items.push({ kind: 'new', q });
   cbx.active = cbx.items.length ? 0 : -1;
   list.innerHTML = cbx.items.map((it, k) => {
-    if (it.kind === 'new') return `<li role="option" id="admopt-${k}" class="cbx-opt new" data-k="${k}" aria-selected="false"><span class="cbx-plus" aria-hidden="true">＋</span><span class="cbx-main">Новый админ <b>«${esc(it.q)}»</b></span></li>`;
+    if (it.kind === 'new') return `<li role="option" id="admopt-${k}" class="cbx-opt new" data-k="${k}" aria-selected="false"><span class="cbx-plus" aria-hidden="true">＋</span><span class="cbx-main">Новый контакт <b>«${esc(it.q)}»</b></span></li>`;
     const a = ADMINS[it.id];
     const nm = it.field === 'name' ? hl(a.name, it.i, it.len) : esc(a.name);
     const us = it.field === 'user' ? hl(a.user, it.i, it.len) : esc(a.user);
@@ -1554,7 +1661,7 @@ function admRender() {
       <span class="cbx-ini" style="--h:${hueOf(a.user)}" aria-hidden="true">${esc(a.name.slice(0, 1).toUpperCase())}</span>
       <span class="cbx-main"><span class="cbx-nm">${nm}</span> <span class="cbx-u">@${us}</span>${old}</span>
       <span class="cbx-pj" aria-hidden="true">${st.projects.map(p => ava(p, 'sm')).join('')}</span>
-      <span class="cbx-meta">${st.n ? `${st.n} ${plural(st.n, 'закуп', 'закупа', 'закупов')} · последний ${dm(parseIso(st.last))}` : 'закупов ещё не было'}${st.planned ? ` · ещё ${st.planned} впереди` : ''}</span></li>`;
+      <span class="cbx-meta">${st.n ? [st.buys ? `${st.buys} ${plural(st.buys, 'закуп', 'закупа', 'закупов')}` : '', st.sells ? `${st.sells} ${plural(st.sells, 'продажа', 'продажи', 'продаж')}` : '', `последняя сделка ${dm(parseIso(st.last))}`].filter(Boolean).join(' · ') : 'сделок ещё не было'}${st.planned ? ` · ещё ${st.planned} впереди` : ''}</span></li>`;
   }).join('') || '<li class="cbx-empty" role="presentation">Пока ни одного админа</li>';
   admActivate(cbx.active);
   clearTimeout(cbx.liveTimer); // число вариантов — без спама на каждую букву
@@ -1591,7 +1698,7 @@ function admHint() {
   const id = $('#dealForm').elements.admin?.value;
   const h = $('#admHint'); if (!h) return;
   h.innerHTML = id && ADMINS[id]
-    ? `<button class="adm-link" type="button" data-act="adv" data-adm="${id}">Все кампании ${esc(ADMINS[id].name)} ↗</button> · <button class="adm-link" type="button" data-act="ren">Сменил username</button>${ADMINS[id].old?.length ? ` · <span>раньше: ${ADMINS[id].old.map(o => `@${esc(o)}`).join(', ')}</span>` : ''}`
+    ? `<button class="adm-link" type="button" data-act="ops" data-adm="${id}">Все операции с ${esc(ADMINS[id].name)}</button>${DEALS.some(d => d.side === 'buy' && d.admin === id) ? ` · <button class="adm-link" type="button" data-act="adv" data-adm="${id}">Кампании ↗</button>` : ''} · <button class="adm-link" type="button" data-act="ren">Сменил username</button>${ADMINS[id].old?.length ? ` · <span>раньше: ${ADMINS[id].old.map(o => `@${esc(o)}`).join(', ')}</span>` : ''}`
     : !$('#admNew').hidden ? 'Новый админ сразу появится в подсказках и во вкладке «Кампании»' : 'Начните вводить имя или @username — подскажу из знакомых';
 }
 // новый админ: такой username уже у кого-то есть — это он и есть
@@ -1607,7 +1714,7 @@ function adminFromForm(f) {
 function admValidate(f) {
   const fw = $('#fWho'), nu = $('#fNewUser');
   if (!fw) return;
-  fw.setCustomValidity(f.elements.admin.value || !$('#admNew').hidden ? '' : 'Выберите админа из подсказок или добавьте нового');
+  fw.setCustomValidity(f.elements.admin.value || !$('#admNew').hidden ? '' : 'Выберите контакт из подсказок или добавьте нового');
   nu.setCustomValidity('');
   if (!$('#admNew').hidden && nu.value) {
     const u = nu.value.trim().replace(/^@/, '').toLowerCase();
@@ -1685,7 +1792,7 @@ function openDay(date, slot) {
   const buy = state.mode === 'buy';
   $('#dayDlg').innerHTML = `<div class="m-head"><div><div class="m-eyebrow">${buy ? 'закупы' : 'продажи'} дня</div><h2 id="dayTitle">${DOW_FULL[day.getDay()].replace(/^./, c => c.toUpperCase())}, ${day.getDate()} ${MON_GEN[day.getMonth()]}${slot ? ` · ${SLOT[slot].l}` : ''}</h2></div>
     <button class="x-btn" type="button" data-close aria-label="Закрыть">${ICON.x}</button></div>
-    ${ds.length ? `<ul class="daylist">${ds.map(d => `<li><button class="dl-it" type="button" data-act="open" data-id="${d.id}"><span class="when"><span class="chip slot">${SLOT[d.slot].l}</span></span><span class="who">${ava(d.project, 'sm')}<span>${buy ? admHTML(d.admin) : esc(`${d.buyer} · ${PJ[d.project].mono}`)}</span>${warnIcons(d)}</span><span class="rt">${priceHTML(d)}${stChip(d.status)}</span></button></li>`).join('')}</ul>` : `<p class="dl-empty">${buy ? 'В этот день закупов нет.' : 'В этот день продаж нет.'}</p>`}
+    ${ds.length ? `<ul class="daylist">${ds.map(d => `<li><button class="dl-it" type="button" data-act="open" data-id="${d.id}"><span class="when"><span class="chip slot">${SLOT[d.slot].l}</span></span><span class="who">${ava(d.project, 'sm')}<span>${admHTML(contactOf(d))}${buy ? '' : ` · ${esc(PJ[d.project].mono)}`}</span>${warnIcons(d)}</span><span class="rt">${priceHTML(d)}${stChip(d.status)}</span></button></li>`).join('')}</ul>` : `<p class="dl-empty">${buy ? 'В этот день закупов нет.' : 'В этот день продаж нет.'}</p>`}
     <div class="m-foot"><span class="sp"></span><button class="btn btn-primary" type="button" data-act="new" data-date="${date}" ${slot ? `data-slot="${slot}"` : ''} ${buy ? '' : `data-proj="${state.sellCh}"`}>${ICON.plus}Добавить на этот день</button></div>`;
   $('#dayDlg').showModal();
 }
@@ -1702,7 +1809,7 @@ document.addEventListener('click', async e => {
   if (act === 'open') {
     if (t.tagName === 'TR' && e.target.closest('button')) return; // клик по кнопке внутри строки обработан ею
     e.preventDefault();
-    $('#dayDlg').close();
+    $('#dayDlg').close(); $('#opsDlg').close(); if ($('#dealDlg').open) $('#dealDlg').close();
     openDeal(t.dataset.id);
   } else if (act === 'new') {
     $('#dayDlg').close();
@@ -1737,6 +1844,12 @@ document.addEventListener('click', async e => {
       DEALS = DEALS.filter(x => !gone.includes(x));
       $('#dealDlg').close(); render(); toast(`${src.id} удалён${src.side === 'buy' ? '' : 'а'}`);
     }, { once: true });
+  } else if (act === 'ops') {
+    e.preventDefault(); openOps(t.dataset.adm);
+  } else if (act === 'ops-period') {
+    opsState.period = t.dataset.v; renderOps();
+  } else if (act === 'ops-copy') {
+    navigator.clipboard.writeText(opsText()).then(() => toast('Сверка скопирована — можно вставить в чат с контактом'), () => toast('Не удалось скопировать: браузер не дал доступ к буферу', 'info'));
   } else if (act === 'split-even') {
     renderSplit(Number($('#sTotal').value), null);
   } else if (act === 'adv') {
