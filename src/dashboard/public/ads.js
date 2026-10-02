@@ -271,6 +271,9 @@ function warnText(d, w) {
     case 'cpmfail': return 'CPM: пост снят до фиксации — сумма посчитана по последнему замеру';
     case 'notout': return `Пост не вышел — прошло ${dur(x.after)} после времени места`;
     case 'nolook': return `Не удаётся проверить пост: ${esc(x.reason)}`;
+    case 'nopost': return d.side === 'buy'
+      ? 'Место прошло, а ссылки на пост нет — вставьте её в карточку, иначе проверка пост не увидит'
+      : 'posting не сообщил о посте — отметьте его в posting кнопкой «📣 Реклама»';
     default: return '';
   }
 }
@@ -1157,7 +1160,9 @@ function openDeal(id, prefill = {}) {
           </div></div>
         ${buy ? `<div class="fld"><label for="fCr">Креатив</label><input class="inp" id="fCr" name="creative" value="${esc(d.creative)}" placeholder="Какой пост ушёл"></div>
         <div class="fld"><label for="fTr">Ссылка для отслеживания</label><input class="inp mono" id="fTr" name="track" value="${esc(d.track)}" placeholder="${isNew ? 'пусто — создам сам' : 't.me/+… или t.me/бот?start=…'}" autocapitalize="off" spellcheck="false"><div class="hint">${isNew ? 'Оставьте пустым — ссылка создастся сама; или вставьте готовую' : d.track ? '<button class="adm-link" type="button" data-act="copy-track">Скопировать</button> · другая ссылка — вставьте её сюда' : `Ссылки нет — вставьте готовую${canMint || !PJ[d.project].channel ? ' или <button class="adm-link" type="button" data-act="mint">создайте</button>' : ''}`}</div></div>` : ''}
-        <div class="fld ${buy ? '' : 'wide'}"><label for="fPost">Ссылка на ${buy ? 'рекламный ' : ''}пост</label><input class="inp mono" id="fPost" name="post" value="${esc(d.post)}" placeholder="https://t.me/канал/123" autocapitalize="off" spellcheck="false">${buy ? `<div class="hint">${checker.enabled ? 'По ней проверка следит за постом: выход, просмотры, час в топе, срок' : 'Проверка постов выключена — ссылка пока только для справки'}</div>` : ''}</div>
+        <div class="fld ${buy ? '' : 'wide'}"><label for="fPost">Ссылка на ${buy ? 'рекламный ' : ''}пост</label><input class="inp mono" id="fPost" name="post" value="${esc(d.post)}" placeholder="${d.post ? 'https://t.me/канал/123' : 'пусто, пока пост не вышел'}" autocapitalize="off" spellcheck="false">${buy ? `<div class="hint">${d.post
+          ? (checker.enabled ? 'По ней проверка следит за постом: выход, просмотры, час в топе, срок' : 'Проверка постов выключена — ссылка пока только для справки')
+          : `Место только забронировано — оставьте пустым. Когда пост выйдет, вставьте ссылку вида t.me/канал/123${checker.enabled ? ': проверка сама отметит выход, просмотры, час в топе и срок' : ''}`}</div>` : ''}</div>
         ${buy ? `<div class="fld"><label for="fReach">Охват</label><input class="inp mono" id="fReach" readonly value="${pub && views != null ? `${int(views)} просмотров` : ''}" placeholder="замеряется автоматически"></div>` : ''}
         <div class="fld wide"><label for="fNotes">Заметки</label><textarea class="inp" id="fNotes" name="notes" placeholder="Договорённости, контакты, что учесть">${esc(d.notes)}</textarea></div>
       </div></div>

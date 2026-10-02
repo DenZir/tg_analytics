@@ -44,6 +44,8 @@ export function warnLine(w: Warn): string {
       return "пост вышел больше 3 часов назад, а заходов по ссылке нет";
     case "notout":
       return `пост не вышел — прошло ${duration(Number(d.after))} после времени места`;
+    case "nopost":
+      return "место прошло, а ссылки на пост нет — проверка его не видит";
     case "nolook":
       return `не удаётся проверить пост: ${esc(String(d.reason ?? ""))}`;
   }

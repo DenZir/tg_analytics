@@ -122,7 +122,7 @@ export interface CheckedPost {
   checkError: string | null;
 }
 
-export type WarnCode = "early" | "top" | "late" | "cpmfail" | "noclicks" | "notout" | "nolook";
+export type WarnCode = "early" | "top" | "late" | "cpmfail" | "noclicks" | "notout" | "nolook" | "nopost";
 export interface Warn {
   code: WarnCode;
   sev: "high" | "mid";
@@ -150,10 +150,17 @@ export function deriveChecks(p: CheckedPost, now: Date, subs: number | null, tz 
   const warns: Warn[] = [];
   if (p.status === "cancel") return { checks: null, warns };
   if (p.cpmState === "failed") warns.push({ code: "cpmfail", sev: "high" });
-  if (!p.postChat) return { checks: null, warns };
+  const start = slotStart(p.date, p.slot, tz);
+  if (!p.postChat) {
+    // A booked place has no post yet, and that is fine — until the post should
+    // have come out: then without its link the checker cannot see it at all.
+    if ((p.status === "agreed" || p.status === "live") && minutes(now, start) >= NOT_OUT_AFTER_MIN) {
+      warns.push({ code: "nopost", sev: "mid" });
+    }
+    return { checks: null, warns };
+  }
 
   if (p.checkError) warns.push({ code: "nolook", sev: "mid", data: { reason: p.checkError } });
-  const start = slotStart(p.date, p.slot, tz);
   const pub = p.viewsAt ? p.publishedAt : null; // only a post the checker has actually seen
   if (!pub) {
     if (!p.checkError && minutes(now, start) >= NOT_OUT_AFTER_MIN && (p.status === "agreed" || p.status === "plan")) {
