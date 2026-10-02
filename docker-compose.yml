@@ -34,6 +34,9 @@ services:
       # database *file* is mounted above, that directory would otherwise live in
       # the container layer and vanish on every rebuild.
       - ./avatars:/app/avatars
+      # The Telegram account session of the ad post checker (npm run tg:login).
+      # Must match TG_SESSION_PATH in .env (default ./tg-session/account.session).
+      - ./tg-session:/app/tg-session
     healthcheck:
       # Hits GET /health, which checks sqlite connectivity and (if configured)
       # that the channel bot can still reach the Telegram API — replaces the

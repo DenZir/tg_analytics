@@ -110,6 +110,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 let ADMINS = {};
 let DEALS = [];
 let canMint = false;
+let checker = { enabled: false, reason: null };
 const contactIds = () => Object.keys(ADMINS).map(Number);
 const admLabel = id => { const a = ADMINS[id]; return a ? (a.user ? `${a.name} (@${a.user})` : a.name) : '—'; };
 
@@ -152,14 +153,22 @@ const normDeal = d => ({
   fixedAt: toDate(d.fixedAt),
   publishedAt: toDate(d.publishedAt),
   history: (d.history || []).map(h => ({ st: h.st, at: new Date(h.at) })),
-  warns: [], // предупреждения проверок появятся вместе с ботом постинга
-  checks: null,
+  removedAt: toDate(d.removedAt),
+  // проверки поста считает сервер (jobs/adChecks.ts), здесь только показываем
+  warns: d.warns || [],
+  checks: d.checks || null,
 });
 async function loadAll() {
   const [boot, deals] = await Promise.all([api('GET', '/api/ads/bootstrap'), api('GET', '/api/ads/deals')]);
   setProjects(boot.projects);
   setContacts(boot.contacts);
   canMint = !!boot.canMintInvites;
+  checker = boot.checker || checker;
+  const cr = document.getElementById('checkerRow');
+  if (cr) {
+    cr.textContent = checker.enabled ? 'проверка постов: каждые 5 мин' : 'проверка постов выключена';
+    cr.title = checker.enabled ? '' : (checker.reason || '');
+  }
   DEALS = [...deals.buys, ...deals.sales].map(normDeal)
     .filter(d => PJ[d.project] && SLOT[d.slot])
     .sort((a, b) => a.date.localeCompare(b.date) || SLOT[a.slot].i - SLOT[b.slot].i || a.project - b.project);
@@ -253,15 +262,22 @@ function mandatoryFill(channels, days) {
 }
 
 function warnText(d, w) {
-  const c = d.checks;
+  const x = w.data || {};
   switch (w.code) {
-    case 'early': return `Пост удалён раньше срока — продержался ${dur(c.life.lived)}, <b>не хватило ${dur(c.life.short)}</b>`;
-    case 'top': return `Не простоял час в топе — <b>не хватило ${w.short ?? c.top.short}${NB}мин</b>`;
-    case 'late': return `Вышел в <b>${c.time.fact}</b> вместо ${c.time.plan}`;
-    case 'noclicks': return 'Пост вышел, а заходов по ссылке нет';
-    case 'cpmfail': return 'CPM: не удалось зафиксировать просмотры — сумма посчитана по последнему замеру';
+    case 'early': return `Пост удалён раньше срока — продержался ${dur(x.lived)}, <b>не хватило ${dur(x.short)}</b>`;
+    case 'top': return `Не простоял час в топе — <b>не хватило ${x.short}${NB}мин</b>`;
+    case 'late': return `Вышел в <b>${esc(x.fact)}</b> вместо ${esc(x.plan)}`;
+    case 'noclicks': return 'Пост вышел больше 3 часов назад, а заходов по ссылке нет';
+    case 'cpmfail': return 'CPM: пост снят до фиксации — сумма посчитана по последнему замеру';
+    case 'notout': return `Пост не вышел — прошло ${dur(x.after)} после времени места`;
+    case 'nolook': return `Не удаётся проверить пост: ${esc(x.reason)}`;
     default: return '';
   }
+}
+// «5 мин назад» — для замера просмотров
+function agoLbl(isoAt) {
+  const at = new Date(isoAt), m = Math.round((Date.now() - at) / 6e4);
+  return m < 1 ? 'только что' : m < 60 ? `${m}${NB}мин назад` : dayDiff(at, new Date()) === 0 ? `в ${hmOf(at)}` : `${dm(at)} в ${hmOf(at)}`;
 }
 
 // ================= СОСТОЯНИЕ =================
@@ -1088,7 +1104,9 @@ function openDeal(id, prefill = {}) {
     let box;
     if (d.cpmState === 'fixed') box = `<div class="cpmbox fixed"><span class="ic">${ICON.ok}</span><div><b>Просмотры зафиксированы</b><p><span class="mono">${int(d.views)}</span> просмотров${d.fixedAt ? ` · <span class="mono">${dtLbl(d.fixedAt)}</span>` : ''} · итог <span class="mono">${rub(amt)}</span></p></div></div>`;
     else if (d.cpmState === 'failed') box = `<div class="cpmbox failed"><span class="ic">${ICON.bad}</span><div><b>Не удалось зафиксировать просмотры — пост снят раньше</b><p>Последнее известное значение: <span class="mono">${int(d.views)}</span> просмотров. По нему сумма ≈ <span class="mono">${rub(amt)}</span> — это оценка, её стоит сверить с ${buy ? 'продавцом' : 'покупателем'}.</p></div></div>`;
-    else box = `<div class="cpmbox wait"><span class="ic">${ICON.clock}</span><div><b>Ждёт снятия поста</b><p>Просмотры фиксируются перед снятием — <span class="mono">${dm(end)} в ${hmOf(end)}</span>. Пока бот постинга не подключён к разделу, впишите их ниже сами.</p></div></div>`;
+    else box = `<div class="cpmbox wait"><span class="ic">${ICON.clock}</span><div><b>Ждёт снятия поста</b><p>${checker.enabled && d.post
+        ? `Просмотры зафиксируются сами за 10 минут до конца срока — <span class="mono">${dm(end)} в ${hmOf(end)}</span>${d.viewsNow ? `; сейчас <span class="mono">${int(d.viewsNow)}</span>` : ''}. Снимут раньше — сумма посчитается по последнему замеру. Можно вписать и вручную.`
+        : `Просмотры фиксируются перед снятием — <span class="mono">${dm(end)} в ${hmOf(end)}</span>. ${checker.enabled ? 'Вставьте ссылку на пост — и они зафиксируются сами;' : 'Проверка постов выключена —'} пока впишите их ниже сами.`}</p></div></div>`;
     const viewsFld = `<div class="fgrid cpm-views"><div class="fld"><label for="fViews">Просмотры для расчёта</label><input class="inp mono" type="number" id="fViews" name="views" min="0" step="1" inputmode="numeric" value="${d.views ?? ''}" placeholder="при снятии поста"><div class="hint">${d.cpmState === 'fixed' ? 'Исправите — сумма пересчитается' : 'Впишете — сумма зафиксируется'}</div></div></div>`;
     cpm = `<div class="m-sec" id="cpmSec" ${d.pm === 'cpm' ? '' : 'hidden'}><div class="m-sec-h"><span class="card-idx">02 / фиксация CPM</span><h3>Просмотры для расчёта</h3></div>${box}${viewsFld}</div>`;
   }
@@ -1106,7 +1124,7 @@ function openDeal(id, prefill = {}) {
   if (pub && d.checks) {
     const c = d.checks, li = (cls, ic, l, v) => `<li class="${cls}"><span class="ci">${ic}</span><span class="cl">${l}</span><span class="cv">${v}</span></li>`;
     checks = `<div class="m-sec"><div class="m-sec-h"><span class="card-idx">${buy ? '04' : '03'} / проверки</span><h3>Автоматические проверки</h3></div><ul class="checks">
-      ${li('ok', ICON.ok, 'Охват', `<span class="mono">${int(c.reach.views)}</span> просмотров, замер ${c.reach.ago}`)}
+      ${c.reach ? li('ok', ICON.ok, 'Охват', `<span class="mono">${int(c.reach.views)}</span> просмотров, ${d.removedAt ? 'последний замер' : 'замер'} ${agoLbl(c.reach.at)}`) : ''}
       ${c.time.late ? li('mid', ICON.warn, 'Время выхода', `вышел в <b class="mono">${c.time.fact}</b> вместо ${c.time.plan}`) : li('ok', ICON.ok, 'Время выхода', `вышел в <span class="mono">${c.time.fact}</span> — вовремя`)}
       ${c.top.wait ? li('wait', ICON.clock, 'Час в топе', 'идёт первый час') : c.top.ok ? li('ok', ICON.ok, 'Час в топе', 'продержался час') : li('bad', ICON.bad, 'Час в топе', `следующий пост через ${60 - c.top.short}${NB}мин — <b>не хватило ${c.top.short}${NB}мин</b>`)}
       ${c.life.wait ? li('wait', ICON.clock, 'Срок в ленте', `идёт: ${dur(c.life.elapsed)} из ${c.life.hours}${NB}ч`) : c.life.ok ? li('ok', ICON.ok, 'Срок в ленте', `${c.life.hours}${NB}ч выдержаны`) : li('bad', ICON.bad, 'Срок в ленте', `удалён через ${dur(c.life.lived)} — <b>не хватило ${dur(c.life.short)}</b>`)}
@@ -1139,7 +1157,7 @@ function openDeal(id, prefill = {}) {
           </div></div>
         ${buy ? `<div class="fld"><label for="fCr">Креатив</label><input class="inp" id="fCr" name="creative" value="${esc(d.creative)}" placeholder="Какой пост ушёл"></div>
         <div class="fld"><label for="fTr">Ссылка для отслеживания</label><input class="inp mono" id="fTr" name="track" value="${esc(d.track)}" placeholder="${isNew ? 'пусто — создам сам' : 't.me/+… или t.me/бот?start=…'}" autocapitalize="off" spellcheck="false"><div class="hint">${isNew ? 'Оставьте пустым — ссылка создастся сама; или вставьте готовую' : d.track ? '<button class="adm-link" type="button" data-act="copy-track">Скопировать</button> · другая ссылка — вставьте её сюда' : `Ссылки нет — вставьте готовую${canMint || !PJ[d.project].channel ? ' или <button class="adm-link" type="button" data-act="mint">создайте</button>' : ''}`}</div></div>` : ''}
-        <div class="fld ${buy ? '' : 'wide'}"><label for="fPost">Ссылка на ${buy ? 'рекламный ' : ''}пост</label><input class="inp mono" id="fPost" name="post" value="${esc(d.post)}" placeholder="появится, когда пост выйдет"></div>
+        <div class="fld ${buy ? '' : 'wide'}"><label for="fPost">Ссылка на ${buy ? 'рекламный ' : ''}пост</label><input class="inp mono" id="fPost" name="post" value="${esc(d.post)}" placeholder="https://t.me/канал/123" autocapitalize="off" spellcheck="false">${buy ? `<div class="hint">${checker.enabled ? 'По ней проверка следит за постом: выход, просмотры, час в топе, срок' : 'Проверка постов выключена — ссылка пока только для справки'}</div>` : ''}</div>
         ${buy ? `<div class="fld"><label for="fReach">Охват</label><input class="inp mono" id="fReach" readonly value="${pub && views != null ? `${int(views)} просмотров` : ''}" placeholder="замеряется автоматически"></div>` : ''}
         <div class="fld wide"><label for="fNotes">Заметки</label><textarea class="inp" id="fNotes" name="notes" placeholder="Договорённости, контакты, что учесть">${esc(d.notes)}</textarea></div>
       </div></div>
@@ -1951,6 +1969,17 @@ async function boot() {
   try {
     await loadAll();
     state.status = 'ready';
+    // ссылка из уведомления бота: ads.html?deal=З-12 открывает карточку сделки
+    const want = new URLSearchParams(location.search).get('deal');
+    if (want) {
+      history.replaceState(null, '', location.pathname);
+      const d = findDeal(want);
+      if (d) {
+        state.mode = d.side === 'buy' ? 'buy' : 'sell';
+        setDay(parseIso(d.date)); state.anchor = parseIso(d.date);
+        render(); openDeal(d.id);
+      } else toast(`Сделка ${want} не найдена — возможно, её удалили`, 'warn');
+    }
   } catch (err) {
     console.error('[ads] Failed to load:', err);
     state.status = 'error'; state.error = err.message;

@@ -11,7 +11,8 @@
     "cli": "tsx src/cli/newCampaign.ts",
     "seed": "tsx src/cli/seedProject.ts",
     "reset": "tsx src/cli/resetData.ts",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "tg:login": "tsx src/cli/tgLogin.ts"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +20,7 @@
   "description": "",
   "type": "module",
   "dependencies": {
+    "@mtcute/node": "^0.32.3",
     "better-sqlite3": "^13.0.3",
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.4.2",
@@ -39,5 +41,10 @@
     "playwright": "^1.62.1",
     "tsx": "^4.23.8",
     "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "@mtcute/node": {
+      "better-sqlite3": "$better-sqlite3"
+    }
   }
 }

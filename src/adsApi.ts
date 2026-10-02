@@ -29,6 +29,7 @@ import {
 } from "./services/adDeals.js";
 import { listSettlements, settleContact, undoSettlement } from "./services/adSettlements.js";
 import { logAdminAction } from "./services/auditLog.js";
+import { checkerStatus } from "./jobs/adChecks.js";
 
 type Handler = (req: express.Request, res: express.Response) => Promise<unknown>;
 
@@ -79,6 +80,8 @@ export function createAdsRouter(opts: {
       slots: AD_SLOTS,
       slotTimes: AD_SLOT_TIME,
       canMintInvites: !!opts.mintInvite,
+      // is the post checker on (account session), and if not, why
+      checker: checkerStatus(),
     }))
   );
 

@@ -55,6 +55,7 @@ import {
   UNASSIGNED_ADVERTISER,
 } from "./campaigns.js";
 import { buildDeepLink, createUtmLink, getUtmLinkBySlug } from "./utm.js";
+import { deriveChecks, parsePostLink } from "./adPosts.js";
 
 type Buy = typeof adBuys.$inferSelect;
 type Sale = typeof adSales.$inferSelect;
@@ -142,6 +143,38 @@ function parseUrl(v: unknown, label: string): string | null {
     throw new AdInputError(`${label}: нужна ссылка вида https://…`);
   }
   return s;
+}
+
+/**
+ * A link to the ad post itself. Only a t.me post link is accepted: the checker
+ * reads the channel and the message number from it, and anything else would
+ * silently never be checked.
+ */
+function parsePostUrl(v: unknown): string | null {
+  const s = parseText(v, 500, "Пост");
+  if (!s) return null;
+  const ref = parsePostLink(s);
+  if (!ref) throw new AdInputError("Ссылка на пост — вида https://t.me/канал/123 или https://t.me/c/1234567890/123");
+  return ref.url;
+}
+
+/**
+ * Columns that follow the post link. A new link starts the checks over — what
+ * was seen at the old one says nothing about the new post.
+ */
+function postColumns(url: string | null) {
+  const ref = url ? parsePostLink(url) : null;
+  return {
+    postChat: ref?.chat ?? null,
+    postMessageId: ref?.messageId ?? null,
+    removedAt: null,
+    nextPostAt: null,
+    viewsSeen: null,
+    viewsAt: null,
+    checkedAt: null,
+    checkError: null,
+    alerted: null,
+  };
 }
 
 function parseId(v: unknown, label: string): number {
@@ -377,7 +410,7 @@ async function provideLink(
 }
 
 /** Mirrors the buy onto its campaign / UTM link, so other tabs show the same price and name. */
-async function syncTracking(buy: Buy, label: string) {
+export async function syncTracking(buy: Buy, label: string) {
   const amount = amountOfBuy(buy) ?? 0;
   if (buy.campaignId) {
     await db
@@ -415,7 +448,7 @@ function buyFields(input: Record<string, unknown>, base?: Buy) {
     views: pick("views", parseViews, base?.views ?? null),
     cpmState: pick("cpmState", parseCpmState, (base?.cpmState as AdCpmState | null) ?? null),
     creative: pick("creative", (v) => parseText(v, 120, "Креатив"), base?.creative ?? null),
-    postUrl: pick("postUrl", (v) => parseUrl(v, "Пост"), base?.postUrl ?? null),
+    postUrl: pick("postUrl", parsePostUrl, base?.postUrl ?? null),
     notes: pick("notes", (v) => parseText(v, 2000, "Заметка"), base?.notes ?? null),
   };
   if (!f.date) throw new AdInputError("Укажите дату");
@@ -449,6 +482,7 @@ export async function createBuy(input: Record<string, unknown>, mintInvite: Invi
         projectId,
         contactId,
         ...f,
+        ...postColumns(f.postUrl),
         cpmFixedAt: f.cpmState === "fixed" ? new Date() : null,
         publishedAt: isPublished(f.status) ? new Date() : null,
       })
@@ -495,6 +529,7 @@ export async function updateBuy(id: number, input: Record<string, unknown>) {
       .update(adBuys)
       .set({
         ...f,
+        ...(f.postUrl !== current.postUrl ? postColumns(f.postUrl) : {}),
         contactId,
         cpmFixedAt: f.cpmState === "fixed" ? (current.cpmState === "fixed" ? current.cpmFixedAt : new Date()) : null,
         publishedAt: current.publishedAt ?? (isPublished(f.status) ? new Date() : null),
@@ -572,7 +607,7 @@ function parsePlaces(raw: unknown): PlaceInput[] {
       share: parseMoney(o.share, "Доля канала"),
       views: parseViews(o.views),
       cpmState: parseCpmState(o.cpmState),
-      postUrl: parseUrl(o.postUrl, "Пост"),
+      postUrl: parsePostUrl(o.postUrl),
       sent: o,
     };
   });
@@ -670,6 +705,7 @@ function resolveShares(
       cpmState,
       cpmFixedAt: cpmState === "fixed" ? (old?.cpmState === "fixed" ? old.cpmFixedAt : new Date()) : null,
       postUrl: keep("postUrl", p.postUrl),
+      ...(old && keep("postUrl", p.postUrl) === old.postUrl ? {} : postColumns(keep("postUrl", p.postUrl))),
       publishedAt: old?.publishedAt ?? null,
     };
   });
@@ -771,7 +807,7 @@ async function inChunks<T, R>(items: T[], fn: (chunk: T[]) => Promise<R[]>): Pro
  * counting as the Campaigns tab: subscribers are distinct users with an entry
  * event, buyers distinct users with a payment, revenue payments plus renewals.
  */
-async function resultsFor(buys: Buy[]): Promise<Map<number, BuyResult>> {
+export async function resultsFor(buys: Buy[]): Promise<Map<number, BuyResult>> {
   const out = new Map<number, BuyResult>();
   const tracked = buys.filter((b) => (b.campaignId || b.utmLinkId) && isPublished(b.status));
   if (!tracked.length) return out;
@@ -907,6 +943,13 @@ export async function listDeals(filter: DealFilter) {
     historyFor("sale", sales.map((s) => s.id)),
   ]);
 
+  const now = new Date();
+  const checksOfBuy = (b: Buy) =>
+    deriveChecks(
+      { ...b, slot: b.slot as AdSlot, format: b.format as "1/24" | "1/48" },
+      now,
+      b.campaignId || b.utmLinkId ? (results.get(b.id)?.subs ?? 0) : null
+    );
   const buyRows = buys.map((b) => ({
     side: "buy" as const,
     id: `З-${b.id}`,
@@ -933,6 +976,11 @@ export async function listDeals(filter: DealFilter) {
     publishedAt: b.publishedAt,
     history: buyHist.get(b.id) ?? [],
     result: results.get(b.id) ?? null,
+    // last measured views while a CPM price still waits — the dashboard's estimate
+    viewsNow: b.cpmState === "wait" ? b.viewsSeen : null,
+    removedAt: b.removedAt,
+    checkedAt: b.checkedAt,
+    ...checksOfBuy(b),
   }));
 
   const saleRows = sales.flatMap((s) => {
@@ -960,6 +1008,15 @@ export async function listDeals(filter: DealFilter) {
       notes: s.notes ?? "",
       publishedAt: p.publishedAt,
       history: saleHist.get(s.id) ?? [],
+      viewsNow: p.cpmState === "wait" ? p.viewsSeen : null,
+      viewsSeen: p.viewsSeen,
+      removedAt: p.removedAt,
+      checkedAt: p.checkedAt,
+      ...deriveChecks(
+        { ...p, date: s.date, slot: s.slot as AdSlot, format: s.format as "1/24" | "1/48", status: s.status, priceMode: s.priceMode },
+        now,
+        null
+      ),
     }));
   });
 

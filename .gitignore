@@ -24,3 +24,8 @@ docker-compose.override.yml
 # Резервные копии .env — в них живые ключи
 .env.bak*
 .env.*.bak
+
+# Сессия аккаунта Telegram для проверки рекламных постов — ключ ко входу
+tg-session/
+*.session
+*.session-*

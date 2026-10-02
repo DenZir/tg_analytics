@@ -278,6 +278,18 @@ export const adBuys = sqliteTable(
     postUrl: text("post_url"),
     notes: text("notes"),
     publishedAt: integer("published_at", { mode: "timestamp" }), // actual time out
+    // --- what the post checker saw (jobs/adChecks.ts) ---
+    // The post itself: a channel username or a marked id ("-100…"), and the
+    // message number in it. Parsed from the post link when it is saved.
+    postChat: text("post_chat"),
+    postMessageId: integer("post_message_id"),
+    removedAt: integer("removed_at", { mode: "timestamp" }), // first check that found it gone
+    nextPostAt: integer("next_post_at", { mode: "timestamp" }), // the channel's next post — end of "top"
+    viewsSeen: integer("views_seen"), // last measured views
+    viewsAt: integer("views_at", { mode: "timestamp" }),
+    checkedAt: integer("checked_at", { mode: "timestamp" }),
+    checkError: text("check_error"), // why the last check could not look at the post
+    alerted: text("alerted"), // JSON array of warning codes already sent to the admins
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -336,11 +348,40 @@ export const adSalePlaces = sqliteTable(
     cpmFixedAt: integer("cpm_fixed_at", { mode: "timestamp" }),
     postUrl: text("post_url"),
     publishedAt: integer("published_at", { mode: "timestamp" }),
+    // --- what the post checker saw (jobs/adChecks.ts) ---
+    // The post itself: a channel username or a marked id ("-100…"), and the
+    // message number in it. Parsed from the post link when it is saved.
+    postChat: text("post_chat"),
+    postMessageId: integer("post_message_id"),
+    removedAt: integer("removed_at", { mode: "timestamp" }), // first check that found it gone
+    nextPostAt: integer("next_post_at", { mode: "timestamp" }), // the channel's next post — end of "top"
+    viewsSeen: integer("views_seen"), // last measured views
+    viewsAt: integer("views_at", { mode: "timestamp" }),
+    checkedAt: integer("checked_at", { mode: "timestamp" }),
+    checkError: text("check_error"), // why the last check could not look at the post
+    alerted: text("alerted"), // JSON array of warning codes already sent to the admins
   },
   (table) => [
     unique("ad_sale_places_sale_project_unique").on(table.saleId, table.projectId),
     index("ad_sale_places_project_idx").on(table.projectId),
   ]
+);
+
+// Every measurement of an ad post: the proof behind a CPM amount ("12 480 views
+// at 16:58") and the trail that shows when a post disappeared.
+export const adPostSnapshots = sqliteTable(
+  "ad_post_snapshots",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    target: text("target").notNull(), // buy | place (ad_sale_places row)
+    targetId: integer("target_id").notNull(),
+    at: integer("at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    present: integer("present", { mode: "boolean" }).notNull(),
+    views: integer("views"),
+  },
+  (table) => [index("ad_post_snapshots_target_idx").on(table.target, table.targetId, table.at)]
 );
 
 export const adStatusHistory = sqliteTable(

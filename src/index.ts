@@ -2,6 +2,7 @@ import { startServer } from "./server.js";
 import "./jobs/dailyAggregate.js";
 import "./jobs/backup.js";
 import "./jobs/purgeTrash.js";
+import "./jobs/adChecks.js";
 import { startChannelBot } from "./bots/channelBot.js";
 
 startServer();
