@@ -52,6 +52,24 @@ const ST = {
   cancel: { l: 'Отменён', c: '#5A6478' },
 };
 const ST_ORDER = ['plan', 'agreed', 'live', 'done', 'cancel'];
+
+// Вид закупа. Приветка — моя ссылка в приветствии у админа, заявки — ссылка
+// с одобрением. У обоих нет места и поста: идут, пока не остановишь, цена —
+// за штуку (подписчика / поданную заявку), к оплате фиксируется при остановке.
+const KIND = {
+  post: { l: 'Пост' },
+  welcome: { l: 'Приветка', per: 'подписчика', forms: ['подписчик', 'подписчика', 'подписчиков'] },
+  requests: { l: 'Заявки', per: 'заявку', forms: ['заявка', 'заявки', 'заявок'] },
+};
+const isUnit = d => d.kind === 'welcome' || d.kind === 'requests';
+// к оплате — замороженное при остановке, пока идёт — сколько набежало
+const unitsOf = d => d.units ?? d.unitsNow ?? 0;
+// сетки, день, матрица и занятость — про места в ленте; приветке и заявкам там не место
+const slotted = list => list.filter(d => !isUnit(d));
+// «Утро» для поста, «Приветка» / «Заявки» для остальных
+const placeLbl = d => (isUnit(d) ? KIND[d.kind].l : SLOT[d.slot].l);
+const UNIT_ST = { live: 'Идёт', done: 'Остановлен' };
+const stOf = d => (isUnit(d) && UNIT_ST[d.status] ? `<span class="st st-${d.status}">${UNIT_ST[d.status]}</span>` : stChip(d.status));
 const isPub = s => s === 'live' || s === 'done';
 const isFut = s => s === 'plan' || s === 'agreed';
 
@@ -91,6 +109,8 @@ const NB = ' ';
 const int = n => (n == null ? '—' : Math.round(n).toLocaleString('ru-RU'));
 const rub = n => (n == null ? '—' : `${int(n)}${NB}₽`);
 const rub1 = n => (n == null ? '—' : `${n.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}${NB}₽`);
+// цена за штуку бывает с копейками: 5,5 ₽ за подписчика
+const rubU = n => (n == null ? '—' : `${n.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}${NB}₽`);
 const signed = (v, s) => (v > 0 ? '+' : v < 0 ? '−' : '') + s;
 const pct = (v, d = 0) => {
   if (v == null) return '—';
@@ -155,6 +175,8 @@ const normDeal = d => ({
   publishedAt: toDate(d.publishedAt),
   history: (d.history || []).map(h => ({ st: h.st, at: new Date(h.at) })),
   removedAt: toDate(d.removedAt),
+  stoppedAt: toDate(d.stoppedAt),
+  kind: d.kind || 'post',
   // проверки поста считает сервер (jobs/adChecks.ts), здесь только показываем
   warns: d.warns || [],
   checks: d.checks || null,
@@ -183,6 +205,7 @@ const findDeal = id => (id ? DEALS.find(d => d.id === id) || DEALS.find(d => d.p
 // ================= ЕДИНЫЕ ФОРМУЛЫ =================
 function amountOf(d) {
   if (d.pm === 'fix') return d.price ?? null;
+  if (d.pm === 'unit') return d.units != null && d.unitPrice != null ? Math.round(d.unitPrice * d.units) : null;
   if (d.cpmState === 'fixed' || d.cpmState === 'failed') return d.views != null ? Math.round(d.rate * d.views / 1000) : null;
   return null;
 }
@@ -194,7 +217,8 @@ function aggBuy(list) {
   for (const d of list) {
     if (d.status === 'cancel') continue;
     a.count++;
-    const amt = amountOf(d);
+    // приветка и заявки: пока идут — потрачено столько, сколько набежало
+    const amt = amountOf(d) ?? (isUnit(d) && d.unitPrice != null ? Math.round(d.unitPrice * unitsOf(d)) : null);
     if (isPub(d.status)) {
       a.pubCount++;
       if (amt == null) a.pendingCpm++;
@@ -340,7 +364,9 @@ const channelIds = () => pickedIds().filter(id => PJ[id].sell);
 const sideIds = () => (state.mode === 'buy' ? scopeIds() : channelIds());
 function dealsIn(from, to, ids = sideIds()) {
   const f = iso(from), t = iso(to);
-  return DEALS.filter(d => d.side === state.mode && ids.includes(d.project) && d.date >= f && d.date <= t);
+  // приветка и заявки видны во всех периодах, где они шли
+  const inRange = d => (isUnit(d) ? d.date <= t && (!d.stoppedAt || iso(d.stoppedAt) >= f) : d.date >= f && d.date <= t);
+  return DEALS.filter(d => d.side === state.mode && ids.includes(d.project) && inRange(d));
 }
 const agg = list => (state.mode === 'buy' ? aggBuy(list) : aggSell(list));
 
@@ -369,6 +395,12 @@ const ICON = {
 };
 const priceHTML = d => {
   const amt = amountOf(d);
+  if (isUnit(d)) {
+    const k = KIND[d.kind], n = unitsOf(d);
+    return amt != null
+      ? `<div class="price-main">${rub(amt)}</div><div class="price-sub">${int(n)} × ${rubU(d.unitPrice)}</div>`
+      : `<div class="price-main price-q">${rubU(d.unitPrice)} за ${k.per}</div><div class="price-sub">набежало ${rub(Math.round(d.unitPrice * n))} · ${int(n)} ${plural(n, ...k.forms)}</div>`;
+  }
   if (d.pm === 'fix') return `<div class="price-main">${rub(d.price)}</div>`;
   if (amt == null) return `<div class="price-main price-q">CPM ${int(d.rate)}${NB}₽</div><div class="price-sub">сумма после фиксации</div>`;
   if (d.cpmState === 'failed') return `<div class="price-main price-q">≈${NB}${rub(amt)}</div><div class="price-sub">CPM ${int(d.rate)} · оценка</div>`;
@@ -450,7 +482,7 @@ function renderKpis(r, list) {
 }
 
 function occupancy(days, list) {
-  const used = new Set(list.filter(d => d.status !== 'cancel').map(d => `${d.date}|${d.slot}`));
+  const used = new Set(slotted(list).filter(d => d.status !== 'cancel').map(d => `${d.date}|${d.slot}`));
   return { used: used.size, total: days.length * SLOTS.length };
 }
 
@@ -495,19 +527,22 @@ function renderList(list) {
     const day = parseIso(d.date);
     const mand = !buy && PJ[d.project].mandatory.includes(d.slot);
     const one = buy ? aggBuy([d]) : aggSell([d]);
-    const why = isPub(d.status) ? 'результат ещё копится' : d.status === 'cancel' ? 'отменён' : 'пост ещё не вышел';
+    const why = isPub(d.status) ? 'результат ещё копится' : isUnit(d) && d.status !== 'cancel' ? 'ещё не начат' : d.status === 'cancel' ? 'отменён' : 'пост ещё не вышел';
     const m = (label, v, cls = '') => `<td class="num c-m ${cls} ${v === '—' ? 'empty-m' : ''}" data-label="${label}"${v === '—' ? ` title="${why}"` : ''}>${v === '—' ? `<span class="dash-v">—</span>` : v}</td>`;
     const metrics = buy
       ? m('Подп.', one.resCount ? int(one.subs) : '—') + m('₽ за подп.', rub1(one.cps), cpsCls(one.cps)) + m('ROI', pct(one.roi), roiCls(one.roi))
       : m('Просмотры', isPub(d.status) && viewsOf(d) != null ? int(viewsOf(d)) : '—');
     return `<tr class="${d.status === 'cancel' ? 'is-cancel' : ''}" data-act="open" data-id="${d.id}">
       <th scope="row" class="c-date"><button class="row-btn" type="button" data-act="open" data-id="${d.id}" aria-label="Открыть ${buy ? 'закуп' : 'продажу'} ${d.id}"><b>${dm(day)}</b><span>${DOW[day.getDay()]}</span></button></th>
-      <td class="c-slot"><span class="chip slot">${SLOT[d.slot].l}${mand ? ' <span class="req" title="обязательное место">*</span>' : ''}</span><span class="chip fmt fmt-m">${d.format}</span></td>
-      <td class="c-fmt"><span class="chip fmt">${d.format}</span></td>
+      ${isUnit(d)
+        ? `<td class="c-slot"><span class="chip slot kind-${d.kind}">${KIND[d.kind].l}</span></td>
+      <td class="c-fmt"><span class="dash-v">—</span></td>`
+        : `<td class="c-slot"><span class="chip slot">${SLOT[d.slot].l}${mand ? ' <span class="req" title="обязательное место">*</span>' : ''}</span><span class="chip fmt fmt-m">${d.format}</span></td>
+      <td class="c-fmt"><span class="chip fmt">${d.format}</span></td>`}
       <td class="c-proj"><span class="c-prj">${ava(d.project)}<span class="nm">${esc(PJ[d.project].name)}</span></span></td>
       <td class="c-venue"><button class="adm-ops" type="button" data-act="ops" data-adm="${contactOf(d)}" aria-label="Все операции с ${esc(admLabel(contactOf(d)))}">${admHTML(contactOf(d))}</button>${buy ? '' : pkgBadge(d)}</td>
       <td class="num c-price">${priceHTML(d)}${!buy && pkgSize(d) > 1 ? `<div class="price-sub">доля · пакет ×${pkgSize(d)}${d.pm === 'fix' ? ` на ${rub(pkgOf(d).reduce((s, x) => s + (x.price || 0), 0))}` : ''}</div>` : ''}</td>
-      <td class="c-st">${stChip(d.status)}</td>
+      <td class="c-st">${stOf(d)}</td>
       ${metrics}
       <td class="c-warn"><span class="wcell">${warnIcons(d)}</span></td>
     </tr>`;
@@ -528,6 +563,7 @@ function renderList(list) {
 
 // ================= ВИД: СЕТКА =================
 function renderGrid(r, list) {
+  list = slotted(list);
   const useWeek = state.period === 'week' || (state.period === 'custom' && r.days.length <= 7);
   const buy = state.mode === 'buy';
   let ch = null, chPick = '';
@@ -736,6 +772,7 @@ function renderMonth(r, list, ch, chPick) {
 // Слева календарь месяца с итогом по проектам в каждом дне, справа выбранный
 // день: проекты × места. Всё за один день — и итоги наверху тоже.
 function renderDay(r, list) {
+  list = slotted(list);
   const buy = state.mode === 'buy';
   const ids = sideIds();
   const sel = iso(state.day), todayIso = iso(TODAY);
@@ -829,10 +866,10 @@ function setDay(d) { state.day = d; state.calMonth = new Date(d.getFullYear(), d
 // ================= ВИД: СВОДКА =================
 const DIMS = {
   project: { l: 'Проект', sl: 'Мой канал', key: d => d.project, label: k => PJ[k].name, order: k => k },
-  slot: { l: 'Место', key: d => d.slot, label: k => SLOT[k].l, order: k => SLOT[k].i },
+  slot: { l: 'Место', key: d => (isUnit(d) ? d.kind : d.slot), label: k => SLOT[k]?.l ?? KIND[k].l, order: k => SLOT[k]?.i ?? (k === 'welcome' ? 90 : 91) },
   week: { l: 'Неделя', key: d => iso(mondayOf(parseIso(d.date))), label: k => weekLabel(k), order: k => k },
   day: { l: 'День', key: d => d.date, label: k => { const x = parseIso(k); return `${DOW[x.getDay()]}, ${dm(x)}`; }, order: k => k },
-  format: { l: 'Формат', key: d => d.format, label: k => k, order: k => k },
+  format: { l: 'Формат', key: d => (isUnit(d) ? '—' : d.format), label: k => k, order: k => k },
   admin: { l: 'Админ', buyOnly: true, key: d => d.admin, label: k => admLabel(k), order: k => ADMINS[k]?.name || k },
   creative: { l: 'Креатив', buyOnly: true, key: d => d.creative || 'без креатива', label: k => k, order: k => k },
   buyer: { l: 'Покупатель', sellOnly: true, key: d => d.buyer, label: k => admLabel(k), order: k => ADMINS[k]?.name || k },
@@ -951,6 +988,7 @@ const mix = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
 const tri = t => (t < .5 ? mix(GREEN, AMBER, t * 2) : mix(AMBER, RED, (t - .5) * 2));
 
 function renderMatrix(r, list) {
+  list = slotted(list);
   const buy = state.mode === 'buy';
   const metric = MX_METRICS[state.mode].find(m => m.k === state.mx[state.mode]) || MX_METRICS[state.mode][0];
   if (state.mx.rows === 'admin' && !buy) state.mx.rows = 'project';
@@ -1112,7 +1150,7 @@ function openDeal(id, prefill = {}) {
   const ids = buy ? scopeIds() : channelIds();
   const d = src ? structuredClone(src) : {
     side: buy ? 'buy' : 'sell', project: Number(prefill.proj) || ids[0] || 1, date: prefill.date || iso(addDays(TODAY, 1)), slot: prefill.slot || 'evening',
-    format: '1/24', status: 'plan', pm: 'fix', price: null, rate: null, admin: null, buyer: '', creative: '', track: '', post: '', notes: '', warns: [], history: [], result: null, checks: null,
+    format: '1/24', status: 'plan', pm: 'fix', price: null, rate: null, kind: 'post', unitPrice: null, units: null, admin: null, buyer: '', creative: '', track: '', post: '', notes: '', warns: [], history: [], result: null, checks: null,
   };
   editing = { src, d };
   const isNew = !src;
@@ -1145,9 +1183,9 @@ function openDeal(id, prefill = {}) {
   const stat = (l, v) => `<div class="mstat"><b class="${v === '—' ? 'dash-v' : ''}">${v}</b><span>${l}</span></div>`;
   const amtNow = amountOf(d);
   const result = buy
-    ? `<div class="mstats">${stat('Потрачено', pub && amtNow != null ? rub(amtNow) : '—')}${stat('Охват', pub && views != null ? int(views) : '—')}${stat('CPM', rub1(one.cpm))}${stat('Подписчиков', one.resCount ? int(one.subs) : '—')}${stat('₽ за подписчика', rub1(one.cps))}${stat('Удержание', one.retention != null ? `${Math.round(one.retention * 100)}%` : '—')}${stat('Покупок', one.resCount ? int(one.buyers) : '—')}${stat('₽ за покупателя', rub1(one.cpb))}${stat('Выручка', one.resCount ? rub(one.revenue) : '—')}${stat('ROI', pct(one.roi))}</div>`
+    ? `<div class="mstats">${isUnit(d) ? unitStats(d, stat) : `${stat('Потрачено', pub && amtNow != null ? rub(amtNow) : '—')}${stat('Охват', pub && views != null ? int(views) : '—')}${stat('CPM', rub1(one.cpm))}`}${stat('Подписчиков', one.resCount ? int(one.subs) : '—')}${stat('₽ за подписчика', rub1(one.cps))}${stat('Удержание', one.retention != null ? `${Math.round(one.retention * 100)}%` : '—')}${stat('Покупок', one.resCount ? int(one.buyers) : '—')}${stat('₽ за покупателя', rub1(one.cpb))}${stat('Выручка', one.resCount ? rub(one.revenue) : '—')}${stat('ROI', pct(one.roi))}</div>`
     : `<div class="mstats" style="grid-template-columns:repeat(3,minmax(0,1fr))">${stat('Сумма', pub && amtNow != null ? rub(amtNow) : '—')}${stat('Просмотры', pub && views != null ? int(views) : '—')}${stat('Фактический CPM', rub1(one.factCpm))}</div>`;
-  const resNote = !pub ? 'Пост ещё не вышел — вместо цифр прочерки, а не нули.' : buy && !d.track ? 'У закупа нет ссылки для отслеживания — подписчиков и покупки не к чему привязать.' : buy && !one.resCount ? 'Пост вышел, результат ещё копится: подписчики и покупки появятся в течение суток.' : buy ? 'Подписчики и покупки — люди, пришедшие по ссылке для отслеживания этого закупа.' : '';
+  const resNote = isUnit(d) ? unitNote(d) : !pub ? 'Пост ещё не вышел — вместо цифр прочерки, а не нули.' : buy && !d.track ? 'У закупа нет ссылки для отслеживания — подписчиков и покупки не к чему привязать.' : buy && !one.resCount ? 'Пост вышел, результат ещё копится: подписчики и покупки появятся в течение суток.' : buy ? 'Подписчики и покупки — люди, пришедшие по ссылке для отслеживания этого закупа.' : '';
 
   // Проверки — только когда пост вышел
   let checks = '';
@@ -1166,7 +1204,7 @@ function openDeal(id, prefill = {}) {
     <div class="m-head"><div>
       <div class="m-eyebrow">${isNew ? `новый ${buy ? 'закуп' : 'продажа'}`.replace('новый продажа', 'новая продажа') : `${what} · ${d.id} · ${dmy(parseIso(d.date))}`}</div>
       <h2 id="dealTitle">${isNew ? (buy ? 'Новый закуп' : 'Новая продажа') : esc(buy ? admLabel(d.admin) : d.buyer)}</h2>
-      ${isNew ? '' : `<div class="m-chips">${stChip(d.status)}<span class="chip slot">${SLOT[d.slot].l}</span><span class="chip fmt">${d.format}</span><span class="chip neutral">${ava(d.project, 'sm')}${esc(PJ[d.project].name)}</span>${warnIcons(d)}</div>`}
+      ${isNew ? '' : `<div class="m-chips">${stOf(d)}${isUnit(d) ? `<span class="chip slot">${KIND[d.kind].l}</span>` : `<span class="chip slot">${SLOT[d.slot].l}</span><span class="chip fmt">${d.format}</span>`}<span class="chip neutral">${ava(d.project, 'sm')}${esc(PJ[d.project].name)}</span>${warnIcons(d)}</div>`}
     </div><button class="x-btn" type="button" data-close aria-label="Закрыть">${ICON.x}</button></div>
     <div class="m-body">
       ${d.warns.length ? `<div class="m-sec"><div class="wbox"><ul class="wlist" style="border:0">${d.warns.map(w => `<li><div class="witem"><span class="wtag ${w.sev}">${w.sev === 'high' ? 'высокая' : 'средняя'}</span><span class="wtext">${warnText(d, w)}</span></div></li>`).join('')}</ul></div></div>` : ''}
@@ -1174,12 +1212,15 @@ function openDeal(id, prefill = {}) {
       <div class="fgrid">
         <div class="fld"><label for="fProj">${buy ? 'Проект — куда ведём' : 'Мой канал'}</label><select class="inp" id="fProj" name="project" required ${isNew ? '' : 'disabled'}>${projOpts}</select>${isNew ? '' : '<div class="hint">Не меняется: ссылка закупа уже выпущена для этого проекта</div>'}</div>
         ${contactField('У кого купил — админ', d.admin)}
-        <div class="fld"><label for="fDate">Дата выхода — план</label><input class="inp mono" type="date" id="fDate" name="date" required value="${d.date}"></div>
-        <div class="fld"><label for="fFact">Дата выхода — факт</label><input class="inp mono" id="fFact" readonly value="${factLabel(d)}" placeholder="заполнится, когда пост выйдет"><div class="hint">По отметке «Вышел»; точное время выхода будет ставить бот постинга</div></div>
-        <div class="fld wide"><span class="flbl" id="slotLbl">Место</span><div class="slot-pick" role="radiogroup" aria-labelledby="slotLbl">${slotPick}</div>${buy ? '' : '<div class="hint">* — обязательное место этого канала</div>'}</div>
-        <div class="fld"><span class="flbl" id="fmtLbl">Формат</span><div class="slot-pick" role="radiogroup" aria-labelledby="fmtLbl">${['1/24', '1/48'].map(f => `<label><input type="radio" name="format" value="${f}" ${f === d.format ? 'checked' : ''}>${f}</label>`).join('')}</div><div class="hint">1/24 — час в топе, сутки в ленте; 1/48 — двое суток</div></div>
+        ${isNew ? `<div class="fld wide"><span class="flbl" id="kindLbl">Вид закупа</span><div class="slot-pick" role="radiogroup" aria-labelledby="kindLbl">${Object.entries(KIND).map(([k, v]) => `<label><input type="radio" name="kind" value="${k}" ${k === d.kind ? 'checked' : ''}>${v.l}</label>`).join('')}</div><div class="hint" id="kindHint"></div></div>` : `<input type="hidden" name="kind" value="${d.kind}">`}
+        <div class="fld"><label for="fDate" id="fDateLbl">Дата выхода — план</label><input class="inp mono" type="date" id="fDate" name="date" required value="${d.date}"></div>
+        <div class="fld" data-only="post"><label for="fFact">Дата выхода — факт</label><input class="inp mono" id="fFact" readonly value="${factLabel(d)}" placeholder="заполнится, когда пост выйдет"><div class="hint">По отметке «Вышел»; точное время выхода будет ставить бот постинга</div></div>
+        <div class="fld wide" data-only="post"><span class="flbl" id="slotLbl">Место</span><div class="slot-pick" role="radiogroup" aria-labelledby="slotLbl">${slotPick}</div>${buy ? '' : '<div class="hint">* — обязательное место этого канала</div>'}</div>
+        <div class="fld" data-only="post"><span class="flbl" id="fmtLbl">Формат</span><div class="slot-pick" role="radiogroup" aria-labelledby="fmtLbl">${['1/24', '1/48'].map(f => `<label><input type="radio" name="format" value="${f}" ${f === d.format ? 'checked' : ''}>${f}</label>`).join('')}</div><div class="hint">1/24 — час в топе, сутки в ленте; 1/48 — двое суток</div></div>
         <div class="fld"><label for="fSt">Статус</label><select class="inp" id="fSt" name="status">${ST_ORDER.map(s => `<option value="${s}" ${s === d.status ? 'selected' : ''}>${ST[s].l}</option>`).join('')}</select></div>
-        <div class="fld wide"><span class="flbl" id="pmLbl">Цена</span>
+        <div class="fld" data-only="unit"><label for="fUnit" id="fUnitLbl">Цена за штуку, ₽</label><input class="inp mono" type="number" id="fUnit" name="unitPrice" min="0.01" step="0.01" inputmode="decimal" required value="${d.unitPrice ?? ''}"><div class="hint">${d.stoppedAt ? 'К оплате — цена × количество рядом' : 'К оплате — цена × количество на момент остановки'}</div></div>
+        ${d.stoppedAt ? `<div class="fld" data-only="unit"><label for="fUnits">К оплате, штук</label><input class="inp mono" type="number" id="fUnits" name="units" min="0" step="1" inputmode="numeric" required value="${d.units ?? ''}"><div class="hint">Посчитано при остановке ${dm(d.stoppedAt)} в ${hmOf(d.stoppedAt)}; разойдётся с админом — поправьте</div></div>` : ''}
+        <div class="fld wide" data-only="post"><span class="flbl" id="pmLbl">Цена</span>
           <div class="frow" style="align-items:flex-start">
             <div class="slot-pick" role="radiogroup" aria-labelledby="pmLbl" style="flex:none">${[['fix', 'Фикс'], ['cpm', 'CPM']].map(([v, l]) => `<label><input type="radio" name="pm" value="${v}" ${v === d.pm ? 'checked' : ''}>${l}</label>`).join('')}</div>
             <div id="pmFix" ${d.pm === 'fix' ? '' : 'hidden'}><label class="sr-only" for="fPrice">Сумма, ₽</label><input class="inp mono" type="number" id="fPrice" name="price" min="1" step="1" inputmode="numeric" placeholder="Сумма, ₽" value="${d.price ?? ''}" ${d.pm === 'fix' ? 'required' : ''}></div>
@@ -1187,23 +1228,64 @@ function openDeal(id, prefill = {}) {
           </div></div>
         ${buy ? `<div class="fld"><label for="fCr">Креатив</label><input class="inp" id="fCr" name="creative" value="${esc(d.creative)}" placeholder="Какой пост ушёл"></div>
         <div class="fld"><label for="fTr">Ссылка для отслеживания</label><input class="inp mono" id="fTr" name="track" value="${esc(d.track)}" placeholder="${isNew ? 'пусто — создам сам' : 't.me/+… или t.me/бот?start=…'}" autocapitalize="off" spellcheck="false"><div class="hint">${isNew ? 'Оставьте пустым — ссылка создастся сама; или вставьте готовую' : d.track ? '<button class="adm-link" type="button" data-act="copy-track">Скопировать</button> · другая ссылка — вставьте её сюда' : `Ссылки нет — вставьте готовую${canMint || !PJ[d.project].channel ? ' или <button class="adm-link" type="button" data-act="mint">создайте</button>' : ''}`}</div></div>` : ''}
-        <div class="fld ${buy ? '' : 'wide'}"><label for="fPost">Ссылка на ${buy ? 'рекламный ' : ''}пост</label><input class="inp mono" id="fPost" name="post" value="${esc(d.post)}" placeholder="${d.post ? 'https://t.me/канал/123' : 'пусто, пока пост не вышел'}" autocapitalize="off" spellcheck="false">${buy ? `<div class="hint">${d.post
+        <div class="fld ${buy ? '' : 'wide'}" data-only="post"><label for="fPost">Ссылка на ${buy ? 'рекламный ' : ''}пост</label><input class="inp mono" id="fPost" name="post" value="${esc(d.post)}" placeholder="${d.post ? 'https://t.me/канал/123' : 'пусто, пока пост не вышел'}" autocapitalize="off" spellcheck="false">${buy ? `<div class="hint">${d.post
           ? (checker.enabled ? 'По ней проверка следит за постом: выход, просмотры, час в топе, срок' : 'Проверка постов выключена — ссылка пока только для справки')
           : `Место только забронировано — оставьте пустым. Когда пост выйдет, вставьте ссылку вида t.me/канал/123${checker.enabled ? ': проверка сама отметит выход, просмотры, час в топе и срок' : ''}`}</div>` : ''}</div>
-        ${buy ? `<div class="fld"><label for="fReach">Охват</label><input class="inp mono" id="fReach" readonly value="${pub && views != null ? `${int(views)} просмотров` : ''}" placeholder="замеряется автоматически"></div>` : ''}
+        ${buy ? `<div class="fld" data-only="post"><label for="fReach">Охват</label><input class="inp mono" id="fReach" readonly value="${pub && views != null ? `${int(views)} просмотров` : ''}" placeholder="замеряется автоматически"></div>` : ''}
         <div class="fld wide"><label for="fNotes">Заметки</label><textarea class="inp" id="fNotes" name="notes" placeholder="Договорённости, контакты, что учесть">${esc(d.notes)}</textarea></div>
       </div></div>
       ${!isNew ? `<div class="m-sec" id="trackSec"><div class="m-sec-h"><span class="card-idx">отслежка</span><h3>Отслежка для админа</h3></div>${trackBotName
-        ? `<p class="mnote" style="margin-top:0">Ссылка на бота @${esc(trackBotName)}: админ увидит, сколько пришло, ушло и осталось по вашей ссылке и почём подписчик. Карточка у него обновляется сама, а по окончании срока придёт итог. Выручка и ROI ему не видны.</p><div class="track-box" id="trackBox">${d.adminTrack ? trackBoxHTML(trackUrl(d.adminTrack.token), d.adminTrack.views) : '<button class="btn" type="button" data-act="track">Получить ссылку на отслежку</button>'}</div>`
+        ? `<p class="mnote" style="margin-top:0">Ссылка на бота @${esc(trackBotName)}: админ увидит, сколько пришло, ушло и осталось по вашей ссылке и почём подписчик. Карточка у него обновляется сама, а ${isUnit(d) ? 'после остановки' : 'по окончании срока'} придёт итог. Выручка и ROI ему не видны.</p><div class="track-box" id="trackBox">${d.adminTrack ? trackBoxHTML(trackUrl(d.adminTrack.token), d.adminTrack.views) : '<button class="btn" type="button" data-act="track">Получить ссылку на отслежку</button>'}</div>`
         : '<p class="mnote" style="margin-top:0">Бот отслежки не подключён — задайте TRACK_BOT_TOKEN в .env аналитики.</p>'}</div>` : ''}
       ${cpm}
       <div class="m-sec"><div class="m-sec-h"><span class="card-idx">${buy ? '03' : '02'} / результат</span><h3>Показатели</h3></div>${result}${resNote ? `<p class="mnote">${resNote}</p>` : ''}</div>
       ${checks}${hist}
     </div>
-    <div class="m-foot">${isNew ? '' : `<button class="btn btn-ghost-danger" type="button" data-act="del">Удалить</button>`}<span class="sp"></span><button class="btn" type="button" data-close>Отмена</button><button class="btn btn-primary" type="submit">${isNew ? 'Добавить' : 'Сохранить'}</button></div>`;
-  updateCalc();
+    <div class="m-foot">${isNew ? '' : `<button class="btn btn-ghost-danger" type="button" data-act="del">Удалить</button>`}<span class="sp"></span>${!isNew && isUnit(d) && !d.stoppedAt && d.status !== 'cancel' ? '<button class="btn" type="button" data-act="stop">Остановить</button>' : ''}<button class="btn" type="button" data-close>Отмена</button><button class="btn btn-primary" type="submit">${isNew ? 'Добавить' : 'Сохранить'}</button></div>`;
+  updateKind();
   $('#dealDlg').showModal();
   if (buy) admHint();
+}
+
+// Приветка и заявки: свои показатели вместо охвата и CPM
+function unitStats(d, stat) {
+  const n = unitsOf(d), req = d.kind === 'requests';
+  return stat('Потрачено', d.unitPrice != null ? rub(amountOf(d) ?? Math.round(d.unitPrice * n)) : '—')
+    + stat(req ? 'Заявок' : 'К оплате, шт.', int(n))
+    + (req ? stat('Принято', d.result?.requests ? `${Math.round((d.result.subs || 0) / d.result.requests * 100)}%` : '—') : stat('Цена за шт.', d.unitPrice != null ? rubU(d.unitPrice) : '—'));
+}
+function unitNote(d) {
+  const run = d.stoppedAt ? '' : ' Идёт: к оплате зафиксируется при остановке.';
+  return d.kind === 'requests'
+    ? `Заявки — поданные по ссылке, подписчики — кого из них приняли. Платите за заявки; принятые, покупки и выручка — для оценки.${run}`
+    : `Подписчики — пришедшие по ссылке из приветствия, за них и платите.${run}`;
+}
+
+const KIND_HINT = {
+  post: 'Пост в ленте: место, формат, проверка выхода и срока',
+  welcome: 'Ссылка в приветствии у админа — платите за каждого пришедшего, пока не остановите',
+  requests: 'Ссылка с одобрением — платите за каждую поданную заявку, принимаете вы её или нет. Только для канала',
+};
+// Пост ↔ приветка/заявки: свои поля показать, чужие спрятать и выключить
+function updateKind() {
+  const f = $('#dealForm'); if (!f || !editing || editing.kind === 'sale' || !f.elements.kind) return;
+  const kind = f.elements.kind.value || 'post', unit = kind !== 'post';
+  for (const el of f.querySelectorAll('[data-only]')) {
+    const on = el.dataset.only === (unit ? 'unit' : 'post');
+    el.hidden = !on;
+    for (const i of el.querySelectorAll('input,select,textarea')) i.disabled = !on;
+  }
+  if (!unit) updateCalc();
+  const sec = $('#cpmSec'); if (sec && unit) sec.hidden = true;
+  if (unit) $('#fUnitLbl').textContent = `Цена за ${KIND[kind].per}, ₽`;
+  $('#fDateLbl').textContent = unit ? 'Дата начала' : 'Дата выхода — план';
+  const hint = $('#kindHint'); if (hint) hint.textContent = KIND_HINT[kind];
+  const st = f.elements.status;
+  for (const o of st.options) o.textContent = (unit && UNIT_ST[o.value]) || ST[o.value].l;
+  // новая приветка или заявки обычно уже идут — ссылку отдали
+  if (unit && !editing.src && st.value === 'plan') st.value = 'live';
+  // …и начались сегодня, а не завтра, как место под пост
+  if (unit && !editing.src && f.elements.date.value === iso(addDays(TODAY, 1))) f.elements.date.value = iso(TODAY);
 }
 
 // Факт выхода — момент отметки «Вышел». Отмеченное задним числом (уже после
@@ -1229,7 +1311,7 @@ function updateCalc() {
     : `сумма станет известна после фиксации${v ? '' : ' просмотров'}`;
 }
 $('#dealForm').addEventListener('input', e => { if (e.target.name === 'pm' || e.target.name === 'rate' || e.target.name === 'views') updateCalc(); });
-$('#dealForm').addEventListener('change', e => { if (e.target.name === 'pm') updateCalc(); });
+$('#dealForm').addEventListener('change', e => { if (e.target.name === 'pm') updateCalc(); if (e.target.name === 'kind') updateKind(); });
 
 
 // ================= ПРОДАЖА: ПАКЕТ ПО КАНАЛАМ =================
@@ -1474,7 +1556,8 @@ function opsList(id, period) {
   const one = (ps, dir) => {
     const amts = ps.map(amountOf);
     return { dir, date: ps[0].date, slot: ps[0].slot, where: ps.map(x => x.project), amount: amts.some(v => v == null) ? null : amts.reduce((a, b) => a + b, 0),
-      pm: ps[0].pm, rate: ps[0].rate, status: ps[0].status, id: ps[0].pkg ?? ps[0].id, est: ps.some(x => x.cpmState === 'failed') };
+      pm: ps[0].pm, rate: ps[0].rate, status: ps[0].status, id: ps[0].pkg ?? ps[0].id, est: ps.some(x => x.cpmState === 'failed'),
+      kind: ps[0].kind, unitPrice: ps[0].unitPrice, unitsNow: ps[0].unitsNow };
   };
   const closed = settledIds(id);
   return [...mine.filter(x => x.side === 'buy').map(d => one([d], 'in')), ...[...pk.values()].map(ps => one(ps, 'out'))]
@@ -1518,16 +1601,17 @@ function renderOps() {
   // без склонения имён: «у Кот» звучит криво, а угадывать падеж нельзя
   const dirLbl = o => (o.dir === 'in' ? 'я купил' : 'купили у меня');
   const whereLbl = o => o.where.map(p => esc(PJ[p].mono)).join(' + ');
-  const amtLbl = o => (o.amount == null ? `<span class="price-q">CPM ${int(o.rate)} ₽</span><span class="price-sub"> после фиксации</span>` : `${o.est ? '≈ ' : ''}${rub(o.amount)}`);
+  const amtLbl = o => (o.amount == null && isUnit(o) ? `<span class="price-q">≈ ${rub(Math.round((o.unitPrice || 0) * (o.unitsNow || 0)))}</span><span class="price-sub"> идёт, к оплате при остановке</span>`
+    : o.amount == null ? `<span class="price-q">CPM ${int(o.rate)} ₽</span><span class="price-sub"> после фиксации</span>` : `${o.est ? '≈ ' : ''}${rub(o.amount)}`);
   const rowsHTML = state.narrow
     ? `<ul class="ops-m">${ops.map(o => `<li><button class="ops-it ${isOpen(o) ? '' : 'muted'}" type="button" data-act="open" data-id="${o.id}">
-        <span class="ops-l1"><b class="mono">${dm(parseIso(o.date))}</b> · ${SLOT[o.slot].l} · ${whereLbl(o)}<span class="ops-amt mono">${amtLbl(o)}</span></span>
+        <span class="ops-l1"><b class="mono">${dm(parseIso(o.date))}</b> · ${placeLbl(o)} · ${whereLbl(o)}<span class="ops-amt mono">${amtLbl(o)}</span></span>
         <span class="ops-l2"><span class="op-dir ${o.dir}">${dirLbl(o)}</span><span>${o.settled ? '<span class="chip neutral">закрыто</span> ' : ''}${stChip(o.status)}</span></span></button></li>`).join('')}</ul>`
     : `<div class="tbl-wrap" style="padding:0;max-block-size:46vh"><table class="tbl list ops-tbl"><caption class="sr-only">Операции с ${name}</caption>
         <thead><tr><th scope="col">Дата</th><th scope="col">Кто кому</th><th scope="col">Где</th><th scope="col">Место</th><th scope="col" class="num">Сумма</th><th scope="col">Статус</th></tr></thead>
         <tbody>${ops.map(o => `<tr class="${isOpen(o) ? '' : 'is-plan'}" data-act="open" data-id="${o.id}">
           <th scope="row"><button class="row-btn mono" type="button" data-act="open" data-id="${o.id}">${dm(parseIso(o.date))}</button></th>
-          <td><span class="op-dir ${o.dir}">${dirLbl(o)}</span></td><td>${whereLbl(o)}</td><td>${SLOT[o.slot].l}</td>
+          <td><span class="op-dir ${o.dir}">${dirLbl(o)}</span></td><td>${whereLbl(o)}</td><td>${placeLbl(o)}</td>
           <td class="num">${amtLbl(o)}</td><td>${stChip(o.status)}${o.settled ? ' <span class="chip neutral">закрыто</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`;
   $('#opsDlg').innerHTML = `
     <div class="m-head"><div><div class="m-eyebrow">все операции с контактом</div><h2 id="opsTitle">${esc(admLabel(id))}</h2>
@@ -1554,7 +1638,7 @@ function opsText() {
   const ops = opsList(id, period).filter(isOpen), t = opsTotals(ops);
   const last = (SETTLE[id] || []).at(-1);
   const pLbl = period === 'all' ? 'всё время' : `${MON_NOM[Number(period.slice(5)) - 1]} ${period.slice(0, 4)}`;
-  const lines = ops.map(o => `${dm(parseIso(o.date))} ${SLOT[o.slot].l} — ${o.dir === 'in' ? 'я купил' : 'купили у меня'}: ${o.where.map(p => PJ[p].mono).join(' + ')} — ${o.amount == null ? `CPM ${o.rate} ₽, сумма после фиксации` : `${o.est ? '≈ ' : ''}${rub(o.amount)}`} (${ST[o.status].l})`);
+  const lines = ops.map(o => `${dm(parseIso(o.date))} ${placeLbl(o)} — ${o.dir === 'in' ? 'я купил' : 'купили у меня'}: ${o.where.map(p => PJ[p].mono).join(' + ')} — ${o.amount == null ? `CPM ${o.rate} ₽, сумма после фиксации` : `${o.est ? '≈ ' : ''}${rub(o.amount)}`} (${ST[o.status].l})`);
   const net = t.net > 0 ? `я должен ${rub(t.net)}` : t.net < 0 ? `мне должны ${rub(-t.net)}` : 'в ноль';
   return [`Сверка с ${admLabel(id)} · ${pLbl}${last ? ` · после расчёта ${dtLbl(last.at)}` : ''}`, ...lines, '', `Я купил: ${t.i.n} на ${rub(t.i.sum)}`, `Купили у меня: ${t.o.n} на ${rub(t.o.sum)}`, `Итог: ${net}`].join('\n');
 }
@@ -1744,12 +1828,18 @@ async function saveBuy(f) {
   const unlock = lockForm(f);
   try {
     const contactId = await adminFromForm(f);
-    const pm = el.pm.value;
-    const body = {
-      contactId, date: el.date.value, slot: el.slot.value, format: el.format.value, status: el.status.value,
+    const kind = el.kind.value || 'post';
+    const pm = kind === 'post' ? el.pm.value : 'unit';
+    const body = kind === 'post' ? {
+      kind, contactId, date: el.date.value, slot: el.slot.value, format: el.format.value, status: el.status.value,
       priceMode: pm, price: pm === 'fix' ? Number(el.price.value) : null, cpmRate: pm === 'cpm' ? Number(el.rate.value) : null,
       creative: el.creative.value.trim(), postUrl: el.post.value.trim(), notes: el.notes.value.trim(),
+    } : {
+      kind, contactId, date: el.date.value, status: el.status.value, unitPrice: Number(el.unitPrice.value),
+      creative: el.creative.value.trim(), notes: el.notes.value.trim(),
+      ...(el.units ? { units: Number(el.units.value) } : {}),
     };
+    if (src) delete body.kind;
     if (pm === 'cpm') {
       const v = el.views?.value.trim();
       if (v) Object.assign(body, { views: Number(v), cpmState: d.cpmState === 'failed' ? 'failed' : 'fixed' });
@@ -1783,7 +1873,7 @@ async function saveBuy(f) {
 function openDay(date, slot) {
   const day = parseIso(date);
   const ids = state.mode === 'buy' ? scopeIds() : [state.sellCh];
-  const ds = DEALS.filter(d => d.side === state.mode && d.date === date && ids.includes(d.project) && (!slot || d.slot === slot))
+  const ds = slotted(DEALS).filter(d => d.side === state.mode && d.date === date && ids.includes(d.project) && (!slot || d.slot === slot))
     .sort((a, b) => SLOT[a.slot].i - SLOT[b.slot].i);
   const buy = state.mode === 'buy';
   $('#dayDlg').innerHTML = `<div class="m-head"><div><div class="m-eyebrow">${buy ? 'закупы' : 'продажи'} дня</div><h2 id="dayTitle">${DOW_FULL[day.getDay()].replace(/^./, c => c.toUpperCase())}, ${day.getDate()} ${MON_GEN[day.getMonth()]}${slot ? ` · ${SLOT[slot].l}` : ''}</h2></div>
@@ -1896,6 +1986,19 @@ document.addEventListener('click', async e => {
       toast(was ? `${r.contact.name} теперь @${u} — обновлено во всех сделках и кампаниях; по @${was} он по-прежнему находится` : `${r.contact.name}: username @${u} сохранён`);
       if (r.notice) toast(r.notice, 'info');
     } catch (err) { inp.setCustomValidity(err.message); inp.reportValidity(); }
+  } else if (act === 'stop') {
+    const src = editing?.src; if (!src) return;
+    const k = KIND[src.kind], n = unitsOf(src);
+    confirmAsk('Остановить закуп?',
+      `${k.l} З-${src.dealId}: сейчас ${int(n)} ${plural(n, ...k.forms)} × ${rubU(src.unitPrice)} = ${rub(Math.round(n * src.unitPrice))}. Это количество зафиксируется к оплате, админу придёт итог в отслежке. Ссылка сама не отключится — попросите админа её убрать; что придёт после остановки, попадёт в метрики, но не в оплату.`,
+      'Остановить', async () => {
+        try {
+          const r = await api('POST', `/api/ads/buys/${src.dealId}/stop`);
+          await reload();
+          $('#dealDlg').close();
+          toast(`Закуп З-${src.dealId} остановлен — к оплате ${rub(Math.round(r.buy.units * r.buy.unitPrice))}`);
+        } catch (err) { toast(err.message, 'warn'); }
+      });
   } else if (act === 'track') {
     // старый закуп без отслежки: заводится по кнопке
     const src = editing?.src; if (!src) return;
@@ -1909,10 +2012,13 @@ document.addEventListener('click', async e => {
     // всё, что админу нужно для размещения, одним сообщением
     const d = editing?.src; if (!d) return;
     const post = $('#fTr')?.value || d.track;
+    const where = { post: 'поста', welcome: 'приветствия', requests: 'заявок' }[d.kind];
     copyText([
-      `Реклама: ${PJ[d.project].name} · ${dm(parseIso(d.date))} · ${SLOT[d.slot].l} · ${d.format}`,
-      post ? `Ссылка для поста: ${post}` : null,
-      `Отслежка — сколько пришло, ушло и осталось: ${$('#trackUrl').value}`,
+      isUnit(d)
+        ? `Реклама: ${PJ[d.project].name} · ${KIND[d.kind].l.toLowerCase()} с ${dm(parseIso(d.date))} · ${rubU(d.unitPrice)} за ${KIND[d.kind].per}`
+        : `Реклама: ${PJ[d.project].name} · ${dm(parseIso(d.date))} · ${SLOT[d.slot].l} · ${d.format}`,
+      post ? `Ссылка для ${where}: ${post}` : null,
+      `Отслежка — ${d.kind === 'requests' ? 'сколько подано заявок' : 'сколько пришло, ушло и осталось'}: ${$('#trackUrl').value}`,
     ].filter(Boolean).join('\n'), 'Скопировано для админа: ссылка для поста и отслежка');
   } else if (act === 'copy-track') {
     navigator.clipboard.writeText($('#fTr').value).then(() => toast('Ссылка скопирована — можно отправлять админу'), () => toast('Не удалось скопировать: браузер не дал доступ к буферу', 'info'));

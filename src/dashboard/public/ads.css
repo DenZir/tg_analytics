@@ -830,6 +830,8 @@ html[data-narrow] .dlg>form{max-height:92dvh}
 html[data-narrow] .m-head{padding:14px 16px 12px}
 html[data-narrow] .m-body{padding:2px 16px 16px}
 html[data-narrow] .m-foot{padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));flex-wrap:wrap}
+/* «Остановить» у приветки и заявок — отдельной строкой сверху, остальные кнопки как у поста */
+html[data-narrow] .m-foot [data-act="stop"]{order:-1;flex-basis:100%;justify-content:center}
 html[data-narrow] .fgrid{grid-template-columns:1fr}
 html[data-narrow] .mstats{grid-template-columns:repeat(2,minmax(0,1fr))}
 html[data-narrow] .checks li{grid-template-columns:24px 1fr;gap:4px 10px}
