@@ -1226,7 +1226,7 @@ function openDeal(id, prefill = {}) {
             <div id="pmFix" ${d.pm === 'fix' ? '' : 'hidden'}><label class="sr-only" for="fPrice">Сумма, ₽</label><input class="inp mono" type="number" id="fPrice" name="price" min="1" step="1" inputmode="numeric" placeholder="Сумма, ₽" value="${d.price ?? ''}" ${d.pm === 'fix' ? 'required' : ''}></div>
             <div id="pmCpm" ${d.pm === 'cpm' ? '' : 'hidden'}><label class="sr-only" for="fRate">Ставка за 1000 просмотров, ₽</label><input class="inp mono" type="number" id="fRate" name="rate" min="1" step="1" inputmode="numeric" placeholder="Ставка за 1000, ₽" value="${d.rate ?? ''}" ${d.pm === 'cpm' ? 'required' : ''}><div class="calc" id="cpmCalc"></div></div>
           </div></div>
-        ${buy ? `<div class="fld"><label for="fCr">Креатив</label><input class="inp" id="fCr" name="creative" value="${esc(d.creative)}" placeholder="Какой пост ушёл"></div>
+        ${buy ? `<div class="fld" data-only="post welcome"><label for="fCr">Креатив</label><input class="inp" id="fCr" name="creative" value="${esc(d.creative)}" placeholder="Какой пост ушёл"></div>
         <div class="fld"><label for="fTr">Ссылка для отслеживания</label><input class="inp mono" id="fTr" name="track" value="${esc(d.track)}" placeholder="${isNew ? 'пусто — создам сам' : 't.me/+… или t.me/бот?start=…'}" autocapitalize="off" spellcheck="false"><div class="hint">${isNew ? 'Оставьте пустым — ссылка создастся сама; или вставьте готовую' : d.track ? '<button class="adm-link" type="button" data-act="copy-track">Скопировать</button> · другая ссылка — вставьте её сюда' : `Ссылки нет — вставьте готовую${canMint || !PJ[d.project].channel ? ' или <button class="adm-link" type="button" data-act="mint">создайте</button>' : ''}`}</div></div>` : ''}
         <div class="fld ${buy ? '' : 'wide'}" data-only="post"><label for="fPost">Ссылка на ${buy ? 'рекламный ' : ''}пост</label><input class="inp mono" id="fPost" name="post" value="${esc(d.post)}" placeholder="${d.post ? 'https://t.me/канал/123' : 'пусто, пока пост не вышел'}" autocapitalize="off" spellcheck="false">${buy ? `<div class="hint">${d.post
           ? (checker.enabled ? 'По ней проверка следит за постом: выход, просмотры, час в топе, срок' : 'Проверка постов выключена — ссылка пока только для справки')
@@ -1271,7 +1271,8 @@ function updateKind() {
   const f = $('#dealForm'); if (!f || !editing || editing.kind === 'sale' || !f.elements.kind) return;
   const kind = f.elements.kind.value || 'post', unit = kind !== 'post';
   for (const el of f.querySelectorAll('[data-only]')) {
-    const on = el.dataset.only === (unit ? 'unit' : 'post');
+    // data-only: виды через пробел; «unit» — приветка и заявки разом
+    const on = el.dataset.only.split(' ').some(k => k === kind || (k === 'unit' && unit));
     el.hidden = !on;
     for (const i of el.querySelectorAll('input,select,textarea')) i.disabled = !on;
   }
@@ -1836,7 +1837,7 @@ async function saveBuy(f) {
       creative: el.creative.value.trim(), postUrl: el.post.value.trim(), notes: el.notes.value.trim(),
     } : {
       kind, contactId, date: el.date.value, status: el.status.value, unitPrice: Number(el.unitPrice.value),
-      creative: el.creative.value.trim(), notes: el.notes.value.trim(),
+      creative: kind === 'requests' ? null : el.creative.value.trim(), notes: el.notes.value.trim(),
       ...(el.units ? { units: Number(el.units.value) } : {}),
     };
     if (src) delete body.kind;
