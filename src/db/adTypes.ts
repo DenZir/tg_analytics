@@ -63,3 +63,17 @@ export const isAdSlot = (v: unknown): v is AdSlot => (AD_SLOTS as readonly unkno
 export const isAdFormat = (v: unknown): v is AdFormat => (AD_FORMATS as readonly unknown[]).includes(v);
 export const isAdStatus = (v: unknown): v is AdStatus => (AD_STATUSES as readonly unknown[]).includes(v);
 export const isAdPriceMode = (v: unknown): v is AdPriceMode => (AD_PRICE_MODES as readonly unknown[]).includes(v);
+
+/**
+ * What kind of buy it is. A post: a placement in a slot, 24/48 h, checked by the
+ * post checker. A welcome («приветка»): my link in the admin's welcome message,
+ * traffic trickles in for as long as it runs. Requests («заявки»): a join-request
+ * link — people ask to join; I may approve them later. Welcome and requests have
+ * no slot and no post, run until stopped by hand, and are paid per unit.
+ */
+export const AD_BUY_KINDS = ["post", "welcome", "requests"] as const;
+export type AdBuyKind = (typeof AD_BUY_KINDS)[number];
+export const isAdBuyKind = (v: unknown): v is AdBuyKind => (AD_BUY_KINDS as readonly unknown[]).includes(v);
+
+/** Per-unit price: for a welcome — per subscriber who came, for requests — per request. */
+export const AD_UNIT_PRICE_MODE = "unit" as const;

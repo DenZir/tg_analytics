@@ -272,8 +272,14 @@ export const adBuys = sqliteTable(
     slot: text("slot").notNull(),
     format: text("format").notNull().default("1/24"),
     status: text("status").notNull().default("plan"),
+    // post | welcome | requests (see AD_BUY_KINDS). Welcome and requests have no
+    // slot or post: date is when they start, slot/format are kept but unused.
+    kind: text("kind").notNull().default("post"),
     priceMode: text("price_mode").notNull().default("fix"),
     price: real("price"), // fixed amount, ₽
+    unitPrice: real("unit_price"), // ₽ per subscriber (welcome) / per request (requests)
+    units: integer("units"), // count frozen when stopped — what is paid for
+    stoppedAt: integer("stopped_at", { mode: "timestamp" }), // welcome/requests stopped by hand
     cpmRate: real("cpm_rate"), // ₽ per 1000 views
     views: integer("views"), // fixed (or last known) views for CPM
     cpmState: text("cpm_state"),

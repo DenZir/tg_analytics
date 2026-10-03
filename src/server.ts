@@ -353,7 +353,7 @@ app.use(
   createAdsRouter({
     getAdminId: getRequestAdminId,
     mintInvite: channelBot
-      ? async (chatId, campaignId, name) => createInviteForCampaign(chatId, campaignId, name, false, name)
+      ? async (chatId, campaignId, name, closed) => createInviteForCampaign(chatId, campaignId, name, !!closed, name)
       : null,
   })
 );

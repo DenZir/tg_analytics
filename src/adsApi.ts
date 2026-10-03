@@ -23,6 +23,7 @@ import {
   listAdProjects,
   listDeals,
   setMandatorySlots,
+  stopBuy,
   updateBuy,
   updateSale,
   type InviteMinter,
@@ -212,6 +213,17 @@ export function createAdsRouter(opts: {
       const id = idParam(req);
       const out = await updateBuy(id, body(req));
       await audit(req, "ad_buy_update", "ad_buy", id, body(req));
+      return out;
+    })
+  );
+
+  // A welcome / requests buy: stop counting and freeze what is paid for.
+  r.post(
+    "/buys/:id/stop",
+    wrap(async (req) => {
+      const id = idParam(req);
+      const out = await stopBuy(id);
+      await audit(req, "ad_buy_stop", "ad_buy", id, { units: out.buy.units });
       return out;
     })
   );

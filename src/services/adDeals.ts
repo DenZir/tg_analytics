@@ -31,11 +31,14 @@ import {
 import {
   AD_CPM_STATES,
   AD_PUBLISHED_STATUSES,
+  AD_UNIT_PRICE_MODE,
   DEFAULT_MANDATORY_SLOTS,
+  isAdBuyKind,
   isAdFormat,
   isAdPriceMode,
   isAdSlot,
   isAdStatus,
+  type AdBuyKind,
   type AdCpmState,
   type AdDealKind,
   type AdSlot,
@@ -68,7 +71,9 @@ type Project = typeof projects.$inferSelect;
 export type InviteMinter = (
   channelId: string,
   campaignId: number,
-  name: string
+  name: string,
+  /** a join-request link: people ask to join instead of joining */
+  closed?: boolean
 ) => Promise<{ inviteLink: string }>;
 
 // --- input parsing ---------------------------------------------------------
@@ -99,6 +104,18 @@ function parseStatus(v: unknown): AdStatus {
 function parseFormat(v: unknown) {
   if (!isAdFormat(v)) throw new AdInputError(`Неизвестный формат: ${String(v)}`);
   return v;
+}
+
+function parseKind(v: unknown): AdBuyKind {
+  if (!isAdBuyKind(v)) throw new AdInputError(`Неизвестный вид закупа: ${String(v)}`);
+  return v;
+}
+
+function parseUnits(v: unknown): number | null {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0) throw new AdInputError("Количество — целое неотрицательное число");
+  return n;
 }
 
 function parsePriceMode(v: unknown) {
@@ -190,9 +207,18 @@ const has = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k)
 
 // --- money -----------------------------------------------------------------
 
-/** What a buy costs, or null while a CPM price still waits for its views. */
-export function amountOfBuy(b: Pick<Buy, "priceMode" | "price" | "cpmRate" | "views" | "cpmState">): number | null {
+/**
+ * What a buy costs, or null while it is not known yet: a CPM price waiting for
+ * its views, a per-unit buy (welcome, requests) that is still running — its
+ * count is frozen only when it is stopped.
+ */
+export function amountOfBuy(
+  b: Pick<Buy, "priceMode" | "price" | "cpmRate" | "views" | "cpmState" | "unitPrice" | "units">
+): number | null {
   if (b.priceMode === "fix") return b.price ?? null;
+  if (b.priceMode === AD_UNIT_PRICE_MODE) {
+    return b.units != null && b.unitPrice != null ? Math.round(b.unitPrice * b.units) : null;
+  }
   if ((b.cpmState === "fixed" || b.cpmState === "failed") && b.views != null && b.cpmRate != null) {
     return Math.round((b.cpmRate * b.views) / 1000);
   }
@@ -281,9 +307,17 @@ const SLOT_SHORT: Record<AdSlot, string> = {
   n17: "17:00",
 };
 
+const KIND_SHORT: Record<Exclude<AdBuyKind, "post">, string> = { welcome: "прив", requests: "заяв" };
+
+/** «17.09 утро» for a post, «с 17.09 прив» for a running buy. */
+function whenShort(buy: Pick<Buy, "date" | "slot" | "kind">): string {
+  const d = `${buy.date.slice(8, 10)}.${buy.date.slice(5, 7)}`;
+  return buy.kind === "post" ? `${d} ${SLOT_SHORT[buy.slot as AdSlot]}` : `с ${d} ${KIND_SHORT[buy.kind as Exclude<AdBuyKind, "post">]}`;
+}
+
 /** Telegram caps an invite link's name at 32 characters. */
-function inviteName(label: string, date: string, slot: AdSlot): string {
-  const tail = ` · ${date.slice(8, 10)}.${date.slice(5, 7)} ${SLOT_SHORT[slot]}`;
+function inviteName(label: string, buy: Pick<Buy, "date" | "slot" | "kind">): string {
+  const tail = ` · ${whenShort(buy)}`;
   const room = 32 - tail.length;
   return (label.length > room ? `${label.slice(0, Math.max(1, room - 1))}…` : label) + tail;
 }
@@ -307,7 +341,7 @@ interface LinkOutcome {
  * to it later.
  */
 async function provideLink(
-  buy: Pick<Buy, "id" | "projectId" | "campaignId" | "utmLinkId" | "date" | "slot" | "creative">,
+  buy: Pick<Buy, "id" | "projectId" | "campaignId" | "utmLinkId" | "date" | "slot" | "kind" | "creative">,
   label: string,
   amount: number | null,
   contactId: number,
@@ -316,6 +350,10 @@ async function provideLink(
 ): Promise<LinkOutcome> {
   const project = await getProject(buy.projectId);
   const start = readyRef ? parseStartLink(readyRef) : null;
+  // Requests are a channel thing: a bot has nobody to ask it to join.
+  if (buy.kind === "requests" && (start || !hasChannel(project))) {
+    throw new AdInputError("Заявки бывают только в канал — нужна ссылка-приглашение канала с одобрением");
+  }
 
   // A bot deep link: track the buy by its UTM slug.
   if (start || (!readyRef && !hasChannel(project) && hasBot(project))) {
@@ -342,7 +380,7 @@ async function provideLink(
       utmMedium: "ads",
       utmCampaign: label,
       utmContent: buy.creative ?? undefined,
-      label: `${label} · ${buy.date} ${SLOT_SHORT[buy.slot as AdSlot]}`,
+      label: `${label} · ${whenShort(buy)}`,
       spend: amount ?? undefined,
       botUsername: project.botUsername?.replace(/^@/, "") ?? undefined,
     });
@@ -402,7 +440,7 @@ async function provideLink(
 
   if (!mintInvite) return { campaignId, warning: "Бот канала не настроен — ссылку не создать, вставьте готовую" };
   try {
-    await mintInvite(project.telegramChatId!, campaignId, inviteName(label, buy.date, buy.slot as AdSlot));
+    await mintInvite(project.telegramChatId!, campaignId, inviteName(label, buy), buy.kind === "requests");
     return { campaignId };
   } catch (error: any) {
     console.error(`[ads] Failed to mint an invite link for buy ${buy.id}:`, error);
@@ -438,10 +476,49 @@ function recordStatus(tx: Tx, kind: AdDealKind, dealId: number, status: AdStatus
 
 const isPublished = (s: string) => (AD_PUBLISHED_STATUSES as string[]).includes(s);
 
+/**
+ * A welcome or requests buy: no slot, no post, paid per unit. Slot and format
+ * keep neutral values (the columns are NOT NULL) that nothing reads for these.
+ * `units` is set only by stopping (see updateBuy); here it can just be
+ * corrected by hand once the buy is stopped.
+ */
+function unitBuyFields(input: Record<string, unknown>, kind: Exclude<AdBuyKind, "post">, base?: Buy) {
+  const pick = <T>(k: string, parse: (v: unknown) => T, fallback: T): T => (has(input, k) ? parse(input[k]) : fallback);
+  const f = {
+    kind,
+    date: pick("date", parseDate, base?.date as string),
+    slot: "day" as AdSlot,
+    format: "1/24" as const,
+    status: pick("status", parseStatus, (base?.status as AdStatus) ?? "live"),
+    priceMode: AD_UNIT_PRICE_MODE,
+    price: null,
+    unitPrice: pick("unitPrice", (v) => parseMoney(v, kind === "welcome" ? "Цена за подписчика" : "Цена за заявку"), base?.unitPrice ?? null),
+    units: base?.stoppedAt && has(input, "units") ? parseUnits(input.units) : (base?.units ?? null),
+    cpmRate: null,
+    views: null,
+    cpmState: null,
+    creative: pick("creative", (v) => parseText(v, 120, "Креатив"), base?.creative ?? null),
+    postUrl: null,
+    notes: pick("notes", (v) => parseText(v, 2000, "Заметка"), base?.notes ?? null),
+  };
+  if (!f.date) throw new AdInputError("Укажите дату начала");
+  if (f.unitPrice == null || f.unitPrice <= 0) {
+    throw new AdInputError(kind === "welcome" ? "Укажите цену за подписчика" : "Укажите цену за заявку");
+  }
+  return f;
+}
+
 function buyFields(input: Record<string, unknown>, base?: Buy) {
+  // The kind is fixed at creation: it decides what link the buy got.
+  const kind = base ? (base.kind as AdBuyKind) : parseKind(input.kind ?? "post");
+  if (base && has(input, "kind") && input.kind !== base.kind) {
+    throw new AdInputError("Вид закупа не меняется — ссылка уже создана под него. Удалите закуп и создайте новый");
+  }
+  if (kind !== "post") return unitBuyFields(input, kind, base);
   const pick = <T>(k: string, parse: (v: unknown) => T, fallback: T): T => (has(input, k) ? parse(input[k]) : fallback);
   const priceMode = pick("priceMode", parsePriceMode, (base?.priceMode as "fix" | "cpm") ?? "fix");
   const f = {
+    kind,
     date: pick("date", parseDate, base?.date as string),
     slot: pick("slot", parseSlot, base?.slot as AdSlot),
     format: pick("format", parseFormat, (base?.format as "1/24" | "1/48") ?? "1/24"),
@@ -467,7 +544,7 @@ function buyFields(input: Record<string, unknown>, base?: Buy) {
     f.cpmState = f.cpmState ?? "wait";
     if (f.cpmState !== "wait" && f.views == null) throw new AdInputError("Чтобы зафиксировать CPM, нужны просмотры");
   }
-  return f;
+  return { ...f, unitPrice: null, units: null };
 }
 
 export async function createBuy(input: Record<string, unknown>, mintInvite: InviteMinter | null) {
@@ -479,6 +556,7 @@ export async function createBuy(input: Record<string, unknown>, mintInvite: Invi
   const readyRef = parseText(input.readyLink, 300, "Ссылка");
   if (!hasChannel(project) && !hasBot(project)) throw new AdInputError("У проекта нет ни канала, ни бота");
   if (!adsModesOf(project).buy) throw new AdInputError(`Закуп для «${project.name}» выключен — включите его на экране «Проекты»`);
+  if (f.kind !== "post" && f.status === "done") throw new AdInputError("Закуп нельзя создать сразу остановленным");
 
   const buy = db.transaction((tx) => {
     const row = tx
@@ -528,12 +606,14 @@ export async function updateBuy(id: number, input: Record<string, unknown>) {
   const contactId = has(input, "contactId") ? parseId(input.contactId, "у кого купили") : current.contactId;
   const contact = await requireContact(contactId);
   const f = buyFields(input, current);
+  const stop = await stopColumns(current, f.status as AdStatus);
 
   const saved = db.transaction((tx) => {
     const row = tx
       .update(adBuys)
       .set({
         ...f,
+        ...stop,
         ...(f.postUrl !== current.postUrl ? postColumns(f.postUrl) : {}),
         contactId,
         cpmFixedAt: f.cpmState === "fixed" ? (current.cpmState === "fixed" ? current.cpmFixedAt : new Date()) : null,
@@ -548,6 +628,32 @@ export async function updateBuy(id: number, input: Record<string, unknown>) {
   });
   await syncTracking(saved, contactLabel(contact));
   return { buy: saved };
+}
+
+/**
+ * A welcome or requests buy runs until it is stopped, and «done» is what
+ * stopping means: the count of subscribers / requests up to that moment is
+ * frozen into `units` — that is what gets paid. Moving it back off «done»
+ * resumes it and forgets the frozen count.
+ */
+async function stopColumns(current: Buy, status: AdStatus): Promise<Partial<Pick<Buy, "units" | "stoppedAt">>> {
+  if (current.kind === "post") return {};
+  if (status === "done" && !current.stoppedAt) {
+    const stoppedAt = new Date();
+    const r = (await resultsFor([{ ...current, status, stoppedAt }])).get(current.id);
+    return { stoppedAt, units: r?.units ?? 0 };
+  }
+  if (status !== "done" && current.stoppedAt) return { stoppedAt: null, units: null };
+  return {};
+}
+
+/** Stops a running welcome / requests buy — the «Остановить» button. */
+export async function stopBuy(id: number) {
+  const current = await db.query.adBuys.findFirst({ where: eq(adBuys.id, id) });
+  if (!current) throw new AdInputError("Закуп не найден", 404);
+  if (current.kind === "post") throw new AdInputError("Пост не останавливают — он снимается сам по сроку");
+  if (current.stoppedAt) throw new AdInputError("Закуп уже остановлен", 409);
+  return updateBuy(id, { status: "done" });
 }
 
 /** Attaches a pasted link to an existing buy, or tries minting one again. */
@@ -806,6 +912,13 @@ export interface BuyResult {
   revenue: number;
   /** Share of those subscribers who have not left since. Null with no subscribers. */
   retention: number | null;
+  /** Distinct people who asked to join through the link (a join-request link). */
+  requests: number;
+  /**
+   * What a per-unit buy is paid for, counted up to its stop (or now while it
+   * runs): subscribers for a welcome, requests for requests. Null for a post.
+   */
+  units: number | null;
 }
 
 const CHUNK = 500;
@@ -822,7 +935,10 @@ async function inChunks<T, R>(items: T[], fn: (chunk: T[]) => Promise<R[]>): Pro
  */
 export async function resultsFor(buys: Buy[]): Promise<Map<number, BuyResult>> {
   const out = new Map<number, BuyResult>();
-  const tracked = buys.filter((b) => (b.campaignId || b.utmLinkId) && isPublished(b.status));
+  // a running buy counts from whatever its link brings; a post — once it is out
+  const tracked = buys.filter(
+    (b) => (b.campaignId || b.utmLinkId) && (b.kind === "post" ? isPublished(b.status) : b.status !== "cancel")
+  );
   if (!tracked.length) return out;
 
   const campaignIds = [...new Set(tracked.map((b) => b.campaignId).filter((x): x is number => !!x))];
@@ -860,11 +976,21 @@ export async function resultsFor(buys: Buy[]): Promise<Map<number, BuyResult>> {
       allUsers.add(e.tgUserId);
     }
     firstEntry.set(b.id, entries);
+    const requesters = new Map<string, number>();
+    for (const e of list) {
+      if (e.eventType !== EVENT_TYPES.JOIN_REQUEST) continue;
+      const t = new Date(e.ts).getTime();
+      const prev = requesters.get(e.tgUserId);
+      if (prev === undefined || t < prev) requesters.set(e.tgUserId, t);
+    }
+    const stopAt = b.stoppedAt ? new Date(b.stoppedAt).getTime() : Infinity;
+    const upToStop = (m: Map<string, number>) => [...m.values()].filter((t) => t <= stopAt).length;
+    const units = b.kind === "welcome" ? upToStop(entries) : b.kind === "requests" ? upToStop(requesters) : null;
     const buyers = new Set(list.filter((e) => e.eventType === EVENT_TYPES.PAYMENT).map((e) => e.tgUserId));
     const revenue = list
       .filter((e) => e.eventType === EVENT_TYPES.PAYMENT || e.eventType === EVENT_TYPES.RENEWAL)
       .reduce((s, e) => s + (e.amount || 0), 0);
-    out.set(b.id, { subs: entries.size, buyers: buyers.size, revenue, retention: null });
+    out.set(b.id, { subs: entries.size, buyers: buyers.size, revenue, retention: null, requests: requesters.size, units });
   }
 
   const exits = allUsers.size
@@ -974,8 +1100,11 @@ export async function listDeals(filter: DealFilter) {
   ]);
 
   const now = new Date();
+  // welcome and requests have no post and no slot — nothing to check
   const checksOfBuy = (b: Buy) =>
-    deriveChecks(
+    b.kind !== "post"
+      ? { checks: null, warns: [] }
+      : deriveChecks(
       { ...b, slot: b.slot as AdSlot, format: b.format as "1/24" | "1/48" },
       now,
       b.campaignId || b.utmLinkId ? (results.get(b.id)?.subs ?? 0) : null
@@ -985,6 +1114,7 @@ export async function listDeals(filter: DealFilter) {
     id: `З-${b.id}`,
     dealId: b.id,
     project: b.projectId,
+    kind: b.kind,
     date: b.date,
     slot: b.slot,
     format: b.format,
@@ -996,6 +1126,11 @@ export async function listDeals(filter: DealFilter) {
     cpmState: b.cpmState,
     fixedAt: b.cpmFixedAt,
     amount: amountOfBuy(b),
+    // per-unit buys: the price, the frozen count once stopped, the count so far
+    unitPrice: b.unitPrice,
+    units: b.units,
+    unitsNow: results.get(b.id)?.units ?? null,
+    stoppedAt: b.stoppedAt,
     admin: b.contactId,
     creative: b.creative ?? "",
     track: tracks.get(b.id) ?? "",
