@@ -144,6 +144,19 @@ input[type="date"].inp{color-scheme:dark}
 .card-t{font:700 14.5px var(--body);letter-spacing:-.01em}
 .card-s{font-size:11.5px;color:var(--muted);margin-top:2px}
 .card-h .right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* полоса «Приветка и заявки» над сеткой, днём и матрицей */
+.ustrip{margin-bottom:16px}
+.ustrip-l{list-style:none;margin:0;padding:0 18px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.ustrip-it{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);color:inherit;font:inherit;text-align:left;cursor:pointer;transition:border-color .15s var(--ease)}
+.ustrip-it:hover,.ustrip-it:focus-visible{border-color:var(--line2)}
+.ustrip-m{display:flex;flex-direction:column;min-width:0;flex:1}
+.ustrip-m>.ustrip-h{display:flex;align-items:center;gap:8px;margin-bottom:2px;overflow:visible;color:var(--text)}
+.ustrip-h b{font-size:13.5px}
+.ustrip-m>.ustrip-a{font-size:12.5px;color:var(--text)}
+.ustrip-m>span{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ustrip-n{display:flex;flex-direction:column;align-items:flex-end;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.ustrip-n b{font-size:14px;color:var(--text)}
+.ustrip-n span{color:var(--dim)}
 .hint-row{padding:10px 18px;font-size:11px;color:var(--dim);border-top:1px solid rgba(255,255,255,.04);display:flex;gap:14px;flex-wrap:wrap;align-items:center}
 
 /* ============ KPI ============ */

@@ -646,6 +646,11 @@ function renderCampaignModal(camp, hist) {
         <div class="m-stat"><b>${totBuyers ? fmt1(camp.price / totBuyers) + ' ₽' : '—'}</b><span>₽/покупка</span></div>
       </div>
       <div class="m-body">
+        ${hist.adBuyId ? `<section class="m-sec m-adbuy">
+          <div class="m-sec-h"><span class="card-idx">реклама</span><h3>Это закуп З-${hist.adBuyId}</h3></div>
+          <p class="m-adbuy-t">Цена, вид закупа, остановка и ссылка на отслежку для админа — в карточке закупа.</p>
+          <a class="btn tiny btn-primary" href="/ads.html?deal=${encodeURIComponent(`З-${hist.adBuyId}`)}">Открыть закуп →</a>
+        </section>` : ''}
         <section class="m-sec">
           <div class="m-sec-h"><span class="card-idx">01 / теги</span><h3>Разметка кампании</h3></div>
           <div class="tag-wrap" id="tagWrap">${tags.map(t => `<span class="tag">${escapeHtml(t.tagKey)}: <b>${escapeHtml(t.tagValue)}</b><button data-k="${escapeHtml(t.tagKey)}" title="Удалить тег">${IC.x}</button></span>`).join('') || '<span style="font-size:12px;color:var(--dim)">тегов нет</span>'}</div>

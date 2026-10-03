@@ -4,7 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { db, sqlite } from "./db/index.js";
-import { links, projects } from "./db/schema.js";
+import { adBuys, links, projects } from "./db/schema.js";
 import {
   createCampaign,
   getAllProjects,
@@ -671,7 +671,9 @@ app.get("/api/campaigns/:id/history", async (req, res) => {
     if (!history) {
       return res.status(404).json({ error: "Campaign not found" });
     }
-    res.json(history);
+    // a campaign made by an ad buy: the card opens the buy, where the admin's tracking link is
+    const [buy] = await db.select({ id: adBuys.id }).from(adBuys).where(eq(adBuys.campaignId, campaignId)).limit(1);
+    res.json({ ...history, adBuyId: buy?.id ?? null });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

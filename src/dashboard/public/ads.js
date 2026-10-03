@@ -1099,11 +1099,27 @@ function render() {
     view.innerHTML = emptyHTML(state.mode === 'buy' ? 'За этот период закупов нет' : 'За этот период продаж нет', !DEALS.some(d => d.side === state.mode) ? `Сделок ещё нет. Первая появится после «${state.mode === 'buy' ? 'Новый закуп' : 'Новая продажа'}» — или откройте сетку и нажмите на нужную клетку.` : 'Смените период стрелками или добавьте сделку — она сразу появится во всех видах.');
     return;
   }
-  view.innerHTML = state.view === 'list' ? renderList(list)
+  // в видах по местам приветки и заявок нет — они полосой сверху, чтобы не терялись
+  view.innerHTML = (state.view !== 'list' && state.view !== 'summary' ? unitStrip(list) : '') + (state.view === 'list' ? renderList(list)
     : state.view === 'grid' ? renderGrid(r, list)
     : state.view === 'day' ? renderDay(r, list)
     : state.view === 'summary' ? renderSummary(r, list)
-    : renderMatrix(r, list);
+    : renderMatrix(r, list));
+}
+
+// Приветка и заявки, что шли в выбранный период: в сетке, дне и матрице им нет места
+function unitStrip(list) {
+  const us = list.filter(d => isUnit(d) && d.status !== 'cancel');
+  if (!us.length) return '';
+  return `<article class="card ustrip">
+    <div class="card-h"><span class="card-idx">без места</span>
+      <div><h2 class="card-t">Приветка и заявки</h2><div class="card-s">Идут без места в ленте, поэтому в ${state.view === 'day' ? 'дне' : state.view === 'grid' ? 'сетке' : 'матрице'} их нет · клик — карточка со ссылкой на отслежку</div></div></div>
+    <ul class="ustrip-l">${us.map(d => {
+      const n = unitsOf(d), amt = amountOf(d);
+      return `<li><button class="ustrip-it" type="button" data-act="open" data-id="${d.id}">${ava(d.project, 'sm')}
+        <span class="ustrip-m"><span class="ustrip-h"><b>${KIND[d.kind].l}</b>${stOf(d)}</span><span class="ustrip-a">${esc(admLabel(contactOf(d)))}</span><span>${esc(PJ[d.project].name)} · с ${dm(parseIso(d.date))}</span></span>
+        <span class="ustrip-n"><b class="mono">${int(n)}</b> ${plural(n, ...KIND[d.kind].forms)}<span class="mono">${amt != null ? rub(amt) : `≈${NB}${rub(Math.round((d.unitPrice || 0) * n))}`}</span></span></button></li>`;
+    }).join('')}</ul></article>`;
 }
 
 // ================= ВЫБОР ПРОЕКТОВ =================
